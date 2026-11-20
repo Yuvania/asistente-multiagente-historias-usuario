@@ -2,6 +2,12 @@
 
 **Estado**: contrato de diseño. Las rutas definitivas deben alinearse con la API actual al reabrir la implementación después del gate constitucional.
 
+## Agentes OpenCode
+
+`opencode.jsonc` registra los identificadores estables `analista`, `redactor_revisor`, `asesor_tecnico` y `gestor_cambios`. Cada agente carga su propio prompt externo. OpenCode deniega permisos por defecto; solo se habilitan las herramientas MCP read-only declaradas para ese rol. Ningún agente tiene shell, acceso libre al filesystem, escritura ni acceso general a la red.
+
+`OpenCodeClient` recibe el identificador del rol/agente para cada invocación y valida que esté configurado. No usa el agente `analista` como fallback para otra responsabilidad. Las pruebas con servidor simulado deben confirmar que cada invocación usa el agente y prompt correctos y que su contexto/herramientas no cruzan roles.
+
 ## Iniciar un workflow
 
 `POST /api/workflows`
@@ -11,7 +17,7 @@ Entrada discriminada por modo:
 - `pre_grooming`: `requirement` y un identificador de correlación nuevo.
 - `post_grooming`: `approved_story_id` y `change_request`.
 
-Validaciones: tamaño máximo del texto, modo permitido, referencia de HU aprobada para post-grooming, límite de solicitudes concurrentes por workflow y rechazo de campos desconocidos.
+Validaciones: `requirement` de 1–4.000 caracteres para `pre_grooming`, `change_request` de 1–2.000 caracteres para `post_grooming`, modo permitido, referencia de HU aprobada para post-grooming, máximo de una operación activa por workflow y rechazo de campos desconocidos. Una solicitud concurrente recibe conflicto y no modifica el checkpoint.
 
 Respuesta de diseño:
 
@@ -110,7 +116,7 @@ Comando: `python -m agentes.conocimiento.ingesta --fuente todas`.
 
 El comando acepta solo fuentes preconfiguradas. Su salida informa conteos leídos, validados, upserted y excluidos por namespace, IDs estables y errores sanitizados; nunca incluye la clave Pinecone, texto completo sensible, ni un estado de éxito total si hubo fallas.
 
-El cliente lee `PINECONE_API_KEY` del entorno, valida el índice antes de escribir y limita operaciones a `historias-usuario` y los seis namespaces. El SDK configurado debe usar índice serverless/managed en AWS `us-east-1`; el embedding integrado se declara como `multilingual-e5-large`, 1024 dimensiones y cosine. Si el índice existente no coincide, la ingesta falla sin borrarlo ni recrearlo.
+El cliente lee `PINECONE_API_KEY` del entorno y limita operaciones al índice vectorial denso convencional `historias-usuario` y los seis namespaces. Se usa `PineconeEmbeddings(model="multilingual-e5-large")` para producir vectores y `PineconeVectorStore` de `langchain-pinecone` para upsert y búsqueda. La configuración del índice es serverless en AWS `us-east-1`, dimensión `1024` y métrica `cosine`. No se usa document index, mapa de campos de texto, embedding integrado ni API `documents.*`. Si el índice existente no coincide, la ingesta/búsqueda falla sin borrarlo ni recrearlo.
 
 Upserts usan ID determinístico por namespace, origen y número de fragmento; repetir exactamente la ingesta reemplaza el mismo ID. Fuentes aprobadas provienen solo de `RepositorioHU` (HU aprobadas/lecciones aprobadas); código solo de `.py`/`.md` allowlisted bajo `ejemplos/polizas_demo/` y nunca se importa o ejecuta.
 
@@ -125,7 +131,7 @@ Upserts usan ID determinístico por namespace, origen y número de fragmento; re
 ## Seguridad y ciclo de vida
 
 - Backend valida cada cuerpo con Pydantic y aplica límites de longitud y tamaño.
-- Configuración no secreta: índice `historias-usuario`, cloud `aws`, región `us-east-1`, dimensión `1024`, métrica `cosine`, modelo `multilingual-e5-large` y namespaces fijos.
+- Configuración no secreta: índice vectorial `historias-usuario`, cloud `aws`, región `us-east-1`, dimensión `1024`, métrica `cosine`, modelo de embeddings `multilingual-e5-large` y namespaces fijos. Las llamadas de embeddings y las operaciones vectoriales son explícitas en la aplicación; el índice no almacena configuración de integrated embeddings.
 - `PINECONE_API_KEY` procede solo del entorno; `.env.example` usa un valor vacío y Render la declara `sync: false` sin incluir credencial.
 - El navegador no contacta OpenCode, Langfuse ni MCP directamente.
 - IDs de workflow permanecen en memoria de la interfaz; no se guardan en localStorage/sessionStorage.

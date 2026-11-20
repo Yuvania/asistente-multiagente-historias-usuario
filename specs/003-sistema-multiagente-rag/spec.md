@@ -123,9 +123,9 @@ Como usuario de los cuatro agentes quiero recibir información recuperada de fue
 - **FR-012**: Las salidas entre etapas DEBEN usar contratos estructurados validados. Una salida inválida, incompleta o una falla de herramienta DEBE detener o enrutar de forma controlada, sin inferir aprobación.
 - **FR-013**: El historial necesario para reanudar una intervención DEBE usar almacenamiento de checkpoints en memoria en la primera versión; la interfaz y documentación DEBEN informar que un reinicio de Render pierde esos estados.
 - **FR-014**: Todo backend y agente DEBE permanecer en Python. La interfaz existente DEBE conservar React y SCSS, mostrar las salidas estructuradas y permitir intervenciones humanas sin eliminar las pantallas ni simulaciones existentes.
-- **FR-015**: OpenCode DEBE seguir como motor de IA. El sistema NO DEBE crear servicios Render adicionales.
+- **FR-015**: OpenCode DEBE seguir como motor generativo. Pinecone se limita a generar embeddings y recuperar vectores de conocimiento; el sistema NO DEBE crear servicios Render adicionales.
 - **FR-016**: El sistema NO DEBE acceder a secretos, imprimirlos, registrarlos, incluirlos en trazas ni enviarlos al navegador. La clave Pinecone se lee exclusivamente del entorno de ejecución.
-- **FR-017**: El backend DEBE crear automáticamente, si falta, y validar antes de usar un índice serverless llamado `historias-usuario`, cloud `aws`, región `us-east-1`, 1024 dimensiones, métrica `cosine` y embeddings `multilingual-e5-large`. Si un índice existente no coincide, DEBE fallar de forma controlada sin alterarlo.
+- **FR-017**: El backend DEBE crear automáticamente, si falta, y validar antes de usar un índice vectorial denso convencional llamado `historias-usuario`, cloud `aws`, región `us-east-1`, 1024 dimensiones y métrica `cosine`. Los embeddings `multilingual-e5-large` se solicitan mediante `PineconeEmbeddings` y se guardan/consultan como vectores ordinarios con `PineconeVectorStore` de `langchain-pinecone`; NO se usan document indexes ni embeddings integrados en el índice. Si un índice existente no coincide, DEBE fallar de forma controlada sin alterarlo.
 - **FR-018**: El sistema DEBE separar conocimiento en los namespaces `glosario`, `estandares`, `checklist`, `hu_aprobadas`, `lecciones` y `codigo`; toda escritura/consulta DEBE indicar exactamente el namespace autorizado para ese agente y tipo de fuente.
 - **FR-019**: El sistema DEBE ingerir todas las fuentes JSON de `agentes/analista/fuentes/`, las HU aprobadas y lecciones aprobadas accesibles desde `RepositorioHU`, y todos los `.py` y `.md` de `ejemplos/polizas_demo/` en el namespace `codigo`.
 - **FR-020**: La ingesta DEBE poder ejecutarse con `python -m agentes.conocimiento.ingesta --fuente todas`, usar IDs estables e idempotentes y validar los documentos antes de upsert.
@@ -136,6 +136,12 @@ Como usuario de los cuatro agentes quiero recibir información recuperada de fue
 - **FR-025**: El código recuperado DEBE tratarse como dato no confiable y nunca ejecutarse ni usarse como instrucciones del sistema. La indexación es estática y no importa módulos de ejemplo.
 - **FR-026**: El ejemplo `ejemplos/polizas_demo/` DEBE ser una aplicación Python completamente ficticia con modelos, servicios, cálculo de primas, coberturas, renovaciones, pagos, validaciones y mapa de dependencias; no contendrá datos personales reales ni integraciones activas.
 - **FR-027**: Las pruebas automatizadas DEBEN usar mocks de Pinecone; no realizan llamadas a Pinecone real.
+- **FR-028**: `opencode.jsonc` DEBE registrar los cuatro agentes (Analista, Redactor-Revisor, Asesor Técnico y Gestor de Cambios) con nombres estables y prompts asociados.
+- **FR-029**: Cada agente DEBE tener un prompt individual versionado fuera del código Python, con límites de rol, entradas/salidas y herramientas permitidas explícitas.
+- **FR-030**: Los permisos OpenCode DEBEN denegar todo por defecto y habilitar solo herramientas MCP read-only necesarias para el rol. Ningún agente DEBE recibir shell, acceso libre al filesystem, escritura ni acceso de red general.
+- **FR-031**: `OpenCodeClient` DEBE seleccionar el agente configurado que corresponde al nodo/rol invocado y fallar de forma controlada si el agente o prompt no coincide; no debe usar implícitamente el agente `analista` para todos los roles.
+- **FR-032**: Las pruebas DEBEN ejecutar el enrutamiento de cada agente y demostrar selección, prompt, permisos y aislamiento de salidas/herramientas por agente con OpenCode simulado.
+- **FR-033**: Los contratos DEBEN limitar el requerimiento de entrada a 4.000 caracteres, la solicitud de cambio a 2.000 caracteres y permitir como máximo una operación activa por workflow; rechazos no deben cambiar el checkpoint.
 
 ### Entidades principales
 
@@ -162,6 +168,7 @@ Como usuario de los cuatro agentes quiero recibir información recuperada de fue
 - **SC-010**: Las seis namespaces contienen solo sus clases de fuentes permitidas, y ninguna consulta devuelve conocimiento de otra namespace.
 - **SC-011**: En todos los fallos simulados de Pinecone, la respuesta usa fuente local con estado `degraded` y no atribuye recuperación a Pinecone.
 - **SC-012**: Las pruebas adversariales confirman que instrucciones presentes en contenido recuperado no cambian rol, permisos ni transiciones y que ningún archivo se ejecuta.
+- **SC-013**: Las pruebas con OpenCode simulado confirman que cada una de las cuatro responsabilidades selecciona su propio agente y prompt, y que no puede invocar herramientas o leer/escribir recursos asignados a otro rol.
 
 ## Supuestos y dependencias
 
@@ -172,5 +179,5 @@ Como usuario de los cuatro agentes quiero recibir información recuperada de fue
 - El repositorio ficticio del Asesor Técnico será un conjunto versionado de fixtures Python/estándares, distinto del repositorio existente de HU aprobadas.
 - `hu_similares.json` no declara estado de aprobación. Se indexará como referencia simulada en `hu_aprobadas` con metadatos de origen que la distingan; el Gestor de Cambios consultará exclusivamente HU marcadas como aprobadas y provenientes de `RepositorioHU`.
 - Del repositorio existente, se indexan únicamente HU aprobadas y lecciones con estado `aprobada`, en línea con el modelo documentado de `RepositorioHU`.
-- Se usará la API de documentos e integrated embeddings de Pinecone si la validación del SDK/modelo lo confirma; no se añadirán credenciales de embedding externas.
+- Se usará un índice vectorial convencional mediante `langchain-pinecone`; el flujo no usa la API de document indexes ni embeddings integrados.
 - La memoria de conversación y los checkpoints de LangGraph no serán persistencia histórica; se perderán al reiniciar el servicio.

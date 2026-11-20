@@ -5,6 +5,18 @@
 
 ## Decisiones y evidencia
 
+### Decisiones definitivas acordadas para resolver diferencias con la guía original
+
+La guía fuente citada por la constitución no está versionada en el repositorio; se registran aquí únicamente las diferencias aportadas por el equipo, sin atribuirle contenido adicional.
+
+| Tema | Guía original | Decisión definitiva para feature 003 |
+|---|---|---|
+| Repositorio ficticio del Asesor | .NET | Python, bajo `ejemplos/polizas_demo/`, estático y allowlisted. |
+| Pinecone | Índice vectorial con LangChain-Pinecone | Índice vectorial denso convencional; embeddings vía `PineconeEmbeddings` y almacenamiento/consulta por `PineconeVectorStore` de `langchain-pinecone`. No usar document index, campos de texto con embedding integrado ni `documents.upsert/search`. |
+| Constitución | 1.1.0 (MINOR) | 2.0.0 (MAJOR), propuesta pendiente. La enmienda redefine incompatiblemente límites vigentes que excluían los agentes adicionales y el RAG; no entra en vigor hasta aprobación humana. |
+
+El índice vectorial queda fijado como `historias-usuario`, denso, `1024` dimensiones, métrica `cosine`, serverless en AWS `us-east-1`, con `multilingual-e5-large` como modelo de embeddings. La aplicación obtiene vectores mediante `PineconeEmbeddings`, y después los upserta/consulta como vectores ordinarios. Este flujo no usa el esquema de documentos ni embeddings integrados de Pinecone. El pin compatible de `pinecone` y `langchain-pinecone` se validará en T005; no se declara una versión mínima del SDK asociada a document indexes.
+
 ### D-001 — Usar `StateGraph` tipado para el flujo
 
 **Decisión propuesta**: representar las etapas como nodos, las condiciones como transiciones explícitas y el contexto de workflow como estado tipado. El usuario exige un grafo real y los dos flujos y ciclos están definidos en la especificación.
@@ -47,19 +59,19 @@
 
 **Implicación**: conservar el contrato y rutas actuales del Analista; las nuevas salidas no se mezclan con respuestas del chat actual. Las pruebas automatizadas usan mocks y no consumen cuota ni llaman OpenCode.
 
-### D-007 — Usar la API document-index del SDK Python para embeddings integrados
+### D-007 — Índice vectorial convencional con LangChain-Pinecone
 
-**Decisión propuesta**: fijar una versión del paquete oficial `pinecone` compatible con document indexes e integrated embeddings; el mínimo documentado para `multilingual-e5-large` es SDK `10.1.0`. Declarar un campo de texto con embedding integrado, modelo `multilingual-e5-large`, y deployment managed (serverless) en AWS `us-east-1`. Antes de cualquier escritura, describir el índice y validar nombre, deployment, región, modelo, dimensión `1024` y métrica `cosine`.
+**Decisión definitiva**: usar el paquete `langchain-pinecone`: `PineconeEmbeddings(model="multilingual-e5-large")` produce los vectores y `PineconeVectorStore` realiza upsert y búsqueda en el índice vectorial convencional. El índice es denso, dimensión `1024`, métrica `cosine`, serverless en AWS `us-east-1`. El servicio valida el nombre y los parámetros del índice antes de escribir o consultar y falla de forma controlada ante incompatibilidad.
 
-**Evidencia**: Pinecone documenta el SDK Python oficial y su nomenclatura de paquetes/versiones ([SDK Python](https://docs.pinecone.io/reference/sdks/python/overview)). La guía del modelo informa que `multilingual-e5-large` produce vectores de dimensión 1,024 con similitud cosine y requiere SDK `10.1.0` o posterior para integrated embedding en índices de documentos ([modelo multilingual-e5-large](https://docs.pinecone.io/models/multilingual-e5-large)). El SDK denomina `deployment_type="managed"` al índice serverless y permite elegir cloud/region; la respuesta `describe` devuelve campos para validar configuración ([índices serverless](https://sdk.pinecone.io/python/how-to/indexes/serverless.html)).
+**Evidencia**: la referencia oficial de LangChain documenta `PineconeVectorStore`, su parámetro de embeddings, el uso del cliente Pinecone para crear un índice con `dimension` y `metric`, y las operaciones de `add_documents`/`similarity_search` ([integración Pinecone de LangChain](https://reference.langchain.com/python/langchain-pinecone/vectorstores/PineconeVectorStore)). La referencia del mismo paquete documenta `PineconeEmbeddings` ([PineconeEmbeddings](https://reference.langchain.com/python/langchain-pinecone/embeddings/PineconeEmbeddings)). Pinecone define la dimensión y métrica en índices vectoriales convencionales y exige que coincidan con los vectores insertados ([configuración del índice](https://docs.pinecone.io/reference/api/2025-10/control-plane/configure_index)).
 
-**Implicación**: usar el API `schema`/`deployment`, no mezclar con los argumentos legacy `dimension`/`metric` del SDK v10. La configuración del modelo fija esas características y no se cambia si el índice ya existe con otra configuración. Un índice incompatible produce error controlado y no se elimina/recrea automáticamente.
+**Límite de arquitectura**: no usar document indexes, esquema `schema`, mapa de campos de texto con embeddings integrados, `documents.upsert`, `documents.search` ni el mínimo de versión `10.1.0` citado para ese otro flujo. Se fijarán versiones compatibles de `pinecone` y `langchain-pinecone` en T005. El índice existente nunca se elimina ni se recrea automáticamente.
 
-### D-008 — Namespaces, documentos e IDs idempotentes
+### D-008 — Namespaces, vectores e IDs idempotentes
 
-**Decisión propuesta**: un índice y seis namespaces allowlisted. Cada documento contiene `_id`, `chunk_text`, metadata de fuente/clase/cita y metadatos funcionales; las consultas declaran namespace explícito. Identificadores se derivan determinísticamente de namespace, fuente/ID original y número de fragmento. Upsert al mismo ID reemplaza el documento, lo que permite ingestas repetidas sin duplicados.
+**Decisión propuesta**: un índice y seis namespaces allowlisted. Cada vector contiene un ID estable, embeddings y metadata de fuente/clase/cita; el texto fuente se conserva en metadata para recuperar fragmentos citables. Las consultas declaran namespace explícito. Identificadores se derivan determinísticamente de namespace, fuente/ID original y número de fragmento. Upsert al mismo ID reemplaza el vector, lo que permite ingestas repetidas sin duplicados.
 
-**Evidencia**: SDK v10 documenta `documents.upsert`, namespaces e IDs `_id`; documento existente con el mismo ID se reemplaza. `EmbedQuery` permite búsqueda textual usando el embedding asociado al campo ([upsert de documentos](https://sdk.pinecone.io/python/how-to/documents/schema-and-upsert.html), [búsqueda](https://sdk.pinecone.io/python/how-to/documents/search.html)).
+**Evidencia**: la API `PineconeVectorStore` de LangChain acepta IDs, metadata, namespaces y `Embeddings`, y expone búsqueda por similitud. Los upserts son por ID; las pruebas verifican la actualización idempotente de los vectores bajo esos IDs ([integración Pinecone de LangChain](https://reference.langchain.com/python/langchain-pinecone/vectorstores/PineconeVectorStore)).
 
 **Implicación**: las referencias de `hu_similares.json` llevan `source_kind=simulated_reference`, no se declaran aprobadas. Solo registros con origen `RepositorioHU` y aprobación comprobada pueden usarse como base para el Gestor de Cambios. Ingestar lecciones con estado `aprobada` únicamente.
 
@@ -73,9 +85,9 @@
 
 ### D-010 — Limitar fragmentos y no ejecutar código recuperado
 
-**Decisión propuesta**: particionar JSON, Markdown y código fuente en fragmentos deterministas bajo el máximo de tokens del modelo; la ingesta procesa texto estáticamente. Los resultados se delimitan como datos no confiables antes de pasarlos a OpenCode.
+**Decisión propuesta**: particionar JSON, Markdown y código fuente en fragmentos deterministas bajo el límite verificado del modelo de embeddings; la ingesta procesa texto estáticamente. Los resultados se delimitan como datos no confiables antes de pasarlos a OpenCode.
 
-**Evidencia**: Pinecone declara máximo 507 tokens por input y hasta 96 inputs por solicitud para `multilingual-e5-large` ([modelo](https://docs.pinecone.io/models/multilingual-e5-large)). Su documentación aclara que la API mock permite probar construcción de requests/errores sin cuenta y sin llamadas a Pinecone, aunque no prueba relevancia ni read-your-writes ([mock de API](https://docs.pinecone.io/guides/production/mock-the-api)). Pinecone Local llegó al fin de vida el 7 de octubre de 2026.
+**Evidencia**: LangChain documenta el adapter de embeddings y el vector store por separado. El límite de tokens y el tamaño de lote se deben validar contra el modelo/API de embeddings seleccionado al fijar dependencias; no se asume el límite propio del endpoint de document-index. La API mock de Pinecone puede servir para probar requests/errores sin una cuenta, pero no sustituye los mocks unitarios ni verifica relevancia ([mock de API](https://docs.pinecone.io/guides/production/mock-the-api)).
 
 **Implicación**: pruebas de recuperación/ingesta usan mocks del adapter, no Pinecone real ni Pinecone Local. La calidad semántica real se verificará únicamente en una aceptación manual autorizada separada; esta petición prohíbe llamadas reales durante pytest. El código recuperado nunca se importa, ejecuta, evalúa ni trata como instrucciones.
 
@@ -92,12 +104,12 @@
 
 ## Preguntas pendientes de diseño
 
-- Confirmar la versión Python efectiva en el despliegue Render y su compatibilidad con el lock actual al aprobar la enmienda.
+- El Dockerfile actual usa Python 3.12; validar pins/lock contra esa imagen en T005, después del gate constitucional.
 - Validar qué estructura de datos de `guardar_hu` espera el repositorio para registrar el resultado estructurado sin romper los endpoints actuales.
 - Definir en revisión del equipo los límites de tamaño de la evidencia técnica y la política de expiración de IDs de workflow en memoria.
-- Confirmar cómo la UI existente presenta estado de workflow y decisiones sin reemplazar Stepper, chat ni simulaciones.
+- La UI presentará etapa/estado y la intervención pendiente con controles de respuesta/reanudación; conservará Stepper, chat y simulaciones. El contrato informa checkpoint perdido y permite iniciar un flujo nuevo.
 - Definir el splitter determinista y cómo reconciliar fragmentos obsoletos cuando cambia un archivo fuente, limitado al namespace/ID de esa fuente.
-- Confirmar qué metadata del SDK se valida con `describe()` para el campo integrado de `multilingual-e5-large`; crear esquema es inmutable y un índice incompatible debe fallar sin borrarse.
+- Confirmar qué configuración del índice vectorial convencional devuelve `describe()` en los pins elegidos; un índice incompatible debe fallar sin borrarse.
 - Definir el estado UI/API para diferenciar `pinecone`, `local` y `degraded` sin exponer stack traces ni configuración sensible.
 
 Estas preguntas no cambian el gate constitucional; resolverlas forma parte del diseño previo a implementar.

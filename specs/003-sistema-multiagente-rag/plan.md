@@ -3,7 +3,7 @@
 **Rama**: `feat/sistema-multiagente-rag` | **Fecha**: 2026-11-19 | **Spec**: [spec.md](spec.md)  
 **Entrada**: Requisitos proporcionados por el usuario; constitución vigente; especificación `002-chat-agente-analista`.
 
-> **Estado del gate**: STOP. La constitución 1.0.1 excluye el sistema multiagente y los agentes Redactor-Revisor, Asesor Técnico y Gestor de Cambios. Existe una propuesta de enmienda 1.1.0 en la rama separada `docs/constitution-multiagent-system`. Este plan no autoriza implementación. Reanudar el plan de ejecución solo después de la revisión/aprobación de esa enmienda y de validar la spec contra la constitución aprobada.
+> **Estado del gate**: STOP. La constitución vigente 1.0.1 excluye el sistema multiagente y los agentes Redactor-Revisor, Asesor Técnico y Gestor de Cambios. La rama separada `docs/constitution-multiagent-system` contiene una propuesta 2.0.0 pendiente de PR, revisión y aprobación humana. Este plan no autoriza implementación. Reanudar el plan de ejecución solo después de la aprobación y de validar la spec contra la constitución aprobada.
 
 ## Resumen
 
@@ -11,8 +11,8 @@ Extender el backend Python del Analista a dos flujos coordinados por un `StateGr
 
 ## Contexto técnico
 
-**Lenguaje/versión**: Python del backend existente; confirmar la versión soportada del despliegue al abrir el gate de implementación. React/JavaScript/SCSS permanecen en frontend.  
-**Dependencias principales**: FastAPI, Pydantic, LangChain, OpenCode, MCP, Langfuse, LangGraph y Pinecone Python SDK. La documentación actual de Pinecone requiere SDK `10.1.0` o posterior para integrated embeddings en document indexes; seleccionar un pin exacto y lockearlo en implementación, sin actualizar dependencias ajenas.  
+**Lenguaje/versión**: Python 3.12, confirmado por el Dockerfile actual; React/JavaScript/SCSS permanecen en frontend.
+**Dependencias principales**: FastAPI, Pydantic, LangChain, `langchain-pinecone`, Pinecone Python SDK, OpenCode, MCP y Langfuse; `langgraph` se declara como dependencia directa. Validar y fijar versiones compatibles con Python 3.12 en implementación, sin actualizar dependencias ajenas.
 **Persistencia**: `InMemorySaver` para checkpoints del grafo; `agentes/analista/memory/repositorio.py` para HU/lecciones aprobadas; un único índice Pinecone externo con namespaces; no confundir estos almacenes ni duplicar historia de workflow en Pinecone.  
 **Pruebas**: pytest existente, mocks de OpenCode/MCP/repositorio, pruebas unitarias de nodos, contratos y transiciones; no se realizan llamadas reales a modelos.  
 **Plataforma**: backend actual y despliegue actual; ningún servicio Render adicional.  
@@ -23,7 +23,7 @@ Extender el backend Python del Analista a dos flujos coordinados por un `StateGr
 
 | Revisión | Resultado actual | Acción previa a implementación |
 |---|---|---|
-| Constitución 1.0.1 y alcance | **Falla / bloquea**: excluye sistema multiagente, Pinecone y tres de los cuatro agentes | Aprobar la propuesta actualizada `docs/constitution-multiagent-system-proposal.md` según Governance |
+| Constitución 1.0.1 y alcance | **Falla / bloquea**: excluye sistema multiagente, Pinecone y tres de los cuatro agentes | Revisar y aprobar mediante PR la propuesta 2.0.0 en `docs/constitution-multiagent-system-proposal.md` según Governance |
 | Stack | React/SCSS y Python se mantienen | Agregar cambios del frontend solo con JSX/SCSS existentes |
 | OpenCode | Se mantiene como único motor de IA | Reutilizar `opencode_client.py`; no llamar proveedores directamente |
 | Seguridad | Lectura de conocimiento en allowlist; escritura Pinecone confinada a ingesta explícita; secreto solo en entorno | Allowlist en Python, índice/namespaces fijos, validación de esquema y redacción de trazas |
@@ -39,17 +39,18 @@ Extender el backend Python del Analista a dos flujos coordinados por un `StateGr
 5. **Grafo post-grooming**: `gestor_cambios → decision_humana → aplicar_decision`. El Gestor solo recibe HU aprobada. El nodo de decisión interrumpe; el nodo de aplicación registra únicamente la decisión humana, reutilizando el repositorio existente y sin escribir en sistemas externos.
 6. **Repositorio ficticio técnico**: fuentes Python y estándares simulados/anonimizados con identificador de fuente, ruta permitida y evidencia consultada. El Asesor no lee el filesystem libre ni repositorios remotos. Su evidencia no se mezcla con el repositorio persistente de HU.
 7. **OpenCode y LangChain**: reutilizar el cliente OpenCode y la construcción de prompts/parsing del orquestador existente. LangChain se usa funcionalmente en cadenas y parseo tipado de las salidas; LangGraph coordina estados y transiciones. No se asume un endpoint OpenAI de OpenCode.
+7a. **Agentes OpenCode**: registrar en `opencode.jsonc` los cuatro agentes con identificadores distintos; crear prompts externos individuales; denegar permisos por defecto y permitir solo las herramientas MCP read-only de cada rol. `OpenCodeClient` recibe y valida el agente seleccionado en cada llamada; las pruebas con OpenCode simulado verifican ejecución y aislamiento por agente.
 8. **Memoria**: una instancia `InMemorySaver` enlazada al grafo. La reanudación está disponible solo mientras vive el proceso; un reinicio del servicio Render pierde checkpoints. No implementar almacenamiento permanente nuevo en esta fase.
 9. **Observabilidad**: reutilizar `observability.py`, correlacionar operación/etapa con IDs existentes y registrar nombre de agente, duración, estado y herramienta; nunca prompt, respuesta completa, secretos ni datos personales. Fallas de Langfuse no deben convertir un resultado incompleto en éxito.
 10. **API y frontend**: extender FastAPI con endpoints de inicio/avance/reanudación tipados y extender la UI actual con vistas/controles de estado, pregunta humana, devolución, aprobación y decisión. Mantener contratos existentes del Analista y rutas/pantallas; no añadir TypeScript, bibliotecas UI o persistencia de estado en el navegador.
-11. **Índice y embeddings**: usar Pinecone Python SDK v10.1.0 o posterior validado, document index con campo de texto embebido por `multilingual-e5-large` y despliegue managed/serverless en AWS `us-east-1`. Ese modelo produce 1024 dimensiones con similitud cosine; validar la configuración reportada por Pinecone antes de upsert o búsqueda. No usar API key desde argumento, archivo de código o logs: leer `PINECONE_API_KEY` del entorno.
+11. **Índice vectorial y embeddings**: usar un índice vectorial denso convencional `historias-usuario`, `1024` dimensiones, métrica `cosine`, serverless en AWS `us-east-1`. `PineconeEmbeddings(model="multilingual-e5-large")` genera los vectores y `PineconeVectorStore` de `langchain-pinecone` realiza upsert/búsqueda por vector. No usar document index, esquema integrado, campos de texto con embedding integrado ni APIs `documents.*`. Validar el índice antes de upsert/búsqueda y nunca borrar/recrear uno incompatible. Leer `PINECONE_API_KEY` solo del entorno.
 12. **Namespaces cerrados**: `glosario`, `estandares`, `checklist`, `hu_aprobadas`, `lecciones`, `codigo`. Cada consulta e ingesta escoge namespace desde una enum allowlisted, nunca desde texto libre del usuario.
     - Analista: `glosario`, `estandares`, `checklist` y referencias de `hu_aprobadas`.
     - Redactor-Revisor: `estandares`, `checklist` y referencias/HU aprobadas de `hu_aprobadas`.
     - Asesor Técnico: `estandares` y `codigo`.
     - Gestor de Cambios: solo HU aprobadas de `hu_aprobadas` y lecciones aprobadas de `lecciones`.
 13. **Fuentes y procedencia**: JSON de `agentes/analista/fuentes/` se asigna por fuente; HU aprobadas y lecciones aprobadas provienen de `RepositorioHU`; `.py`/`.md` de `ejemplos/polizas_demo/` se procesan estáticamente. `hu_similares.json` no contiene estado de aprobación, se ingresa como referencia simulada y queda distinguible de historias aprobadas por metadatos de origen.
-14. **Esquema de indexación**: fragmentos deterministas con ID estable de namespace + fuente/ID original + ordinal de fragmento; upsert sobrescribe documentos con mismo ID. Reconciliar IDs obsoletos solo dentro de la fuente y namespace de la ingesta. El modelo documenta 507 tokens por input; fragmentar antes del límite y probar la misma estrategia con mocks.
+14. **Esquema de indexación**: fragmentos deterministas con ID estable de namespace + fuente/ID original + ordinal de fragmento; upsert reemplaza el vector con el mismo ID. Reconciliar IDs obsoletos solo dentro de la fuente y namespace de la ingesta. Fragmentar bajo el límite del modelo de embeddings validado en T005.
 15. **CLI y permisos**: `python -m agentes.conocimiento.ingesta --fuente todas` crea/valida el índice e ingiere fuentes permitidas. Solo este comando escribe Pinecone. Herramientas MCP existentes siguen disponibles; nuevas herramientas de código/RAG consultan solamente y registran namespace/fuente realmente usada.
 16. **Degradación**: si Pinecone no está disponible o la configuración no valida, las búsquedas usan las fuentes locales de `mcp/tools.py`, `RepositorioHU` y fixtures de código locales, con `source_backend="local"` y estado `degraded`. Las respuestas no atribuyen resultados a Pinecone.
 17. **Inyección y ejecución**: indexación nunca importa ni ejecuta los `.py` del ejemplo. El recuperador delimita los fragmentos como datos no confiables y los agentes no pueden convertirlos en instrucciones, tools ni acciones.
@@ -58,6 +59,7 @@ Extender el backend Python del Analista a dos flujos coordinados por un `StateGr
 ## Reutilización y límites de impacto
 
 - `agentes/analista/core/opencode_client.py`: única conexión al motor OpenCode.
+- `opencode.jsonc` y `agentes/analista/prompts/`: registrar los cuatro agentes y sus prompts individuales; OpenCodeClient selecciona explícitamente el agente para cada nodo.
 - `agentes/analista/core/orchestrator.py`: reutilizar utilidades de prompts, ejecución y validación LangChain; separar la coordinación del grafo sin cambiar el contrato actual del Analista.
 - `agentes/analista/core/models.py`: conservar modelos actuales y añadir contratos tipados del workflow sin romper el API actual.
 - `agentes/analista/memory/repositorio.py`: guardar HU únicamente después de aprobación humana; registrar cambio/lecciones solo después de la decisión humana.
@@ -81,7 +83,7 @@ agentes/analista/
 │   ├── workflow_graph.py       # StateGraph, nodos y rutas
 │   └── agents/                 # redactor_revisor, asesor_tecnico, gestor_cambios
 ├── mcp/                        # herramientas actuales + allowlist de fixtures
-├── prompts/                    # prompts por agente externos a Python
+├── prompts/                    # prompts individuales por agente externos a Python
 └── tests/                      # nodos, contratos, grafo, API y reanudación
 agentes/conocimiento/
 ├── client.py                   # adapter Pinecone + validación de índice
@@ -112,7 +114,7 @@ Esta estructura es propuesta de plan y no implica que ya se hayan creado módulo
 - **Fallback engañoso**: distinguir `pinecone`, `local` y `degraded` en contratos; tests fuerzan todas las fallas y prohíben reportar Pinecone si no se completó consulta.
 - **Ingesta parcial o fuentes obsoletas**: validar entradas por archivo/registro, devolver conteos y errores sin secreto; IDs estables y reconciliación limitada al origen/namespace.
 - **Prompt injection en código/datos recuperados**: marcado de datos no confiables, sin ejecución/import/eval/shell y pruebas adversariales sobre texto recuperado.
-- **Costo de embeddings**: la carga y búsqueda solo ocurren en comandos/integración autorizados; pruebas automáticas usan mocks y no consumen créditos de Pinecone.
+- **Costo de embeddings**: la carga y búsqueda solo ocurren en comandos/integración autorizados; pruebas automáticas usan mocks y no consumen cuotas de embeddings/Pinecone.
 - **Confusión de repositorios**: separar el repositorio ficticio de código Python del repositorio de HU del proyecto.
 - **Regresión del frontend**: conservar rutas, Stepper, mocks y estilos; cubrir los contratos de UI sin cambios funcionales no especificados.
 

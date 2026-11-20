@@ -11,8 +11,9 @@ El estado es un contenedor de datos de negocio y control del flujo. Los prompts,
 | `workflow_id` | identificador opaco | API | Asociado a `thread_id`; no contiene PII ni secretos. |
 | `flow_mode` | `pre_grooming` / `post_grooming` | API | Seleccionado al iniciar; no cambia a mitad del flujo. |
 | `current_stage` | enum de nodos | grafo | Etapa actual validada contra el grafo. |
+| `active_agent` | `analista` / `redactor_revisor` / `asesor_tecnico` / `gestor_cambios` / `none` | grafo | Identificador OpenCode seleccionado para la etapa; nunca se deriva de texto libre. |
 | `status` | `running` / `interrupted` / `completed` / `failed` / `cancelled` | grafo | `interrupted` requiere payload tipado. |
-| `requirement_input` | texto limitado | API / persona | Entrada no confiable; valida tamaño y excluye secretos. |
+| `requirement_input` | texto de 1–4.000 caracteres | API / persona | Entrada no confiable; valida tamaño y excluye secretos. |
 | `analyst_result` | contrato del Analista | Analista | Conocida, faltante, supuesta, ambigua, preguntas, fuentes y readiness; no incluye HU redactada. |
 | `business_answers` | lista de respuestas tipadas | Negocio | Reanudar vuelve a ejecutar el Analista antes de salir de aclaración. |
 | `draft_story` | contrato de HU | Redactor-Revisor | `como`, `quiero`, `para`, criterios Dado/Cuando/Entonces, observaciones y estado de revisión. |
@@ -20,7 +21,7 @@ El estado es un contenedor de datos de negocio y control del flujo. Los prompts,
 | `technical_assessment` | contrato técnico | Asesor Técnico | Módulos, riesgos, procesos críticos y referencias de archivos/estándares realmente consultados. |
 | `po_decision` | `approve` / `return` / `stop` más destino/motivo | PO | Solo se establece con respuesta humana validada. |
 | `approved_story_ref` | ID de HU aprobada | repositorio | Se requiere para flujo post-grooming; el nodo Gestor no acepta HU solo en borrador. |
-| `change_request` | texto limitado + referencia aprobada | persona | No se procesa si la HU no está aprobada. |
+| `change_request` | texto de 1–2.000 caracteres + referencia aprobada | persona | No se procesa si la HU no está aprobada. |
 | `change_recommendation` | `aclaracion` / `cambio_alcance`, justificación, lecciones | Gestor de Cambios | Recomendación, nunca decisión. |
 | `human_change_decision` | enum humano y nota opcional | persona | Requerida antes de aplicar; distingue aprobar/descartar/devolver si así lo define el contrato revisado. |
 | `application_result` | recibo del repositorio | aplicación | Se crea solo después de decisión humana válida. |
@@ -64,9 +65,9 @@ El estado es un contenedor de datos de negocio y control del flujo. Los prompts,
 - Lecciones propuestas y evidencia/razones; no aprobadas por defecto.
 - Decisión final vacía hasta que `decision_humana` reanude.
 
-### Documento indexable y resultado de recuperación
+### Vector indexable y resultado de recuperación
 
-- Cada documento indexable contiene ID estable, texto del fragmento, namespace, ID/ruta de origen, tipo de fuente, ordinal de fragmento y metadatos de aprobación/estado cuando aplican.
+- Cada vector almacena ID estable, embedding, texto del fragmento y metadatos de namespace, ID/ruta de origen, tipo de fuente, ordinal de fragmento y aprobación/estado cuando aplican. `PineconeEmbeddings` genera el embedding y `PineconeVectorStore` lo upserta/consulta en el índice vectorial convencional; no se usa document index ni embedding integrado.
 - `hu_similares.json` se etiqueta `simulated_reference`; nunca se presenta como HU aprobada del repositorio.
 - Solo HU provenientes de `RepositorioHU` con estado aprobado y lecciones con `estado="aprobada"` se etiquetan como aprobadas.
 - Las citas de código usan rutas relativas bajo `ejemplos/polizas_demo/` y se derivan de archivos que contribuyeron resultados a la búsqueda.

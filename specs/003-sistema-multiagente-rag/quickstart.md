@@ -5,10 +5,10 @@
 ## Requisitos existentes
 
 - Windows 10/11 y PowerShell 5.1 o 7.
-- Python local del backend actual; consultar `agentes/analista/README.md` y confirmar versión de Render antes de fijarla para esta feature.
+- Python 3.12, versión del contenedor Docker actual y de Render para esta feature.
 - Node/npm usados por el frontend actual.
 - OpenCode Server en `127.0.0.1:4096` para pruebas manuales del Analista existente. Las pruebas del nuevo grafo deben usar mocks y no llamar OpenCode.
-- Pinecone SDK Python compatible con document indexes/integrated embeddings (mínimo documentado `10.1.0` para `multilingual-e5-large`) se añadirá y fijará en el lock solo tras aprobar gobernanza.
+- `pinecone` y `langchain-pinecone` se añadirán con pins compatibles con Python 3.12 y se fijarán en el lock solo tras aprobar gobernanza. Se usará `PineconeEmbeddings` + `PineconeVectorStore` con un índice vectorial convencional; no se usarán document indexes ni embeddings integrados.
 
 ## Preparación y pruebas existentes
 
@@ -44,7 +44,7 @@ Después de implementar el paquete y configurar la credencial por el entorno:
 & .\agentes\analista\.venv\Scripts\python.exe -m agentes.conocimiento.ingesta --fuente todas
 ```
 
-La ejecución crea/valida el índice configurado e ingiere las fuentes allowlisted en los seis namespaces. Este comando sí contacta Pinecone; no forma parte de pytest y no se ejecutó durante la preparación documental.
+La ejecución crea/valida el índice vectorial configurado e ingiere las fuentes allowlisted en los seis namespaces. Este comando sí contacta Pinecone; no forma parte de pytest y no se ejecutó durante la preparación documental.
 
 Las pruebas automatizadas posteriores usarán únicamente mocks del SDK, incluidos índice, upsert, búsqueda y fallos. No requieren `PINECONE_API_KEY` y no hacen llamadas a Pinecone real.
 
