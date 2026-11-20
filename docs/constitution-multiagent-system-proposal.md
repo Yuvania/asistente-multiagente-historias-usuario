@@ -2,7 +2,7 @@
 
 **Rama requerida**: `docs/constitution-multiagent-system` (separada de `feat/sistema-multiagente-rag`, creada desde `main`).
 
-**Estado**: propuesta local para revisión humana; no aprobada ni vigente. La constitución vigente sigue en 1.0.1 hasta la aprobación por PR.
+**Estado**: propuesta publicada en esta rama para revisión humana; no aprobada ni vigente. La constitución vigente sigue en 1.0.1 hasta la aprobación por PR.
 
 **Cambio propuesto**: versión **2.0.0 (MAJOR)**. La propuesta constitucional completa está en `.specify/memory/constitution.md` dentro de esta rama.
 
@@ -47,4 +47,4 @@ El Analista conserva su misión. Redactor-Revisor puede corregir hasta dos ronda
 
 ## Versión y procedimiento
 
-La propuesta es 2.0.0 (MAJOR) por cambios incompatibles de alcance/principios, no una expansión menor. Requiere PR en esta rama, revisión y aprobación humana conforme a Governance. El informe temporal de impacto en el encabezado de `.specify/memory/constitution.md` debe retirarse antes de fusionar la PR. La propuesta no se considera aprobada por estar preparada o por el resultado del análisis documental.
+La propuesta es 2.0.0 (MAJOR) por cambios incompatibles de alcance/principios, no una expansión menor. Requiere PR en esta rama, revisión y aprobación humana conforme a Governance. El informe temporal de impacto se retiró de `.specify/memory/constitution.md`. La propuesta no se considera aprobada por estar preparada o por el resultado del análisis documental.

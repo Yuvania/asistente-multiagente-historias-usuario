@@ -1,27 +1,3 @@
-<!--
-Informe de Impacto de Sincronización — PROPUESTA PENDIENTE
-=========================================================
-Enmienda propuesta 1.0.1 → 2.0.0 (MAJOR, 2026-11-19). No ratificada: la constitución vigente continúa en 1.0.1 hasta la aprobación humana por PR conforme a Governance.
-
-Motivo: habilitar feature 003 y redefinir reglas incompatibles de alcance/arquitectura que hoy excluyen los agentes adicionales y RAG.
-
-Principios modificados:
-- IV. Agentes Python: permite responsabilidades de agente separadas en el backend existente sin exigir microservicios.
-- VII. Integraciones: fija RAG en el índice vectorial convencional con LangChain-Pinecone.
-- VIII. Seguridad: autoriza únicamente la ingesta Pinecone explícita y allowlisted; las consultas de agentes permanecen read-only. No se elimina ninguna restricción de seguridad; la política de herramientas se refuerza con OpenCode deny-all y allowlist MCP en Python.
-
-Principio añadido:
-- XII. Orquestación Multiagente y Conocimiento con Control Humano Explícito.
-
-Secciones modificadas:
-- Restricciones Técnicas y de Seguridad: autoriza feature 003 solo tras aprobación y conserva Python, LangGraph, OpenCode, MCP, Pinecone, React y un único Docker Service en Render.
-
-Pendiente:
-- Revisar, aprobar o rechazar esta enmienda por PR en docs/constitution-multiagent-system. La propuesta no equivale a aprobación automática.
-- La guía fuente citada por la constitución no está versionada; no se le atribuye contenido adicional.
-- Retirar este informe temporal antes de fusionar la PR, según Governance.
--->
-
 # Historias de Usuario — Constitución
 
 Constitución del proyecto académico **Historias de Usuario**. Aplica al
@@ -314,4 +290,4 @@ cambie el alcance. La complejidad añadida DEBE justificarse frente a la alterna
 `agentes/<nombre>/prompts/sistema.md`, `requerimientos_prototipo_historias_usuario.md` y los
 README de arranque.
 
-**Version**: 2.0.0 (propuesta; no ratificada) | **Previous Ratified**: 2026-10-26 (1.0.1) | **Proposed**: 2026-11-19
+**Version**: 2.0.0 (propuesta) | **Ratified**: pendiente de aprobación humana | **Proposed**: 2026-11-19
