@@ -27,7 +27,10 @@ Aplicación web para crear historias de usuario (HU) con ayuda de un **Agente An
 
 La aplicación completa (interfaz + backend + OpenCode) corre como **un solo servicio Docker en Render**, con un solo URL. Cada cambio que llega a `main` se despliega solo (`render.yaml`). Las historias, el Repositorio de HU y las lecciones se guardan en TiDB Cloud, así que no se pierden al redesplegar.
 
-- Estado del agente: `<URL de Render>/api/analista/health` (debe mostrar `status: ready`).
+El despliegue vigente corresponde al **Agente Analista**. El paso 4 conserva la generación simulada: Redactor-Revisor, Asesor Técnico, Gestor de Cambios, grafos LangGraph, pausas humanas de workflow, Pinecone e ingesta no están implementados en esta revisión. No configures variables Pinecone ni `INGESTA_AL_ARRANCAR` para este servicio hasta que exista y se pruebe esa implementación. El contrato de Render actual se conserva: un Web Service Docker, autenticación existente, TiDB, `/healthz` y un worker.
+
+- Salud ligera para Render: `<URL de Render>/healthz` (no requiere autenticación).
+- Diagnóstico del Analista: `<URL de Render>/api/analista/health` (requiere las credenciales actuales; comprueba OpenCode y MCP).
 - Configuración y variables: ver [DESPLIEGUE.md](DESPLIEGUE.md). Los secretos viven solo en el panel de Render, nunca en el repositorio.
 
 ## Cómo ejecutarlo en local
@@ -60,6 +63,8 @@ npm test
 ```
 
 Instrucciones detalladas (OpenCode 2.1.2, arranque manual por terminal, diagnóstico): [docs/GUIA-LOCAL.md](docs/GUIA-LOCAL.md).
+
+Pruebas, arranque y validación del despliegue en PowerShell: [docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md](docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md).
 
 ## Equipo
 

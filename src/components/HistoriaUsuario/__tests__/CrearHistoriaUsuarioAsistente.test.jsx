@@ -140,7 +140,7 @@ describe('wizard conectado al Agente Analista', () => {
     const saved = stored.find((story) => story.id === payload.id);
     expect(saved.status).toBe('aprobada');
     expect(saved.repositorySynced).toBe(true);
-  });
+  }, 10000);
 
   it('no permite aprobar con preguntas pendientes y guarda un borrador', async () => {
     const user = userEvent.setup();

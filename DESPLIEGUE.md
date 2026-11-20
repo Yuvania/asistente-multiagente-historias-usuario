@@ -2,6 +2,10 @@
 
 La aplicación completa (interfaz, backend del Agente Analista y OpenCode Server) se publica como **un solo servicio con un solo URL**. Cada cambio que se une a `main` se despliega solo. Para trabajar los cambios sigues usando tu entorno local.
 
+El Blueprint mantiene un único Web Service Docker. La imagen incluye React compilado, FastAPI y OpenCode; FastAPI mantiene un worker, usa el `DATABASE_URL` de TiDB y conserva la autenticación Basic existente. `/healthz` es el health check ligero de Render y queda exento de autenticación. Esta configuración no crea servicios ni modifica credenciales.
+
+**Alcance verificado:** el despliegue actual sirve el Agente Analista y el paso 4 mantiene la generación simulada. Feature 003 todavía no está integrada: no se encontraron los otros tres agentes, ejecución de workflows LangGraph, interrupciones de LangGraph, integración Pinecone, ingesta ni `INGESTA_AL_ARRANCAR`. El health detallado `/api/analista/health` diagnostica únicamente OpenCode y MCP del Analista; no comprueba agentes nuevos ni Pinecone. No anuncies esos componentes como disponibles hasta contar con implementación y pruebas de aceptación.
+
 ## Flujo de trabajo
 
 1. Trabajas en local: `npm run iniciar` (igual que hoy, con tu `.env`).
@@ -56,10 +60,7 @@ Notas:
 
 - Las tablas se crean solas al iniciar; no hay que ejecutar scripts.
 - **Identificadores:** cada registro tiene un `id` GUID aleatorio (llave primaria y relaciones entre tablas) y, aparte, un `codigo` legible para las personas: `HU-CODIGO-001` en las historias y `LEC-001` en las lecciones. El GUID nunca se usa como código.
-- **Empezar de cero:** la base inicia vacía y la aplicación no trae historias de ejemplo. Si la base tiene tablas de una versión anterior (ids numéricos), el servicio no arranca y lo indica en los logs; en el SQL Editor de TiDB ejecuta y vuelve a desplegar:
-  ```sql
-  DROP TABLE IF EXISTS leccion, solicitud_cambio, hu_aprobada, historia;
-  ```
+- **Esquema anterior:** si el servicio detecta tablas de una versión incompatible (por ejemplo, IDs numéricos), se detiene y lo indica en los logs. No borres tablas ni ejecutes migraciones destructivas. Detén el despliegue, conserva una copia de seguridad y prepara una migración no destructiva revisada antes de cambiar el esquema. Esta revisión no incluye una migración automática de esquemas antiguos.
 - La conexión usa TLS y se recicla cada pocos minutos porque TiDB Cloud cierra las conexiones inactivas.
 - El plan Starter tiene una cuota mensual gratuita; si se agota, la base deja de aceptar conexiones hasta el mes siguiente o hasta subir de plan.
 - **Nunca** pegues la cadena de conexión en el chat, en el código ni en un commit: solo en el panel de Render. Si se expone, restablece la contraseña en TiDB Cloud.
@@ -82,3 +83,12 @@ Para usarlo en serio: en `render.yaml` cambie `plan: free` por `plan: starter`, 
 - **Credenciales del modelo:** el contenedor escribe `OPENCODE_API_KEY` en el archivo de credenciales de OpenCode al arrancar. Si el endpoint `/api/analista/health` indica que el modelo no está disponible, revisa que la clave sea válida y el plan esté activo.
 - **Rotación:** cambia `OPENCODE_API_KEY` y `ACCESO_CLAVE` desde el panel cuando alguien deje el equipo.
 - **Datos compartidos:** las historias y el Repositorio de HU viven en la base de datos. El navegador solo conserva una copia local (caché) que se actualiza al abrir la aplicación y al volver a ella; sin conexión se puede leer, pero los cambios se envían cuando el servicio responde.
+
+## Ingesta, salud y memoria
+
+- No hay ingesta Pinecone conectada en esta revisión. FastAPI no espera una ingesta al iniciar porque no existe una tarea de ingesta integrada. `INGESTA_AL_ARRANCAR` no está cableada y debe permanecer sin configurar; `PINECONE_API_KEY` tampoco forma parte del Blueprint actual.
+- `/healthz` responde con una comprobación local mínima para el health check de Render. `/api/analista/health` hace diagnósticos adicionales contra OpenCode y el registro MCP del Analista; puede tardar más y requiere autenticación.
+- El entrypoint inicia OpenCode y Uvicorn con `--workers 1`, requisito para conservar las conversaciones en memoria. Mantén una sola instancia.
+- El plan Free actual asigna 512 MB por instancia ([planes de cómputo de Render](https://render.com/docs/compute-plans)); OpenCode y FastAPI comparten esa memoria. Esta revisión local no puede consultar las métricas del servicio Render: monitoréalas en el panel de Render durante cualquier prueba. Si hay reinicios por memoria, detén la prueba y evalúa el plan existente antes de volver a intentarlo. No añadas workers ni servicios.
+
+Para las pruebas de PowerShell y los límites de validación actuales, consulta [la guía de arranque y pruebas](docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md).
