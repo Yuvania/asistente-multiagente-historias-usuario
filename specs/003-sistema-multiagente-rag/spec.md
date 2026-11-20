@@ -130,17 +130,17 @@ Como usuario de los cuatro agentes quiero recibir información recuperada de fue
 - **FR-019**: El sistema DEBE ingerir todas las fuentes JSON de `agentes/analista/fuentes/`, las HU aprobadas y lecciones aprobadas accesibles desde `RepositorioHU`, y todos los `.py` y `.md` de `ejemplos/polizas_demo/` en el namespace `codigo`.
 - **FR-020**: La ingesta DEBE poder ejecutarse con `python -m agentes.conocimiento.ingesta --fuente todas`, usar IDs estables e idempotentes y validar los documentos antes de upsert.
 - **FR-021**: El paquete `agentes/conocimiento/` DEBE encapsular cliente/configuración, validación del índice, preparación de documentos, ingesta y búsqueda; `PINECONE_API_KEY` se toma solo del entorno y los demás valores de configuración no secretos se documentan en `.env.example` y `render.yaml`.
-- **FR-022**: El sistema DEBE conservar las cuatro herramientas MCP actuales e incorporar herramientas de búsqueda de código read-only. Ninguna herramienta de agente puede crear, modificar ni eliminar contenido del índice.
+- **FR-022**: El sistema DEBE conservar las cuatro herramientas MCP actuales e incorporar herramientas de búsqueda de código read-only. El backend Python DEBE invocarlas mediante una allowlist explícita por agente/rol. Ningún agente puede crear, modificar ni eliminar contenido del índice; solo el comando de ingesta autorizado puede escribir vectores. OpenCode no invoca herramientas MCP directamente.
 - **FR-023**: Los cuatro agentes DEBEN poder consultar las fuentes que correspondan a su rol y devolver citas de fuentes realmente recuperadas. El Asesor Técnico cita rutas de archivos recuperados; la fuente reporta si provino de Pinecone o búsqueda local.
 - **FR-024**: Si Pinecone falla, el sistema DEBE usar la búsqueda local disponible y devolver estado `degraded` con su fuente real. NO DEBE afirmar que consultó Pinecone cuando no lo hizo.
 - **FR-025**: El código recuperado DEBE tratarse como dato no confiable y nunca ejecutarse ni usarse como instrucciones del sistema. La indexación es estática y no importa módulos de ejemplo.
 - **FR-026**: El ejemplo `ejemplos/polizas_demo/` DEBE ser una aplicación Python completamente ficticia con modelos, servicios, cálculo de primas, coberturas, renovaciones, pagos, validaciones y mapa de dependencias; no contendrá datos personales reales ni integraciones activas.
 - **FR-027**: Las pruebas automatizadas DEBEN usar mocks de Pinecone; no realizan llamadas a Pinecone real.
 - **FR-028**: `opencode.jsonc` DEBE registrar los cuatro agentes (Analista, Redactor-Revisor, Asesor Técnico y Gestor de Cambios) con nombres estables y prompts asociados.
-- **FR-029**: Cada agente DEBE tener un prompt individual versionado fuera del código Python, con límites de rol, entradas/salidas y herramientas permitidas explícitas.
-- **FR-030**: Los permisos OpenCode DEBEN denegar todo por defecto y habilitar solo herramientas MCP read-only necesarias para el rol. Ningún agente DEBE recibir shell, acceso libre al filesystem, escritura ni acceso de red general.
+- **FR-029**: Cada agente DEBE tener un prompt individual versionado fuera del código Python, con límites de rol y entradas/salidas explícitas. El prompt identifica las herramientas MCP que el backend puede invocar para ese rol; OpenCode no invoca herramientas.
+- **FR-030**: Todos los permisos de herramientas de OpenCode DEBEN permanecer en deny-all, incluidas shell, filesystem, red y MCP. Solo el backend Python puede invocar herramientas MCP read-only mediante una allowlist explícita por agente/rol y namespace. Ningún agente DEBE recibir shell, acceso libre al filesystem, escritura ni acceso de red general. Cambiar esta arquitectura requiere justificación de seguridad explícita, revisión humana y validación de aislamiento antes de autorizarse.
 - **FR-031**: `OpenCodeClient` DEBE seleccionar el agente configurado que corresponde al nodo/rol invocado y fallar de forma controlada si el agente o prompt no coincide; no debe usar implícitamente el agente `analista` para todos los roles.
-- **FR-032**: Las pruebas DEBEN ejecutar el enrutamiento de cada agente y demostrar selección, prompt, permisos y aislamiento de salidas/herramientas por agente con OpenCode simulado.
+- **FR-032**: Las pruebas DEBEN ejecutar el enrutamiento de cada agente y demostrar selección y prompt correctos, denegación total de herramientas en OpenCode, allowlist MCP efectiva en el backend Python y aislamiento de salidas, herramientas y namespaces por rol mediante OpenCode/MCP simulados.
 - **FR-033**: Los contratos DEBEN limitar el requerimiento de entrada a 4.000 caracteres, la solicitud de cambio a 2.000 caracteres y permitir como máximo una operación activa por workflow; rechazos no deben cambiar el checkpoint.
 
 ### Entidades principales
@@ -168,7 +168,7 @@ Como usuario de los cuatro agentes quiero recibir información recuperada de fue
 - **SC-010**: Las seis namespaces contienen solo sus clases de fuentes permitidas, y ninguna consulta devuelve conocimiento de otra namespace.
 - **SC-011**: En todos los fallos simulados de Pinecone, la respuesta usa fuente local con estado `degraded` y no atribuye recuperación a Pinecone.
 - **SC-012**: Las pruebas adversariales confirman que instrucciones presentes en contenido recuperado no cambian rol, permisos ni transiciones y que ningún archivo se ejecuta.
-- **SC-013**: Las pruebas con OpenCode simulado confirman que cada una de las cuatro responsabilidades selecciona su propio agente y prompt, y que no puede invocar herramientas o leer/escribir recursos asignados a otro rol.
+- **SC-013**: Las pruebas simuladas confirman que cada responsabilidad selecciona su propio agente/prompt, OpenCode no puede invocar herramientas, y el backend Python solo ejecuta herramientas MCP y accede a namespaces permitidos para ese rol.
 
 ## Supuestos y dependencias
 

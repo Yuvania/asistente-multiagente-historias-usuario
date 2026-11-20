@@ -26,7 +26,7 @@ Extender el backend Python del Analista a dos flujos coordinados por un `StateGr
 | Constitución 1.0.1 y alcance | **Falla / bloquea**: excluye sistema multiagente, Pinecone y tres de los cuatro agentes | Revisar y aprobar mediante PR la propuesta 2.0.0 en `docs/constitution-multiagent-system-proposal.md` según Governance |
 | Stack | React/SCSS y Python se mantienen | Agregar cambios del frontend solo con JSX/SCSS existentes |
 | OpenCode | Se mantiene como único motor de IA | Reutilizar `opencode_client.py`; no llamar proveedores directamente |
-| Seguridad | Lectura de conocimiento en allowlist; escritura Pinecone confinada a ingesta explícita; secreto solo en entorno | Allowlist en Python, índice/namespaces fijos, validación de esquema y redacción de trazas |
+| Seguridad | Lectura de conocimiento en allowlist; escritura Pinecone confinada a ingesta explícita; secreto solo en entorno | OpenCode deny-all; el backend Python aplica allowlist MCP por agente/rol y namespace; índice fijo, validación de esquema y redacción de trazas |
 | Checkpoint | `InMemorySaver` solicitado | Documentar pérdida al reiniciar; no llamarlo persistencia permanente |
 | Spec Kit | Requisitos y plan en Draft | Tras enmienda, ejecutar revisión/clarificación/análisis del equipo antes de código |
 
@@ -39,7 +39,7 @@ Extender el backend Python del Analista a dos flujos coordinados por un `StateGr
 5. **Grafo post-grooming**: `gestor_cambios → decision_humana → aplicar_decision`. El Gestor solo recibe HU aprobada. El nodo de decisión interrumpe; el nodo de aplicación registra únicamente la decisión humana, reutilizando el repositorio existente y sin escribir en sistemas externos.
 6. **Repositorio ficticio técnico**: fuentes Python y estándares simulados/anonimizados con identificador de fuente, ruta permitida y evidencia consultada. El Asesor no lee el filesystem libre ni repositorios remotos. Su evidencia no se mezcla con el repositorio persistente de HU.
 7. **OpenCode y LangChain**: reutilizar el cliente OpenCode y la construcción de prompts/parsing del orquestador existente. LangChain se usa funcionalmente en cadenas y parseo tipado de las salidas; LangGraph coordina estados y transiciones. No se asume un endpoint OpenAI de OpenCode.
-7a. **Agentes OpenCode**: registrar en `opencode.jsonc` los cuatro agentes con identificadores distintos; crear prompts externos individuales; denegar permisos por defecto y permitir solo las herramientas MCP read-only de cada rol. `OpenCodeClient` recibe y valida el agente seleccionado en cada llamada; las pruebas con OpenCode simulado verifican ejecución y aislamiento por agente.
+7a. **Agentes y herramientas**: registrar en `opencode.jsonc` los cuatro agentes con identificadores distintos y prompts externos individuales. Mantener todos los permisos de herramientas OpenCode en deny-all, incluida MCP. El backend Python aplica una allowlist read-only por agente/rol y namespace y es el único que invoca MCP. `OpenCodeClient` recibe y valida el agente seleccionado en cada llamada; las pruebas con OpenCode/MCP simulados verifican selección, denegación total en OpenCode y aislamiento del backend.
 8. **Memoria**: una instancia `InMemorySaver` enlazada al grafo. La reanudación está disponible solo mientras vive el proceso; un reinicio del servicio Render pierde checkpoints. No implementar almacenamiento permanente nuevo en esta fase.
 9. **Observabilidad**: reutilizar `observability.py`, correlacionar operación/etapa con IDs existentes y registrar nombre de agente, duración, estado y herramienta; nunca prompt, respuesta completa, secretos ni datos personales. Fallas de Langfuse no deben convertir un resultado incompleto en éxito.
 10. **API y frontend**: extender FastAPI con endpoints de inicio/avance/reanudación tipados y extender la UI actual con vistas/controles de estado, pregunta humana, devolución, aprobación y decisión. Mantener contratos existentes del Analista y rutas/pantallas; no añadir TypeScript, bibliotecas UI o persistencia de estado en el navegador.
@@ -59,7 +59,7 @@ Extender el backend Python del Analista a dos flujos coordinados por un `StateGr
 ## Reutilización y límites de impacto
 
 - `agentes/analista/core/opencode_client.py`: única conexión al motor OpenCode.
-- `opencode.jsonc` y `agentes/analista/prompts/`: registrar los cuatro agentes y sus prompts individuales; OpenCodeClient selecciona explícitamente el agente para cada nodo.
+- `opencode.jsonc` y `agentes/analista/prompts/`: registrar los cuatro agentes con herramientas de OpenCode en deny-all y sus prompts individuales; el backend Python aplica la allowlist MCP por rol y OpenCodeClient selecciona explícitamente el agente para cada nodo.
 - `agentes/analista/core/orchestrator.py`: reutilizar utilidades de prompts, ejecución y validación LangChain; separar la coordinación del grafo sin cambiar el contrato actual del Analista.
 - `agentes/analista/core/models.py`: conservar modelos actuales y añadir contratos tipados del workflow sin romper el API actual.
 - `agentes/analista/memory/repositorio.py`: guardar HU únicamente después de aprobación humana; registrar cambio/lecciones solo después de la decisión humana.

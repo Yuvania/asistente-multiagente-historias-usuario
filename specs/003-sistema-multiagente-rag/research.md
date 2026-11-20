@@ -55,7 +55,7 @@ El índice vectorial queda fijado como `historias-usuario`, denso, `1024` dimens
 
 ### D-006 — Reutilizar OpenCode y observabilidad existentes
 
-**Decisión propuesta**: todas las llamadas de modelo pasan por `agentes/analista/core/opencode_client.py`; LangChain se usa realmente para construir prompts y validar/parsear salidas; el grafo coordina. `observability.py` añade spans por etapa sin contenido de prompts/respuestas ni secretos.
+**Decisión propuesta**: todas las llamadas de modelo pasan por `agentes/analista/core/opencode_client.py`; OpenCode permanece deny-all para herramientas. El backend Python aplica una allowlist MCP read-only por agente/rol y namespace y es el único que invoca esas herramientas. LangChain se usa realmente para construir prompts y validar/parsear salidas; el grafo coordina. `observability.py` añade spans por etapa sin contenido de prompts/respuestas ni secretos.
 
 **Implicación**: conservar el contrato y rutas actuales del Analista; las nuevas salidas no se mezclan con respuestas del chat actual. Las pruebas automatizadas usan mocks y no consumen cuota ni llaman OpenCode.
 

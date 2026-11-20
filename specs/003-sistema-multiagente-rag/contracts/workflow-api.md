@@ -4,9 +4,9 @@
 
 ## Agentes OpenCode
 
-`opencode.jsonc` registra los identificadores estables `analista`, `redactor_revisor`, `asesor_tecnico` y `gestor_cambios`. Cada agente carga su propio prompt externo. OpenCode deniega permisos por defecto; solo se habilitan las herramientas MCP read-only declaradas para ese rol. Ningún agente tiene shell, acceso libre al filesystem, escritura ni acceso general a la red.
+`opencode.jsonc` registra los identificadores estables `analista`, `redactor_revisor`, `asesor_tecnico` y `gestor_cambios`. Cada agente carga su propio prompt externo. OpenCode mantiene todos los permisos de herramientas en deny-all, incluidas MCP. El backend Python aplica una allowlist MCP read-only por agente/rol y namespace, y es el único componente que invoca esas herramientas. Ningún agente tiene shell, acceso libre al filesystem, escritura ni acceso general a la red.
 
-`OpenCodeClient` recibe el identificador del rol/agente para cada invocación y valida que esté configurado. No usa el agente `analista` como fallback para otra responsabilidad. Las pruebas con servidor simulado deben confirmar que cada invocación usa el agente y prompt correctos y que su contexto/herramientas no cruzan roles.
+`OpenCodeClient` recibe el identificador del rol/agente para cada invocación y valida que esté configurado. No usa el agente `analista` como fallback para otra responsabilidad. Las pruebas con OpenCode/MCP simulados deben confirmar que cada invocación usa el agente y prompt correctos, que OpenCode no invoca herramientas y que el backend solo ejecuta la allowlist y namespaces de ese rol.
 
 ## Iniciar un workflow
 

@@ -23,12 +23,12 @@
 
 ## Fase transversal — Configuración y aislamiento de agentes OpenCode
 
-- [ ] T055 Añadir primero pruebas unitarias con OpenCode simulado para cargar, seleccionar y ejecutar cada agente, incluyendo rechazo de agente desconocido y contextos/herramientas cruzados.
-- [ ] T056 Registrar en `opencode.jsonc` los cuatro agentes con identificadores estables (`analista`, `redactor_revisor`, `asesor_tecnico`, `gestor_cambios`) y configuración explícita por agente.
-- [ ] T057 Crear prompts individuales versionados fuera del código para las cuatro responsabilidades, con contrato de entrada/salida y límites de rol. Conservar el prompt actual del Analista sin cambiar su misión.
-- [ ] T058 Configurar permisos mínimos por agente: denegar por defecto; permitir solo las herramientas MCP read-only de su rol; no conceder shell, filesystem libre, escritura ni acceso de red general.
+- [ ] T055 Añadir primero pruebas unitarias con OpenCode simulado para cargar y seleccionar cada agente, incluido rechazo de agente desconocido, OpenCode deny-all y contextos/herramientas cruzados del backend.
+- [ ] T056 Registrar en `opencode.jsonc` los cuatro agentes con identificadores estables (`analista`, `redactor_revisor`, `asesor_tecnico`, `gestor_cambios`) y configuración explícita por agente; todos mantienen permisos de herramientas deny-all.
+- [ ] T057 Crear prompts individuales versionados fuera del código para las cuatro responsabilidades, con contrato de entrada/salida y límites de rol. Los prompts indican qué herramientas MCP puede invocar el backend para el rol, sin habilitar herramientas de OpenCode. Conservar el prompt actual del Analista sin cambiar su misión.
+- [ ] T058 Mantener todas las herramientas de OpenCode en deny-all, incluidas shell, filesystem, red y MCP. Controlar desde el backend Python las herramientas MCP read-only permitidas por agente/rol y namespace mediante allowlist explícita; no conceder shell, filesystem libre, escritura ni acceso de red general. Cambiar esta arquitectura requiere justificación de seguridad explícita, revisión humana y validación de aislamiento antes de autorizarse.
 - [ ] T059 Extender `OpenCodeClient` para seleccionar por identificador el agente asociado al nodo/rol y verificar configuración/prompt; un agente ausente o incompatible produce error controlado, nunca fallback silencioso a `analista`.
-- [ ] T060 Añadir pruebas de ejecución e aislamiento por agente: comprobar selección del agente y prompt correctos, herramientas permitidas, rechazo de acciones no autorizadas y ausencia de contexto/salidas de otros agentes.
+- [ ] T060 Añadir pruebas de ejecución e aislamiento por agente: comprobar selección del agente y prompt correctos, OpenCode deny-all, allowlist MCP del backend, rechazo de acciones no autorizadas y ausencia de contexto/salidas/namespace de otros agentes.
 
 ## Fase 2 — Analista y espera de Negocio (US1)
 
