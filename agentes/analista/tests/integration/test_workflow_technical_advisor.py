@@ -127,7 +127,7 @@ async def test_workflow_runs_advisor_after_review_and_surfaces_only_mocked_evide
     ))
 
     assert result.current_stage == WorkflowStage.PO_APPROVAL
-    assert result.status == WorkflowStatus.READY
+    assert result.status == WorkflowStatus.INTERRUPTED
     assert result.draft_story.review_status.value == "reviewed"
     assert result.technical_assessment.affected_modules[0].source_ref == source_ref
     assert result.technical_assessment.dependencies[0].source_ref == dependency_ref

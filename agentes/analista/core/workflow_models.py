@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import TypedDict
+from typing import Literal, TypedDict
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, UUID4, field_validator, model_validator
@@ -36,6 +36,46 @@ class WorkflowStatus(StrEnum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class POApprovalDecision(StrEnum):
+    APPROVE = "aprobar"
+    RETURN_TO_ANALYST = "devolver_analista"
+    RETURN_TO_WRITER = "devolver_redactor"
+    RETURN_TO_ADVISOR = "devolver_asesor"
+    REJECT = "rechazar"
+    STOP = "detener"
+
+
+class POApprovalSubmission(BaseModel):
+    """An explicit Product Owner decision; agent output cannot satisfy this contract."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    decision: POApprovalDecision
+    reason: str | None = Field(default=None, min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def returns_require_a_reason(self) -> "POApprovalSubmission":
+        if self.decision in {
+            POApprovalDecision.RETURN_TO_ANALYST,
+            POApprovalDecision.RETURN_TO_WRITER,
+            POApprovalDecision.RETURN_TO_ADVISOR,
+        } and not self.reason:
+            raise ValueError("La devolución requiere un motivo del Product Owner.")
+        return self
+
+
+class PersistenceResult(BaseModel):
+    """Safe, structured result of saving an explicitly approved story."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    status: Literal["saved", "failed"]
+    story_id: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=200)
+    approved_at: str | None = Field(default=None, max_length=40)
+    error_code: Literal["REPOSITORY_UNAVAILABLE", "REPOSITORY_RESPONSE_INVALID"] | None = None
 
 
 class ReviewStatus(StrEnum):
@@ -275,9 +315,14 @@ class WorkflowState(TypedDict, total=False):
     analyst_ready: bool
     pending_questions: list[dict]
     latest_business_answers: list[dict]
+    business_clarifications: list[dict]
     draft_story: dict
     technical_assessment: dict
     review_observations: list[str]
+    po_feedback: str
+    po_decision: dict
+    po_route: str
+    persistence_result: dict
     completion_reason: str | None
 
 
@@ -296,5 +341,7 @@ class WorkflowSnapshot(BaseModel):
     draft_story: DraftStory | None = None
     technical_assessment: TechnicalAssessment | None = None
     review_observations: list[str] = Field(default_factory=list)
+    po_decision: POApprovalSubmission | None = None
+    persistence_result: PersistenceResult | None = None
     completion_reason: str | None = None
 

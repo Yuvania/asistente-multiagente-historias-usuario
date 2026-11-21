@@ -103,7 +103,7 @@ async def test_pending_business_question_interrupts_resumes_and_calls_existing_r
     ]
     assert len(draft_calls) == 1
     assert finished.current_stage == WorkflowStage.PO_APPROVAL
-    assert finished.status == WorkflowStatus.READY
+    assert finished.status == WorkflowStatus.INTERRUPTED
     assert finished.draft_story.review_status.value == "reviewed"
     assert "approved" not in finished.draft_story.model_dump()
 
@@ -206,6 +206,7 @@ async def test_writer_review_loop_allows_two_corrections_then_stops_for_po(monke
     ))
 
     assert result.current_stage == WorkflowStage.PO_APPROVAL
+    assert result.status == WorkflowStatus.INTERRUPTED
     assert result.draft_story.review_round == 2
     assert result.draft_story.review_status.value == "needs_attention"
     assert len(result.review_observations) == 3

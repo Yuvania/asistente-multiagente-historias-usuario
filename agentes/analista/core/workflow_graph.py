@@ -1,6 +1,7 @@
 """LangGraph workflow with Analyst business interrupts and a bounded writer loop."""
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 from uuid import UUID, uuid4
@@ -20,6 +21,9 @@ from agentes.analista.core.workflow_models import (
     BusinessAnswerSubmission,
     DraftStory,
     FlowMode,
+    PersistenceResult,
+    POApprovalDecision,
+    POApprovalSubmission,
     StoryDraftContent,
     StoryReviewOutput,
     TechnicalAssessment,
@@ -31,6 +35,7 @@ from agentes.analista.core.workflow_models import (
     ReviewStatus,
 )
 
+logger = logging.getLogger(__name__)
 
 AnalystNode = Callable[[WorkflowState], Awaitable[AgentTurnResponse | Mapping[str, Any]]]
 DraftNode = Callable[[WorkflowState], Awaitable[StoryDraftContent | Mapping[str, Any]]]
@@ -51,6 +56,7 @@ def _public_snapshot(state: Mapping[str, Any]) -> WorkflowSnapshot:
         "workflow_id", "mode", "status", "current_stage", "active_agent",
         "pending_questions", "analyst_response", "draft_story", "review_observations",
         "technical_assessment", "completion_reason",
+        "po_decision", "persistence_result",
     }
     return WorkflowSnapshot.model_validate({key: value for key, value in state.items() if key in allowed})
 
@@ -84,10 +90,12 @@ def build_workflow_graph(
     draft: DraftNode | None = None,
     review: ReviewNode | None = None,
     advisor: TechnicalAdvisorNode | None = None,
+    repository: Any | None = None,
 ):
     """Compile pre-grooming orchestration; callbacks keep model and store access injectable."""
     writer = RedactorRevisor()
     technical_advisor = TechnicalAdvisor()
+    repository_instance = repository
 
     async def call_analyst(state: WorkflowState) -> AgentTurnResponse | Mapping[str, Any]:
         if analyst is None:
@@ -118,7 +126,10 @@ def build_workflow_graph(
             return await advisor(state)
         return await technical_advisor.assess(
             requirement=state.get("requirement_input") or "",
-            story=state.get("draft_story", {}),
+            story={
+                **state.get("draft_story", {}),
+                **({"product_owner_feedback": state["po_feedback"]} if state.get("po_feedback") else {}),
+            },
         )
 
     def prepare_pre_grooming(state: WorkflowState) -> dict[str, Any]:
@@ -172,8 +183,19 @@ def build_workflow_graph(
         if not supplied_ids or not supplied_ids <= allowed_ids:
             raise ValueError("La respuesta incluye preguntas que no están pendientes en este workflow.")
         _trace_stage(observability, state, stage=WorkflowStage.BUSINESS_WAIT, agent=AgentId.ANALYST)
+        questions_by_id = {item["question_id"]: item.get("pregunta", "")
+                           for item in state.get("pending_questions", [])}
+        enriched_answers = [
+            {**item.model_dump(mode="json"), "question": questions_by_id.get(item.question_id, item.question_id)}
+            for item in answers.answers
+        ]
+        clarification_by_id = {
+            item["question_id"]: item for item in state.get("business_clarifications", [])
+        }
+        clarification_by_id.update({item["question_id"]: item for item in enriched_answers})
         return {
-            "latest_business_answers": [item.model_dump(mode="json") for item in answers.answers],
+            "latest_business_answers": enriched_answers,
+            "business_clarifications": list(clarification_by_id.values()),
             "current_stage": WorkflowStage.ANALYST,
             "active_agent": AgentId.ANALYST,
             "status": WorkflowStatus.RUNNING,
@@ -182,7 +204,7 @@ def build_workflow_graph(
     async def writer_node(state: WorkflowState) -> dict[str, Any]:
         content = StoryDraftContent.model_validate(await call_draft(state))
         previous = DraftStory.model_validate(state["draft_story"]) if state.get("draft_story") else None
-        round_number = (previous.review_round + 1) if previous else 0
+        round_number = min(previous.review_round + 1, 2) if previous else 0
         story = DraftStory(
             **content.model_dump(),
             review_status=ReviewStatus.DRAFT,
@@ -230,7 +252,130 @@ def build_workflow_graph(
             "technical_assessment": assessment.model_dump(mode="json"),
             "current_stage": WorkflowStage.PO_APPROVAL,
             "active_agent": AgentId.TECHNICAL_ADVISOR,
-            "status": WorkflowStatus.READY,
+            "status": WorkflowStatus.INTERRUPTED,
+        }
+
+    def po_approval_node(state: WorkflowState) -> dict[str, Any]:
+        """Wait for an explicit, validated human decision before taking any write path."""
+        raw_decision = interrupt({
+            "kind": "product_owner_approval",
+            "story": state.get("draft_story"),
+            "review_observations": state.get("review_observations", []),
+            "technical_assessment": state.get("technical_assessment"),
+            "decisions": [item.value for item in POApprovalDecision],
+            "return_requires_reason": True,
+        })
+        decision = POApprovalSubmission.model_validate(raw_decision)
+        route_by_decision = {
+            POApprovalDecision.APPROVE: "repository",
+            POApprovalDecision.RETURN_TO_ANALYST: "analyst",
+            POApprovalDecision.RETURN_TO_WRITER: "writer",
+            POApprovalDecision.RETURN_TO_ADVISOR: "technical_advisor",
+            POApprovalDecision.REJECT: "end",
+            POApprovalDecision.STOP: "end",
+        }
+        route = route_by_decision[decision.decision]
+        _trace_stage(observability, state, stage=WorkflowStage.PO_APPROVAL,
+                     agent=AgentId.TECHNICAL_ADVISOR)
+        updates: dict[str, Any] = {
+            "po_decision": decision.model_dump(mode="json"),
+            "po_route": route,
+            "status": WorkflowStatus.RUNNING,
+            "completion_reason": None,
+        }
+        if decision.decision in {POApprovalDecision.REJECT, POApprovalDecision.STOP}:
+            updates.update({
+                "current_stage": WorkflowStage.PO_APPROVAL,
+                "status": WorkflowStatus.CANCELLED,
+                "completion_reason": decision.reason or (
+                    "El Product Owner rechazó la historia." if decision.decision == POApprovalDecision.REJECT
+                    else "El Product Owner detuvo el flujo."
+                ),
+            })
+        elif decision.decision == POApprovalDecision.APPROVE:
+            updates["current_stage"] = WorkflowStage.REPOSITORY
+        else:
+            reason = decision.reason or ""
+            updates["po_feedback"] = reason
+            if decision.decision == POApprovalDecision.RETURN_TO_ANALYST:
+                updates.update({"current_stage": WorkflowStage.ANALYST, "active_agent": AgentId.ANALYST})
+            elif decision.decision == POApprovalDecision.RETURN_TO_WRITER:
+                observations = [*state.get("review_observations", []), f"Observación del Product Owner: {reason}"][-20:]
+                updates.update({
+                    "current_stage": WorkflowStage.WRITER,
+                    "active_agent": AgentId.WRITER_REVIEWER,
+                    "review_observations": observations,
+                })
+            else:
+                updates.update({"current_stage": WorkflowStage.TECHNICAL_ADVISOR,
+                                "active_agent": AgentId.TECHNICAL_ADVISOR})
+        return updates
+
+    def repository_node(state: WorkflowState) -> dict[str, Any]:
+        """Persist only after a validated human approval; use workflow UUID as idempotency key."""
+        decision = POApprovalSubmission.model_validate(state.get("po_decision"))
+        if decision.decision != POApprovalDecision.APPROVE:
+            raise ValueError("El repositorio requiere una aprobación explícita del Product Owner.")
+        story = DraftStory.model_validate(state.get("draft_story"))
+        story_id = str(state["workflow_id"])
+        title = story.quiero[:200]
+        hu = {
+            "id": story_id,
+            "titulo": title,
+            "tipo_informacion": "Historia de Usuario",
+            "requerimiento": state.get("requirement_input") or "",
+            "historia": {"asA": story.como, "iWant": story.quiero, "soThat": story.para},
+            "criterios": [item.model_dump(mode="json") for item in story.criterios],
+            "aclaraciones": [
+                {"pregunta": item.get("question", item["question_id"]), "respuesta": item["answer"]}
+                for item in state.get("business_clarifications", state.get("latest_business_answers", []))
+            ],
+        }
+        nonlocal repository_instance
+        try:
+            if repository_instance is None:
+                from agentes.analista.memory.repositorio import RepositorioHU
+
+                repository_instance = RepositorioHU()
+            raw_result = repository_instance.guardar_hu(hu)
+        except Exception:
+            result = PersistenceResult(
+                status="failed", story_id=story_id, title=title, error_code="REPOSITORY_UNAVAILABLE",
+            )
+            logger.warning("workflow_repository_save_failed", extra={"event": "workflow_repository_save_failed",
+                                                                     "error_code": "REPOSITORY_UNAVAILABLE"})
+            status = WorkflowStatus.FAILED
+            completion_reason = "La aprobación humana se registró, pero no fue posible guardar la HU."
+        else:
+            try:
+                result = PersistenceResult(
+                    status="saved",
+                    story_id=raw_result["id"],
+                    title=raw_result["titulo"],
+                    approved_at=raw_result["aprobada_en"],
+                )
+            except Exception:
+                result = PersistenceResult(
+                    status="failed", story_id=story_id, title=title,
+                    error_code="REPOSITORY_RESPONSE_INVALID",
+                )
+                logger.warning("workflow_repository_response_invalid", extra={
+                    "event": "workflow_repository_response_invalid",
+                    "error_code": "REPOSITORY_RESPONSE_INVALID",
+                })
+                status = WorkflowStatus.FAILED
+                completion_reason = "La aprobación humana se registró, pero el Repositorio devolvió un resultado inválido."
+            else:
+                status = WorkflowStatus.COMPLETED
+                completion_reason = "HU aprobada por el Product Owner y guardada en el Repositorio."
+        _trace_stage(observability, state, stage=WorkflowStage.REPOSITORY,
+                     agent=AgentId.TECHNICAL_ADVISOR)
+        return {
+            "persistence_result": result.model_dump(mode="json"),
+            "current_stage": WorkflowStage.REPOSITORY,
+            "active_agent": AgentId.TECHNICAL_ADVISOR,
+            "status": status,
+            "completion_reason": completion_reason,
         }
 
     def hold_for_unresolved_gaps(state: WorkflowState) -> dict[str, Any]:
@@ -245,6 +390,8 @@ def build_workflow_graph(
     builder.add_node("writer", writer_node)
     builder.add_node("reviewer", reviewer_node)
     builder.add_node("technical_advisor", technical_advisor_node)
+    builder.add_node("aprobacion_po", po_approval_node)
+    builder.add_node("repositorio", repository_node)
     builder.add_node("hold_for_unresolved_gaps", hold_for_unresolved_gaps)
     builder.add_conditional_edges(
         START,
@@ -275,7 +422,14 @@ def build_workflow_graph(
         lambda state: "writer" if state.get("review_requires_correction") else "technical_advisor",
         {"writer": "writer", "technical_advisor": "technical_advisor"},
     )
-    builder.add_edge("technical_advisor", END)
+    builder.add_edge("technical_advisor", "aprobacion_po")
+    builder.add_conditional_edges(
+        "aprobacion_po",
+        lambda state: state["po_route"],
+        {"analyst": "analyst", "writer": "writer", "technical_advisor": "technical_advisor",
+         "repository": "repositorio", "end": END},
+    )
+    builder.add_edge("repositorio", END)
     builder.add_edge("hold_for_unresolved_gaps", END)
     return builder.compile(checkpointer=checkpointer or InMemorySaver())
 
@@ -291,6 +445,7 @@ class WorkflowRuntime:
         draft: DraftNode | None = None,
         review: ReviewNode | None = None,
         advisor: TechnicalAdvisorNode | None = None,
+        repository: Any | None = None,
     ) -> None:
         self.observability = observability or Observability()
         self._checkpointer = InMemorySaver()
@@ -311,6 +466,7 @@ class WorkflowRuntime:
             draft=draft,
             review=review,
             advisor=advisor,
+            repository=repository,
         )
 
     @property
@@ -371,20 +527,25 @@ class WorkflowRuntime:
             )
         else:
             message = state["requirement_input"] or ""
+        if state.get("po_feedback"):
+            message += "\nInstrucción de devolución del Product Owner:\n" + state["po_feedback"]
         request = SendMessageRequest(request_id=uuid4(), message=message)
         return await run_turn(self._analyst_store, conversation_id, request, observability=self.observability)
 
     async def resume(
         self,
         workflow_id: UUID | str,
-        answers: BusinessAnswerSubmission | Mapping[str, Any],
+        answers: BusinessAnswerSubmission | POApprovalSubmission | Mapping[str, Any],
     ) -> WorkflowSnapshot:
-        """Resume the Business interrupt using LangGraph's Command(resume=...)."""
+        """Resume a Business or PO interrupt on its existing thread checkpoint."""
         identifier = self._resolve_workflow_id(workflow_id)
-        submission = BusinessAnswerSubmission.model_validate(answers)
         current = self._graph.get_state(self._thread_config(identifier))
         if not any(getattr(task, "interrupts", ()) for task in current.tasks):
-            raise WorkflowNotInterruptedError("El workflow no está esperando respuestas de Negocio.")
+            raise WorkflowNotInterruptedError("El workflow no está esperando una decisión humana.")
+        if current.values.get("current_stage") == WorkflowStage.PO_APPROVAL:
+            submission = POApprovalSubmission.model_validate(answers)
+        else:
+            submission = BusinessAnswerSubmission.model_validate(answers)
         result = await self._graph.ainvoke(
             Command(resume=submission.model_dump(mode="json")),
             config=self._thread_config(identifier),

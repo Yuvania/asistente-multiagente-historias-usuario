@@ -2,7 +2,7 @@
 
 **Spec**: [spec.md](spec.md)  
 **Plan**: [plan.md](plan.md)  
-**Estado**: T005-T018, T038 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
+**Estado**: T005-T021, T038 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
 
 > T005-T009 y T055-T060 se implementaron primero. Por instrucción posterior se implementó T010-T018 en modo experimental; también se creó el fixture T038 por requisito explícito del Asesor. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitución aún declara ratificación pendiente. T002 se revisó contra el texto 2.0.0, pero queda pendiente su cierre formal. Este avance técnico no representa aceptación formal.
 
@@ -50,9 +50,11 @@
 
 ## Fase 5 — Aprobación del PO y repositorio de HU (US4)
 
-- [ ] T019 Añadir pruebas primero para interrupción PO, aprobación humana, devoluciones a Analista/Redactor/Asesor, rechazo y garantía de no escritura sin aprobación.
-- [ ] T020 Implementar `aprobacion_po` con `interrupt()` y validación de decisión/destino/motivo.
-- [ ] T021 Implementar `repositorio` como salida de aprobado y reutilizar `agentes/analista/memory/repositorio.py`; efectuar `guardar_hu` únicamente después de decisión humana aprobatoria.
+- [x] T019 Probar primero interrupción PO, aprobación humana, devoluciones a Analista/Redactor/Asesor con motivo, rechazo/detención, decisiones inválidas y cero escrituras sin aprobación. Evidencia: `tests/integration/test_workflow_po_approval.py`.
+- [x] T020 Implementar `aprobacion_po` con `interrupt()`, decisión humana Pydantic y reanudación con `Command(resume=...)` sobre el mismo `thread_id`; solo enrutar a `repositorio` ante `aprobar` explícito.
+- [x] T021 Implementar `repositorio` con `RepositorioHU.guardar_hu`, payload conforme al contrato real, UUID del workflow como clave idempotente y resultado de persistencia estructurado; pruebas usan un doble, sin tocar TiDB.
+
+> Línea base previa a T019-T021 (2026-11-21): desde la raíz, `agentes/analista/.venv/Scripts/python.exe -m pytest agentes/analista/tests` ejecutó 189 pruebas, todas aprobadas (1 advertencia de LangChain MCP beta). Verificación posterior a T019-T021: 199 pruebas aprobadas, 1 advertencia; incluye pruebas con dobles, sin secretos ni servicios externos.
 
 ## Fase 6 — Gestor de Cambios y decisión humana (US5)
 
@@ -110,9 +112,9 @@
 
 ## Dependencias
 
-- La ratificacion formal T001/T002 sigue pendiente; se completaron experimentalmente T005-T018, T038 y T055-T060 por instruccion expresa en esta rama, sin declarar aceptacion formal.
+- La ratificacion formal T001/T002 sigue pendiente; se completaron experimentalmente T005-T021, T038 y T055-T060 por instruccion expresa en esta rama, sin declarar aceptacion formal.
 - Fases 2–6 dependen de fundamentos T005–T009.
 - T055–T060 deben preceder la ejecución de los nodos multiagente; T055 y T060 prueban selección y aislamiento con OpenCode simulado.
 - La publicación de una HU depende de T019–T021; decisiones de cambio dependen de T022–T024.
-- La ratificacion formal de T001/T002 sigue pendiente. T010-T018 y el fixture T038 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; esto no equivale a aceptacion formal. La ingesta e integración Pinecone siguen pendientes; pytest no realiza llamadas Pinecone.
+- La ratificacion formal de T001/T002 sigue pendiente. T010-T021 y el fixture T038 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; esto no equivale a aceptacion formal. La ingesta e integración Pinecone siguen pendientes; pytest no realiza llamadas Pinecone.
 - T037–T043 preceden a T044; T044 precede a integración de retrieval T045–T050; T051–T052 documentan la integración; T030–T032 y T053–T054 son aceptación final después de T050.
