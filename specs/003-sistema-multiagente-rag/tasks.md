@@ -2,7 +2,7 @@
 
 **Spec**: [spec.md](spec.md)  
 **Plan**: [plan.md](plan.md)  
-**Estado**: T005-T029, T038 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
+**Estado**: T005-T029, T037-T038, T039-T043 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
 
 > T005-T009 y T055-T060 se implementaron primero. Por instrucción posterior se implementó T010-T018 en modo experimental; también se creó el fixture T038 por requisito explícito del Asesor. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitución aún declara ratificación pendiente. T002 se revisó contra el texto 2.0.0, pero queda pendiente su cierre formal. Este avance técnico no representa aceptación formal.
 
@@ -81,13 +81,13 @@
 
 ## Fase 10 - Fuentes ficticias y documentos de conocimiento
 
-- [ ] T037 Crear primero pruebas de recuperación/fuente para los JSON existentes y la asignación a los namespaces establecidos; conservar los cuatro MCP existentes.
+- [x] T037 Probar lectura y esquema de los cuatro JSON reales, su asignación a `glosario`, `estandares`, `checklist` y `hu_aprobadas`, rechazo de fuentes/namespaces ajenos y conservación de las cuatro herramientas MCP. `hu_similares.json` queda marcado como `simulated_reference`, sin estado aprobado.
 - [x] T038 Crear `ejemplos/polizas_demo/` en Python con modelos de póliza, servicio de pólizas, cálculo de primas, coberturas, renovaciones, pagos, validaciones y mapa de dependencias Markdown; usar escenarios completamente ficticios sin datos personales. Fixture 1.0.0, entregado como requisito explícito de T016.
-- [ ] T039 Añadir pruebas de lectura estática de `.py` y `.md` que verifican rutas de fuente y aseguran que ningún módulo se importa ni ejecuta.
-- [ ] T040 Implementar conversión de JSON, `RepositorioHU` y ejemplo ficticio a documentos; separar `hu_similares.json` como referencia simulada y filtrar solo HU/lecciones aprobadas desde el repositorio.
-- [ ] T041 Implementar fragmentación determinista bajo el límite del embedding y IDs estables por namespace, origen y fragmento; reconciliar solo IDs de la fuente correspondiente.
-- [ ] T042 Añadir pruebas que ejecutan dos ingestas con mismos documentos/IDs y verifican upserts repetibles sin duplicados, errores parciales reportados y namespaces aislados.
-- [ ] T043 Implementar fuente de `RepositorioHU` usando las APIs públicas existentes para HU aprobadas y lecciones `aprobada`; no leer base de datos por SQL paralelo ni indexar propuestas/rechazos.
+- [x] T039 Leer estáticamente solo `.py` y `.md` bajo `ejemplos/polizas_demo/`; normalizar citas relativas y rechazar traversal, rutas absolutas, extensiones ajenas y enlaces fuera de la raíz. Pruebas verifican que el código no se importa ni ejecuta.
+- [x] T040 Convertir JSON y archivos ficticios a documentos LangChain con metadata validada; la preparación admite registros de `RepositorioHU`, y `hu_similares.json` queda separado como fuente simulada.
+- [x] T041 Fragmentar determinísticamente bajo el máximo de 507 tokens de `multilingual-e5-large`, asignar IDs estables y limitar la reconciliación a coincidencias exactas de namespace y fuente.
+- [x] T042 Verificar con adaptador de memoria (sin llamadas Pinecone) repetición idempotente, IDs sin duplicados, sustitución/cancelación de fragmentos, aislamiento de namespaces y fallo parcial con error sanitizado.
+- [x] T043 Leer HU con `listar_hu`/`obtener_hu` y lecciones con `listar_lecciones(estado="aprobada")`; SQLite temporal verifica exclusión de borradores, propuestas, rechazos y PII, sin escrituras desde la fuente.
 
 ## Fase 11 - Ingesta y recuperacion para agentes
 
@@ -114,9 +114,9 @@
 
 ## Dependencias
 
-- La ratificacion formal T001/T002 sigue pendiente; se completaron experimentalmente T005-T024, T038 y T055-T060 por instruccion expresa en esta rama, sin declarar aceptacion formal.
+- La ratificacion formal T001/T002 sigue pendiente; se completaron experimentalmente T005-T024, T037-T038, T039-T043 y T055-T060 por instruccion expresa en esta rama, sin declarar aceptacion formal.
 - Fases 2–6 dependen de fundamentos T005–T009.
 - T055–T060 deben preceder la ejecución de los nodos multiagente; T055 y T060 prueban selección y aislamiento con OpenCode simulado.
 - La publicación de una HU depende de T019–T021; decisiones de cambio dependen de T022–T024.
-- La ratificacion formal de T001/T002 sigue pendiente. T010-T024 y el fixture T038 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; esto no equivale a aceptacion formal. La ingesta e integración Pinecone siguen pendientes; pytest no realiza llamadas Pinecone.
+- La ratificacion formal de T001/T002 sigue pendiente. T010-T024 y el fixture T038 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; T037 y T039-T043 ya tienen código y pruebas, sin que esto equivalga a aceptación formal. T044 y la integración de ingesta/retrieval Pinecone siguen pendientes; pytest no realiza llamadas Pinecone.
 - T037–T043 preceden a T044; T044 precede a integración de retrieval T045–T050; T051–T052 documentan la integración; T030–T032 y T053–T054 son aceptación final después de T050.
