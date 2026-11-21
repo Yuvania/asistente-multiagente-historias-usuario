@@ -29,6 +29,23 @@ La aplicación completa (interfaz + backend + OpenCode) corre como **un solo ser
 
 El despliegue vigente corresponde al **Agente Analista**. El paso 4 conserva la generación simulada: Redactor-Revisor, Asesor Técnico, Gestor de Cambios, grafos LangGraph, pausas humanas de workflow, Pinecone e ingesta no están implementados en esta revisión. No configures variables Pinecone ni `INGESTA_AL_ARRANCAR` para este servicio hasta que exista y se pruebe esa implementación. El contrato de Render actual se conserva: un Web Service Docker, autenticación existente, TiDB, `/healthz` y un worker.
 
+### Feature 003 experimental
+
+La rama `feat/sistema-multiagente-rag` contiene una implementación experimental local de LangGraph y sus endpoints `POST /api/workflows`, `GET /api/workflows/{workflow_id}` y `POST /api/workflows/{workflow_id}/resume`, además de la interfaz React conectada al workflow. Esta rama no cambia `main` ni el servicio de Render. T001 y T002 siguen pendientes de ratificación formal.
+
+El runtime conserva los checkpoints en memoria: al reiniciar FastAPI se pierden y la interfaz pide iniciar un workflow nuevo. La interfaz no guarda `workflow_id` en `localStorage`. Las fuentes técnicas visibles en la demostración proceden de fixtures ficticios; **RAG/Pinecone todavía no está integrado** y ningún secreto se envía al navegador.
+
+Para probar esta rama en local, sigue los pasos de instalación anteriores y ejecuta:
+
+```powershell
+npm run iniciar
+npm test
+npm run build
+& .\agentes\analista\.venv\Scripts\python.exe -m pytest .\agentes\analista\tests -q
+```
+
+En `http://localhost:3000`, crea una HU y completa las respuestas de Negocio para probar `pre_grooming`; desde una HU aprobada abre Solicitar cambio para probar `post_grooming`. La decisión PO o de cambio requiere confirmación explícita en la UI. Si el endpoint de workflow no está disponible, la creación conserva el modo manual existente; la solicitud de cambio ofrece un modo manual con clasificación elegida por la persona. Detén el entorno con `npm run detener`.
+
 - Salud ligera para Render: `<URL de Render>/healthz` (no requiere autenticación).
 - Diagnóstico del Analista: `<URL de Render>/api/analista/health` (requiere las credenciales actuales; comprueba OpenCode y MCP).
 - Configuración y variables: ver [DESPLIEGUE.md](DESPLIEGUE.md). Los secretos viven solo en el panel de Render, nunca en el repositorio.

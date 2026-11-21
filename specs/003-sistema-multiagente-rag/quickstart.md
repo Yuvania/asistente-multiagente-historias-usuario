@@ -1,60 +1,62 @@
-# Quickstart previsto — Feature 003
+﻿# Quickstart local — Feature 003 experimental
 
-**Estado**: no ejecutable todavía. La implementación está bloqueada hasta que el equipo apruebe la enmienda constitucional y revise spec, plan y tareas. Los comandos existentes verifican el Analista; los comandos de ingesta son los previstos para la fase aprobada y no se ejecutaron en esta tarea.
+**Estado:** los workflows LangGraph, su API FastAPI y la interfaz React se ejecutan experimentalmente en `feat/sistema-multiagente-rag`. T001/T002 siguen pendientes de ratificación formal. Esta guía no cambia `main` ni despliega a Render.
 
-## Requisitos existentes
+## Requisitos
 
 - Windows 10/11 y PowerShell 5.1 o 7.
-- Python 3.12, versión del contenedor Docker actual y de Render para esta feature.
-- Node/npm usados por el frontend actual.
-- OpenCode Server en `127.0.0.1:4096` para pruebas manuales del Analista existente. Las pruebas del nuevo grafo deben usar mocks y no llamar OpenCode.
-- `pinecone` y `langchain-pinecone` se añadirán con pins compatibles con Python 3.12 y se fijarán en el lock solo tras aprobar gobernanza. Se usará `PineconeEmbeddings` + `PineconeVectorStore` con un índice vectorial convencional; no se usarán document indexes ni embeddings integrados.
+- Node.js 22 o superior.
+- Python 3.12 en `agentes\analista\.venv`.
+- OpenCode Server local en `127.0.0.1:4096` para la ejecución real de agentes. Pruebas automáticas usan dobles.
 
-## Preparación y pruebas existentes
+## Instalar y arrancar
 
-Desde la raíz del repositorio, si el entorno local ya está creado:
+Desde la raíz del repositorio:
 
 ```powershell
+npm ci
+py -3.12 -m venv .\agentes\analista\.venv
+& .\agentes\analista\.venv\Scripts\python.exe -m pip install -r .\agentes\analista\requirements.lock
+if (-not (Test-Path .\.env)) { Copy-Item .\agentes\analista\.env.example .\.env }
+```
+
+Completa las variables locales de `.env`; no guardes credenciales en el frontend ni en esta guía. Inicia OpenCode, FastAPI y React:
+
+```powershell
+npm run iniciar
+```
+
+Abre `http://localhost:3000`. FastAPI debe usar un worker. Para revisar el estado, consulta `http://127.0.0.1:8000/api/analista/health` con las credenciales de desarrollo existentes. Para detener:
+
+```powershell
+npm run detener
+```
+
+## Flujo UI
+
+- Crear HU inicia `pre_grooming`; revisa el análisis del Analista y responde todas las preguntas pendientes.
+- El workflow muestra la HU del Redactor-Revisor y la evaluación del Asesor. La evidencia técnica de la demo procede de archivos ficticios y estándares de ejemplo.
+- La decisión PO requiere confirmación explícita; solo el backend persiste la HU aprobada.
+- Solicitar cambio en una HU aprobada inicia `post_grooming` con la HU real del Repositorio. El Gestor puede recomendar `aclaracion` o `cambio_alcance`; aceptar, rechazar y devolver requiere confirmación.
+- Las lecciones propuestas no se aprueban automáticamente. La persona puede decidir cada una expresamente.
+- Si el endpoint no responde al crear una HU, queda disponible el flujo manual existente. Solicitud de cambio ofrece modo manual explícito con selección de clasificación.
+
+Los IDs de workflow permanecen solo en memoria de React y no se escriben en `localStorage`. El backend usa checkpoints en memoria: un reinicio pierde el checkpoint. Un 404 al consultar o reanudar pide iniciar un workflow nuevo; no se simula la recuperación. La autenticación Basic compartida no comprueba la identidad individual del PO.
+
+## API y pruebas
+
+La API experimental expone:
+
+- `POST /api/workflows`
+- `GET /api/workflows/{workflow_id}`
+- `POST /api/workflows/{workflow_id}/resume`
+
+Consulta `contracts/workflow-api.md` para esquemas exactos de respuesta y `interrupt_id`. Los tests frontend simulan los tres endpoints; pytest usa dobles y no llama modelos, MCP, TiDB o Pinecone.
+
+```powershell
+npm test
+npm run build
 & .\agentes\analista\.venv\Scripts\python.exe -m pytest .\agentes\analista\tests -q
 ```
 
-Ese comando solo verifica las pruebas existentes del Analista. No acredita la feature 003.
-
-## Variables previstas (no contienen credenciales)
-
-Después del gate, `.env.example` incluirá configuración pública como:
-
-```dotenv
-PINECONE_API_KEY=
-PINECONE_INDEX_NAME=historias-usuario
-PINECONE_CLOUD=aws
-PINECONE_REGION=us-east-1
-PINECONE_DIMENSION=1024
-PINECONE_METRIC=cosine
-PINECONE_EMBEDDING_MODEL=multilingual-e5-large
-```
-
-En `render.yaml`, la clave se declarará con `sync: false`; el archivo solo contendrá la configuración no secreta. La clave real se proporciona por el entorno del servicio ya existente. No se agrega un servicio Render.
-
-## Ingesta prevista (requiere Pinecone configurado)
-
-Después de implementar el paquete y configurar la credencial por el entorno:
-
-```powershell
-& .\agentes\analista\.venv\Scripts\python.exe -m agentes.conocimiento.ingesta --fuente todas
-```
-
-La ejecución crea/valida el índice vectorial configurado e ingiere las fuentes allowlisted en los seis namespaces. Este comando sí contacta Pinecone; no forma parte de pytest y no se ejecutó durante la preparación documental.
-
-Las pruebas automatizadas posteriores usarán únicamente mocks del SDK, incluidos índice, upsert, búsqueda y fallos. No requieren `PINECONE_API_KEY` y no hacen llamadas a Pinecone real.
-
-Cuando la enmienda esté aprobada y la implementación exista, este quickstart deberá actualizarse en la misma PR con:
-
-1. versión Python de Render comprobada y comandos de instalación PowerShell;
-2. dependencias LangGraph y Pinecone directas, lock reproducible y configuración sin secretos;
-3. arranque de OpenCode, FastAPI y frontend en puertos/rutas vigentes;
-4. comandos pytest para pruebas del grafo y mocks;
-5. procedimiento local para responder a interrupciones y verificar pérdida de checkpoint al reiniciar;
-6. health checks, apagado y troubleshooting.
-
-No copiar valores de `.env` a esta guía. No crear un servicio Render nuevo ni un checkpointer persistente como parte de esta feature.
+RAG/Pinecone no está integrado. No configures claves Pinecone ni `INGESTA_AL_ARRANCAR`; las rutas disponibles no realizan recuperación vectorial. Para comandos PowerShell completos, salud, troubleshooting y apagado consulta `../../docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md`.

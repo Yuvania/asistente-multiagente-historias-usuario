@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
@@ -55,7 +56,11 @@ class WorkflowNotFoundError(LookupError):
 
 
 class WorkflowNotInterruptedError(RuntimeError):
-    """A resume was attempted while the workflow was not waiting for Business."""
+    """A resume was attempted while the workflow had no human interrupt."""
+
+
+class WorkflowDependencyError(RuntimeError):
+    """A required repository or agent dependency failed during workflow execution."""
 
 
 def _public_snapshot(state: Mapping[str, Any]) -> WorkflowSnapshot:
@@ -202,9 +207,9 @@ def build_workflow_graph(
 
             if isinstance(exc, RepositorioError) and exc.not_found:
                 raise ValueError("La HU aprobada no existe en el Repositorio.") from exc
-            raise ValueError("No se pudo consultar la HU aprobada.") from exc
+            raise WorkflowDependencyError("No se pudo consultar la HU aprobada.") from exc
         if not isinstance(approved_story, Mapping) or approved_story.get("id") != approved_story_id:
-            raise ValueError("El Repositorio no devolvió la HU aprobada solicitada.")
+            raise WorkflowDependencyError("El Repositorio no devolvió la HU aprobada solicitada.")
         if change_manager is None:
             recommendation = await manager.evaluate(
                 approved_story_id=approved_story_id,
@@ -701,7 +706,13 @@ class WorkflowRuntime:
         repository: Any | None = None,
     ) -> None:
         self.observability = observability or Observability()
-        self._checkpointer = InMemorySaver()
+        self._checkpointer = InMemorySaver(
+            serde=JsonPlusSerializer(allowed_msgpack_modules=[
+                ("agentes.analista.core.workflow_models", "WorkflowStage"),
+                ("agentes.analista.core.workflow_models", "WorkflowStatus"),
+                ("agentes.analista.core.agent_registry", "AgentId"),
+            ])
+        )
         self._threads: dict[UUID, str] = {}
         self._conversation_ids: dict[UUID, UUID] = {}
         self._injected_analyst = analyst
@@ -829,3 +840,17 @@ class WorkflowRuntime:
         if not snapshot.values:
             raise WorkflowNotFoundError("El workflow no existe en este proceso.")
         return _public_snapshot(snapshot.values)
+
+    def pending_interrupt(self, workflow_id: UUID | str) -> dict[str, Any] | None:
+        """Return the active LangGraph interrupt identifier and its bounded public payload."""
+        identifier = self._resolve_workflow_id(workflow_id)
+        snapshot = self._graph.get_state(self._thread_config(identifier))
+        if not snapshot.values:
+            raise WorkflowNotFoundError("El workflow no existe en este proceso.")
+        for task in snapshot.tasks:
+            for item in getattr(task, "interrupts", ()):
+                value = getattr(item, "value", None)
+                interrupt_id = getattr(item, "id", None)
+                if isinstance(value, Mapping) and isinstance(value.get("kind"), str) and interrupt_id:
+                    return {"interrupt_id": str(interrupt_id), "payload": dict(value)}
+        return None

@@ -2,7 +2,7 @@
 
 **Spec**: [spec.md](spec.md)  
 **Plan**: [plan.md](plan.md)  
-**Estado**: T005-T024, T038 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
+**Estado**: T005-T029, T038 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
 
 > T005-T009 y T055-T060 se implementaron primero. Por instrucción posterior se implementó T010-T018 en modo experimental; también se creó el fixture T038 por requisito explícito del Asesor. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitución aún declara ratificación pendiente. T002 se revisó contra el texto 2.0.0, pero queda pendiente su cierre formal. Este avance técnico no representa aceptación formal.
 
@@ -55,6 +55,8 @@
 - [x] T021 Implementar `repositorio` con `RepositorioHU.guardar_hu`, payload conforme al contrato real, UUID del workflow como clave idempotente y resultado de persistencia estructurado; pruebas usan un doble, sin tocar TiDB.
 
 > Baseline previa a T019-T021 (2026-11-21): desde la raiz, `agentes/analista/.venv/Scripts/python.exe -m pytest agentes/analista/tests` ejecuto 189 pruebas, todas aprobadas (1 advertencia de LangChain MCP beta). Verificacion posterior a T019-T021: 199 pruebas aprobadas. Verificacion posterior a T022-T024 (2026-11-21): 213 pruebas aprobadas, 1 advertencia; incluye dobles y SQLite temporal, sin secretos, servicios externos ni TiDB real.
+> Verificación posterior a T025-T026 (2026-11-21): `agentes/analista/.venv/Scripts/python.exe -m pytest agentes/analista/tests` ejecutó 221 pruebas; todas aprobadas, 1 advertencia de LangChain MCP beta. Las pruebas nuevas usan TestClient y dobles; no contactan OpenCode, MCP, TiDB ni servicios externos reales.
+> Verificación de T027-T029 (2026-11-21): `npm test -- --run` ejecutó 232 pruebas en 37 archivos, todas aprobadas; `npm run build` completó (avisos Sass legacy y bundle >500 kB); `agentes/analista/.venv/Scripts/python.exe -m pytest .\agentes\analista\tests -q` ejecutó 221 pruebas, todas aprobadas y 1 advertencia LangChain MCP beta. `node .\scripts\diagnostics\validate-feature-docs.mjs` pasó. Los tests UI simulan API workflows; no contactan servicios externos.
 
 ## Fase 6 — Gestor de Cambios y decisión humana (US5)
 
@@ -64,11 +66,11 @@
 
 ## Fase 7 — API, frontend y documentación
 
-- [ ] T025 Añadir pruebas de contrato API para inicio, lectura de estado, respuestas inválidas, concurrencia, dependencia caída y checkpoint perdido.
-- [ ] T026 Implementar rutas FastAPI para inicio/reanudación/consulta del flujo con errores controlados; no romper contratos actuales de Analista.
-- [ ] T027 Añadir controles de intervención humana y vistas estructuradas en la UI React/JSX/SCSS existente; conservar rutas, Stepper, mocks y claves de localStorage actuales.
-- [ ] T028 Informar en la UI que el reinicio del proceso Render pierde el checkpoint y permitir iniciar un flujo nuevo de forma clara.
-- [ ] T029 Actualizar `agentes/analista/README.md`, quickstart y documentación PowerShell con instalación, arranque, health, pruebas, shutdown y troubleshooting, sin secretos.
+- [x] T025 Añadir pruebas de contrato con FastAPI TestClient, WorkflowRuntime real y dobles OpenCode/MCP/RepositorioHU: pre/post-grooming, consulta, respuestas de Negocio, decisiones PO/cambio, validación de cuerpo/tamaño, concurrencia simultánea, reanudación incorrecta/duplicada, checkpoint perdido, timeouts/fallos de dependencias y ausencia de escritura sin decisión humana. Evidencia: `agentes/analista/tests/integration/test_workflow_api.py`.
+- [x] T026 Exponer `POST /api/workflows`, `GET /api/workflows/{workflow_id}` y `POST /api/workflows/{workflow_id}/resume`; compartir `WorkflowRuntime`/`InMemorySaver` por lifespan, verificar IDs de interrupción, serializar resultados Pydantic seguros, aplicar guardia de operación activa y mapear errores al sobre FastAPI existente. Contrato: `contracts/workflow-api.md`; montaje en `agentes/analista/api/main.py`.
+- [x] T027 Integrar `workflowApi.js` y controles humanos React para respuestas de Negocio, aprobación/devolución/rechazo PO, recomendación y decisión del Gestor, resultados de Redactor/Asesor y manejo de errores; conservar rutas, Stepper, pestañas/SCSS y flujo manual. Evidencia: `src/services/__tests__/workflowApi.test.js`, `src/components/Comun/__tests__/WorkflowInterruptionForm.test.jsx`, `WorkflowIntegracion.test.jsx`, `WorkflowSolicitudCambio.test.jsx`; `npm test` 232 aprobadas.
+- [x] T028 Explicar que los checkpoints son en memoria, no guardar `workflow_id` en `localStorage`, manejar HTTP 404 como checkpoint perdido y ofrecer un workflow nuevo sin fingir recuperación. Evidencia: UI de creación/cambio y pruebas 404 en `workflowApi.test.js` y `WorkflowIntegracion.test.jsx`.
+- [x] T029 Actualizar README, `agentes/analista/README.md`, `quickstart.md` y guía PowerShell con instalación, arranque, health, pruebas, apagado y comportamiento real de UI/workflows, sin secretos. Evidencia: `npm run build`, `validate-feature-docs.mjs` y revisión de rutas documentadas.
 
 ## Fase 9 — Contrato Pinecone y configuración segura
 

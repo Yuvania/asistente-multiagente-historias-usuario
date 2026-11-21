@@ -1,6 +1,6 @@
-# Contratos HTTP propuestos — Workflow multiagente
+# Contratos HTTP — Workflow multiagente
 
-**Estado**: contrato de diseño. Las rutas definitivas deben alinearse con la API actual al reabrir la implementación después del gate constitucional.
+**Estado**: contrato implementado experimentalmente en T025–T026. La feature completa sigue pendiente de ratificación formal T001/T002.
 
 ## Agentes OpenCode
 
@@ -14,36 +14,42 @@
 
 Entrada discriminada por modo:
 
-- `pre_grooming`: `requirement` y un identificador de correlación nuevo.
+- `pre_grooming`: `requirement` y `request_id` de correlación (opcional; el backend genera uno si se omite).
 - `post_grooming`: `approved_story_id` y `change_request`.
+
+```json
+{ "mode": "pre_grooming", "request_id": "a7811a1d-750d-4f2e-89ac-4b92401a0d0e", "requirement": "Consultar vigencia de una póliza" }
+```
+
+```json
+{ "mode": "post_grooming", "approved_story_id": "HU-001", "change_request": "Precisar la fecha final de vigencia" }
+```
 
 Validaciones: `requirement` de 1–4.000 caracteres para `pre_grooming`, `change_request` de 1–2.000 caracteres para `post_grooming`, modo permitido, referencia de HU aprobada para post-grooming, máximo de una operación activa por workflow y rechazo de campos desconocidos. Una solicitud concurrente recibe conflicto y no modifica el checkpoint.
 
-Respuesta de diseño:
+Respuesta del runtime (resumen; los campos de `results` dependen de la etapa):
 
 ```json
 {
   "workflow_id": "opaque-id",
+  "mode": "pre_grooming",
   "status": "interrupted",
   "stage": "espera_negocio",
   "results": {
-    "analyst": {
-      "known": [],
-      "missing": [],
-      "assumed": [],
-      "ambiguous": [],
-      "questions": []
-    }
+    "analyst": { "preguntas": [] },
+    "story": null,
+    "technical_assessment": null
   },
   "interrupt": {
+    "interrupt_id": "langgraph-interrupt-id",
     "kind": "business_answers",
-    "payload": {},
-    "response_schema": {}
+    "payload": { "questions": [], "max_answer_chars": 1000, "max_total_chars": 3500 },
+    "response_schema": { "type": "object" }
   }
 }
 ```
 
-El ejemplo es una forma del contrato, no una respuesta hardcodeada de runtime.
+`POST /api/workflows` ejecuta el grafo hasta su primera interrupción o resultado final y responde `201`. Se envía `mode=pre_grooming` con `requirement` de 1–4.000 caracteres, o `mode=post_grooming` con `approved_story_id` y `change_request` de 1–2.000 caracteres. El modelo Pydantic rechaza campos adicionales y combinaciones de modo inválidas.
 
 ## Consultar estado
 
@@ -55,26 +61,35 @@ Devuelve etapa, estado, resultados estructurados disponibles, interrupción acti
 
 `POST /api/workflows/{workflow_id}/resume`
 
-El cuerpo contiene `interrupt_id`, tipo de respuesta y objeto de respuesta tipado según el esquema asociado a la interrupción:
+El cuerpo contiene el `interrupt_id` exacto que devolvió el runtime, `kind` y el objeto `response` tipado. Si el ID o tipo no corresponde a la interrupción activa, se responde `409` y el checkpoint no cambia:
+
+```json
+{
+  "kind": "po_approval",
+  "interrupt_id": "langgraph-interrupt-id",
+  "response": { "decision": "aprobar" }
+}
+```
 
 - `business_answers`: respuestas a preguntas pendientes; reanuda hacia Analista.
-- `po_approval`: aprobación, devolución con destino permitido y motivo, o detención.
-- `change_decision`: decisión humana de aplicar, descartar o devolver según enums acordados en review.
+- `po_approval`: decisión explícita `aprobar`, devolución con destino permitido y motivo, rechazo o detención.
+- `change_decision`: decisión humana `aplicar`, `rechazar` o `devolver` (esta última requiere motivo).
 
-El servicio resuelve el workflow al mismo checkpoint con `Command(resume=respuesta_validada)` y el mismo `thread_id`. Una respuesta que no corresponde a la interrupción activa se rechaza sin cambiar estado.
+El servicio comprueba el ID de interrupción emitido por LangGraph y resuelve ese workflow al mismo checkpoint con `Command(resume=respuesta_validada)` y el mismo `thread_id` privado. Solo una operación de escritura puede estar activa por workflow. Una reanudación incorrecta o duplicada se rechaza sin modificar el checkpoint. Las aprobaciones solo aparecen en resultados después de una decisión humana explícita.
 
 ## Errores públicos
 
 | HTTP | Código | Uso |
 |---|---|---|
-| 400 | `INVALID_INPUT` | Campos, texto, decisión o etapa de devolución inválidos. |
+| 400 | `INVALID_INPUT` | Respuesta válida como JSON pero incompatible con la interrupción o sus preguntas pendientes. |
+| 422 | `INVALID_REQUEST` | Cuerpo no válido según Pydantic, campos desconocidos o texto fuera de límites. |
 | 404 | `WORKFLOW_NOT_FOUND` | Workflow ausente o checkpoint perdido tras reinicio. El cliente debe iniciar un flujo nuevo. |
 | 409 | `WORKFLOW_NOT_WAITING` | Existe una etapa en ejecución o no hay interrupción pendiente para reanudar. |
 | 422 | `CONTRACT_INVALID` | Salida estructurada del agente no satisface el modelo esperado. |
 | 503 | `DEPENDENCY_UNAVAILABLE` | OpenCode/MCP no disponible; el flujo no continúa a la siguiente etapa. |
 | 504 | `WORKFLOW_TIMEOUT` | Límite de operación alcanzado; resultado incompleto no se presenta como éxito. |
 
-Los errores no incluirán stack traces, tokens, rutas internas, texto completo de prompts ni datos personales. La política de códigos debe armonizarse con `agentes/analista/api/errors.py` durante implementación.
+Los errores reutilizan el sobre Pydantic de `agentes/analista/api/errors.py` y no incluyen stack traces, tokens, rutas internas, texto completo de prompts ni datos personales. Las rutas `/api/workflows` usan el mismo middleware de autenticación Basic que la API de Analista.
 
 ## Contratos de recuperación de conocimiento
 

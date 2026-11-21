@@ -13,7 +13,7 @@ import { TarjetaPreguntaComponent } from './TarjetaPreguntaComponent';
 import { MarkdownAsistenteComponent } from '../AsistenteAnalista/MarkdownAsistenteComponent';
 import { useAsistenteAnalista } from '../../hooks/useAsistenteAnalista';
 import { borrarBorrador, borradorTieneContenido, guardarBorrador, leerBorrador } from '../../utils/borradorAsistente';
-import { addStory, deleteStory, generateStoryId, getStoredStories, getStoryById, updateStory } from '../../utils/storage';
+import { addStory, deleteStory, generateStoryId, getStoredStories, getStoryById, saveStoredStories, updateStory } from '../../utils/storage';
 import { CamposPlantillaComponent } from './CamposPlantillaComponent';
 import { descargarWord } from '../../utils/exportarWord';
 import { descargarPdf } from '../../utils/exportarPdf';
@@ -25,6 +25,10 @@ import { SIN_IDENTIFICAR, leerNombreUsuario } from '../../utils/usuarioActual';
 import { OPCION_AREA_SOLICITANTE, OPCION_SISTEMA, armarOpcion } from '../../data/catalogos';
 import { EditorCriteriosComponent } from './EditorCriteriosComponent';
 import { buildRepositoryPayload, repositorioApi, repositorioErrorMessage } from '../../services/repositorioApi';
+import { getWorkflow, resumeWorkflow, startWorkflow, WorkflowApiError } from '../../services/workflowApi';
+import { WorkflowInterruptionForm } from '../Comun/WorkflowInterruptionForm';
+import { WorkflowResultsPanel } from '../Comun/WorkflowResultsPanel';
+import '../Comun/workflow-panels.scss';
 import {
   MAX_AGENT_MESSAGE_CODEPOINTS,
   buildAnswersMessage,
@@ -74,17 +78,26 @@ const INFO_TYPE_OPTIONS = [
 const CrearHistoriaUsuarioContenido = () => {
   const navigate = useNavigate();
   const ubicacion = useLocation();
+  const workflowFromChange = ubicacion.state?.workflowSnapshot ?? null;
   const prefill = ubicacion.state?.prefill;
   const reanalizarId = ubicacion.state?.reanalizarId;
   // Revisión: el cambio de alcance se analiza sobre la misma HU (mismo código), no como una HU nueva.
   const revisionDeId = ubicacion.state?.revisionDeId;
   const [historiaOrigen] = useState(() => (revisionDeId ? getStoryById(revisionDeId) : null));
   // Borrador automático: solo para una historia nueva (no al reanalizar o prellenar).
-  const [borrador] = useState(() => (prefill || reanalizarId ? null : leerBorrador()));
+  const [borrador] = useState(() => (prefill || reanalizarId || workflowFromChange ? null : leerBorrador()));
   const [borradorRecuperado, setBorradorRecuperado] = useState(Boolean(borrador));
-  const [activeStep, setActiveStep] = useState(borrador?.activeStep ?? 1);
+  const [activeStep, setActiveStep] = useState(workflowFromChange
+    ? (workflowFromChange.interrupt?.kind === 'business_answers' ? 2 : 4)
+    : (borrador?.activeStep ?? 1));
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [formError, setFormError] = useState('');
+  const [workflowResponse, setWorkflowResponse] = useState(workflowFromChange);
+  const [workflowError, setWorkflowError] = useState('');
+  const [workflowErrorStatus, setWorkflowErrorStatus] = useState(null);
+  const [workflowBusy, setWorkflowBusy] = useState(false);
+  const workflowOperationRef = useRef(false);
+  const workflowControllerRef = useRef(null);
 
   // Agente Analista: la conversación vive mientras dura el wizard.
   const agent = useAsistenteAnalista();
@@ -137,7 +150,7 @@ const CrearHistoriaUsuarioContenido = () => {
 
   // Guarda el avance cada vez que cambia algo (solo en historias nuevas).
   useEffect(() => {
-    if (prefill || reanalizarId) return;
+    if (prefill || reanalizarId || workflowResponse) return;
     const estado = {
       activeStep, requirementName, infoType, description, requestType, system, codigoHu, requester,
       analyzedSignature, sentAnswers, analysis, questions, userStory, acceptanceCriteria, plantilla,
@@ -146,16 +159,129 @@ const CrearHistoriaUsuarioContenido = () => {
     if (borradorTieneContenido(estado)) guardarBorrador(estado);
   }, [activeStep, requirementName, infoType, description, requestType, system, codigoHu, requester,
     analyzedSignature, sentAnswers, analysis, questions, userStory, acceptanceCriteria, plantilla,
-    pendingQuestions, observations, prefill, reanalizarId]);
+    pendingQuestions, observations, prefill, reanalizarId, workflowResponse]);
 
-  const agentResponse = useMemo(() => latestAssistantResponse(agent.messages), [agent.messages]);
+  const legacyAgentResponse = useMemo(() => latestAssistantResponse(agent.messages), [agent.messages]);
+  const agentResponse = workflowResponse?.results?.analyst ?? legacyAgentResponse;
   const failedMessage = useMemo(() => latestFailedMessage(agent.messages), [agent.messages]);
-  const isProcessing = agent.isProcessing || isGeneratingStory;
+  const isProcessing = agent.isProcessing || isGeneratingStory || workflowBusy;
   const unsentQuestions = questionsToSend(questions, sentAnswers);
   const pendingCount = questions.filter((q) => q.status === 'pendiente').length;
   const agentError = failedMessage?.error || agent.error;
   const agentReady = Boolean(agentResponse?.listo_para_redactor) && unsentQuestions.length === 0;
   const sources = describeSources(agentResponse?.fuentes_consultadas);
+
+  const setWorkflowSnapshot = (snapshot) => {
+    setWorkflowResponse(snapshot);
+    setWorkflowError('');
+    setWorkflowErrorStatus(null);
+    const analystResult = snapshot?.results?.analyst;
+    if (analystResult) {
+      setAnalysis(mapAnalysis(analystResult.analisis));
+      setQuestions((previous) => mergeQuestions(previous, analystResult.preguntas));
+    }
+    const activeQuestions = snapshot?.interrupt?.payload?.questions;
+    if (Array.isArray(activeQuestions)) {
+      setQuestions((previous) => mergeQuestions(previous, activeQuestions));
+      setPendingQuestions(activeQuestions.map((question) => question.pregunta));
+    } else if (snapshot?.interrupt?.kind !== 'business_answers') {
+      setPendingQuestions([]);
+    }
+    const story = snapshot?.results?.story ?? snapshot?.interrupt?.payload?.story;
+    if (story) {
+      setUserStory({ asA: story.como, iWant: story.quiero, soThat: story.para });
+      setAcceptanceCriteria((story.criterios ?? []).map((criterion) => ({
+        given: criterion.dado,
+        when: criterion.cuando,
+        then: criterion.entonces,
+      })));
+      setObservations((snapshot?.results?.review_observations ?? story.observations ?? []).join('\n'));
+    }
+    if (snapshot?.interrupt?.kind === 'business_answers') setActiveStep(3);
+    else if (story) setActiveStep(4);
+  };
+
+  const runWorkflowRequest = async (operation) => {
+    if (workflowOperationRef.current) return null;
+    workflowOperationRef.current = true;
+    workflowControllerRef.current?.abort();
+    const controller = new AbortController();
+    workflowControllerRef.current = controller;
+    setWorkflowBusy(true);
+    setWorkflowError('');
+    setWorkflowErrorStatus(null);
+    try {
+      return await operation(controller.signal);
+    } catch (cause) {
+      if (cause?.name === 'AbortError') return null;
+      setWorkflowError(cause instanceof WorkflowApiError ? cause.message : 'No se pudo comunicar con el servicio del workflow.');
+      setWorkflowErrorStatus(cause?.status || null);
+      return null;
+    } finally {
+      workflowOperationRef.current = false;
+      workflowControllerRef.current = null;
+      setWorkflowBusy(false);
+    }
+  };
+
+  const refreshWorkflow = async () => {
+    if (!workflowResponse?.workflow_id) return;
+    const snapshot = await runWorkflowRequest((signal) => getWorkflow(workflowResponse.workflow_id, { signal }));
+    if (snapshot) setWorkflowSnapshot(snapshot);
+  };
+
+  const startFreshWorkflow = async () => {
+    if (!requirementName.trim() || !description.trim()) {
+      setWorkflowError('Complete el nombre y la descripción del requerimiento antes de iniciar otro flujo.');
+      return;
+    }
+    const requirement = buildRequirementMessage(
+      { name: requirementName, infoType, description, system, codigoHu: normalizarCodigoHu(codigoHu), requestType },
+    );
+    const snapshot = await runWorkflowRequest((signal) => startWorkflow({ mode: 'pre_grooming', requirement }, { signal }));
+    if (snapshot) setWorkflowSnapshot(snapshot);
+  };
+
+  const resumeWorkflowInterrupt = async (body) => {
+    if (!workflowResponse?.workflow_id || !body?.interrupt_id) return;
+    const snapshot = await runWorkflowRequest((signal) => resumeWorkflow(workflowResponse.workflow_id, body, { signal }));
+    if (!snapshot) return;
+    setWorkflowSnapshot(snapshot);
+    const persistence = snapshot.results?.persistence_result;
+    if (body.kind === 'po_approval' && body.response?.decision === 'aprobar' && persistence?.status === 'saved') {
+      const id = persistence.story_id;
+      const previous = getStoredStories();
+      const oldIndex = previous.findIndex((item) => String(item.id) === String(id));
+      const approved = {
+        ...baseStoryData(),
+        id,
+        status: 'aprobada',
+        approvedAt: persistence.approved_at ?? new Date().toISOString(),
+        repositorySynced: true,
+        analisisDesactualizado: false,
+        respuestasNuevas: false,
+        criteriosModificados: false,
+      };
+      if (oldIndex >= 0) previous[oldIndex] = { ...previous[oldIndex], ...approved };
+      else previous.unshift({ id, createdAt: new Date().toISOString().slice(0, 10), ...approved });
+      // Cache local para la navegación de la UI. La única escritura al Repositorio de HU
+      // es la que LangGraph acaba de completar en el backend.
+      saveStoredStories(previous);
+      borrarBorrador();
+      navigate(`/historias/${id}`);
+    } else if (body.kind === 'po_approval' && body.response?.decision === 'aprobar'
+      && persistence?.status === 'failed') {
+      setWorkflowError(snapshot.results?.completion_reason || 'El backend no pudo persistir la HU aprobada.');
+    }
+  };
+
+  useEffect(() => () => workflowControllerRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (!workflowFromChange) return;
+    setWorkflowSnapshot(workflowFromChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowFromChange?.workflow_id]);
 
   // Cada respuesta nueva del agente actualiza el análisis y las preguntas.
   const turnId = agentResponse?.turn_id;
@@ -198,6 +324,22 @@ const CrearHistoriaUsuarioContenido = () => {
       setFormError(`El requerimiento supera el máximo de ${MAX_AGENT_MESSAGE_CODEPOINTS} caracteres. Resuma o divida la información.`);
       return;
     }
+
+    const snapshot = await runWorkflowRequest((signal) => startWorkflow({
+      mode: 'pre_grooming',
+      requirement: message,
+    }, { signal }));
+    if (snapshot) {
+      setWorkflowSnapshot(snapshot);
+      setAnalyzedSignature(signature);
+      if (snapshot.status === 'failed') {
+        setWorkflowError(snapshot.results?.completion_reason || 'El workflow no pudo completar el análisis. Puede continuar con el modo manual.');
+      }
+      return;
+    }
+
+    setWorkflowResponse(null);
+    setWorkflowError((current) => current || 'El servicio de workflow no respondió. Se continuará con el Analista existente en modo manual.');
     // Al reanalizar una historia guardada, las respuestas de Negocio ya registradas viajan con el requerimiento.
     const respuestas = agentResponse ? '' : buildAnswersMessage(questions, sentAnswers);
     const mensajeCompleto = respuestas ? `${message}\n\n${respuestas}` : message;
@@ -215,6 +357,31 @@ const CrearHistoriaUsuarioContenido = () => {
 
   // Step 3 handler -> las respuestas de Negocio vuelven al agente
   const handleSendAnswers = async () => {
+    if (workflowResponse?.interrupt?.kind === 'business_answers') {
+      const pending = workflowResponse.interrupt.payload?.questions ?? [];
+      const unanswered = pending.filter((question) => {
+        const local = questions.find((item) => item.id === question.question_id);
+        return !String(local?.answer ?? '').trim();
+      });
+      if (unanswered.length) {
+        setFormError('Responda todas las preguntas pendientes de Negocio antes de continuar.');
+        return;
+      }
+      const resumeBody = {
+        kind: 'business_answers',
+        interrupt_id: workflowResponse.interrupt.interrupt_id,
+        response: {
+          answers: pending.map((question) => ({
+            question_id: question.question_id,
+            answer: questions.find((item) => item.id === question.question_id).answer.trim(),
+          })),
+        },
+      };
+      setFormError('');
+      const snapshot = await runWorkflowRequest((signal) => resumeWorkflow(workflowResponse.workflow_id, resumeBody, { signal }));
+      if (snapshot) setWorkflowSnapshot(snapshot);
+      return;
+    }
     const respuestas = buildAnswersMessage(questions, sentAnswers);
     if (!respuestas) return;
     // Si se recuperó un borrador, el agente ya no tiene la conversación: se le reenvía el requerimiento.
@@ -253,12 +420,26 @@ const CrearHistoriaUsuarioContenido = () => {
     setUserStory({ asA: '', iWant: '', soThat: '' });
     setAcceptanceCriteria([]);
     setPendingQuestions([]);
+    setWorkflowResponse(null);
+    setWorkflowError('');
     setFormError('');
     setActiveStep(1);
   };
 
   // Step 3 -> Step 4: borrador simulado (el Agente Redactor-Revisor aún no existe)
   const handleGenerateStory = () => {
+    if (workflowResponse) {
+      if (workflowResponse.interrupt?.kind === 'business_answers' || !workflowResponse.results?.story) {
+        setFormError('El Analista tiene preguntas de Negocio pendientes; deben responderse y enviarse al workflow primero.');
+        return;
+      }
+      setActiveStep(4);
+      return;
+    }
+    if (pendingCount > 0 || unsentQuestions.length > 0) {
+      setFormError('No avance a la HU mientras queden preguntas de Negocio sin respuesta y enviadas al Analista.');
+      return;
+    }
     setIsGeneratingStory(true);
 
     setTimeout(() => {
@@ -349,6 +530,15 @@ const CrearHistoriaUsuarioContenido = () => {
   const criteriosValidacion = validarCriterios(acceptanceCriteria);
   const storyIsComplete = Boolean(userStory.asA.trim() && userStory.iWant.trim() && userStory.soThat.trim())
     && criteriosValidacion.ok;
+  const workflowStory = workflowResponse?.results?.story;
+  const workflowStoryEdited = Boolean(workflowStory && (
+    userStory.asA !== workflowStory.como
+    || userStory.iWant !== workflowStory.quiero
+    || userStory.soThat !== workflowStory.para
+    || JSON.stringify(acceptanceCriteria.map(({ given, when, then }) => ({ dado: given, cuando: when, entonces: then })))
+      !== JSON.stringify(workflowStory.criterios)
+    || observations !== (workflowResponse.results?.review_observations ?? workflowStory.observations ?? []).join('\n')
+  ));
 
   const baseStoryData = () => ({
     title: requirementName,
@@ -374,9 +564,13 @@ const CrearHistoriaUsuarioContenido = () => {
 
   // Guardar sin aprobar: queda como borrador del analista
   const handleSaveDraft = () => {
+    const unanswered = questions
+      .filter((question) => question.status === 'pendiente' || !String(question.answer ?? '').trim())
+      .map((question) => question.question);
     const datos = {
       ...baseStoryData(),
-      status: pendingQuestions.length > 0 ? 'pendiente_de_informacion' : 'revisada'
+      pendingQuestions: unanswered,
+      status: unanswered.length > 0 ? 'pendiente_de_informacion' : 'revisada'
     };
     // Re-análisis de un borrador existente: se actualiza la misma HU en lugar de crear otra.
     const saved = (reanalizarId && updateStory(reanalizarId, { ...datos, analisisDesactualizado: false, respuestasNuevas: false, criteriosModificados: false })) || addStory(datos);
@@ -436,8 +630,46 @@ const CrearHistoriaUsuarioContenido = () => {
       <PasosComponent
         steps={STEPPER_STEPS}
         activeStep={activeStep}
-        onStepClick={(step) => setActiveStep(step)}
+        onStepClick={(step) => {
+          if ((workflowResponse?.interrupt?.kind === 'business_answers' || (!workflowResponse && pendingCount > 0)) && step > 3) {
+            setFormError('No avance con preguntas de Negocio pendientes; respóndalas y reanude el workflow.');
+            return;
+          }
+          if (workflowResponse?.interrupt?.kind === 'po_approval' && step === 5 && !workflowResponse.results?.story) {
+            setFormError('El workflow todavía no ha generado una HU para aprobación.');
+            return;
+          }
+          setFormError('');
+          setActiveStep(step);
+        }}
       />
+
+      {workflowResponse && (
+        <AlertaComponent type="info" title="Workflow LangGraph activo en memoria">
+          El identificador solo vive en esta sesión de la interfaz. Los checkpoints están en memoria del backend: al reiniciar el proceso se pierden y hay que iniciar un workflow nuevo. No se guarda el identificador en localStorage.
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
+            <BotonComponent variant="secondary" onClick={refreshWorkflow} disabled={workflowBusy}>Consultar estado del workflow</BotonComponent>
+            <BotonComponent variant="secondary" onClick={startFreshWorkflow} disabled={workflowBusy}>Iniciar un workflow nuevo</BotonComponent>
+          </div>
+        </AlertaComponent>
+      )}
+      {workflowError && (
+        <AlertaComponent type={workflowErrorStatus === 404 ? 'warning' : 'danger'} title={workflowErrorStatus ? `Workflow: HTTP ${workflowErrorStatus}` : 'Workflow no disponible'}>
+          {workflowError}
+          {!workflowResponse && <p>Puede seguir con el flujo manual del Analista existente. Una HU manual no se combinará con una aprobación del workflow.</p>}
+          {workflowResponse && workflowErrorStatus === 404 && <p>El checkpoint no se recuperó. Inicie un flujo nuevo para continuar.</p>}
+          {!workflowResponse && (
+            <div style={{ marginTop: '0.6rem' }}>
+              <BotonComponent variant="secondary" onClick={startFreshWorkflow} disabled={workflowBusy}>Reintentar con un workflow nuevo</BotonComponent>
+            </div>
+          )}
+        </AlertaComponent>
+      )}
+      {!workflowResponse && activeStep === 1 && !workflowError && (
+        <AlertaComponent type="info" title="Los workflows no se recuperan automáticamente">
+          El identificador de workflow no se guarda en localStorage y los checkpoints viven en memoria del backend. Si se recarga la página o se reinicia el proceso, inicie un flujo nuevo; la interfaz no afirmará que recuperó el checkpoint anterior.
+        </AlertaComponent>
+      )}
 
       {borradorRecuperado && (
         <AlertaComponent type="info" title="Se recuperó su borrador">
@@ -661,21 +893,23 @@ const CrearHistoriaUsuarioContenido = () => {
                   </AlertaComponent>
                 ) : (
                   <AlertaComponent type="warning" title={`Quedan ${pendingCount} preguntas pendientes`}>
-                    Registre las respuestas de Negocio y use «Enviar respuestas al agente». El agente actualizará el análisis y puede añadir nuevas preguntas.
+                    Registre las respuestas y envíelas al Analista. La HU no estará disponible para aprobación mientras quede alguna pregunta pendiente.
                   </AlertaComponent>
                 )}
 
-                {questions.length === 0 && (
+                {!workflowResponse && questions.length === 0 && (
                   <p style={{ fontStyle: 'italic', color: 'var(--color-text-secondary)' }}>El agente no generó preguntas para este requerimiento.</p>
                 )}
 
-                {questions.map((q, idx) => (
-                  <TarjetaPreguntaComponent
-                    key={q.id}
-                    question={q}
-                    index={idx}
-                    onAnswerChange={handleQuestionAnswerChange}
+                {workflowResponse?.interrupt?.kind === 'business_answers' ? (
+                  <WorkflowInterruptionForm
+                    interrupt={workflowResponse.interrupt}
+                    onResume={resumeWorkflowInterrupt}
+                    busy={workflowBusy}
+                    error={workflowError}
                   />
+                ) : !workflowResponse && questions.map((q, idx) => (
+                  <TarjetaPreguntaComponent key={q.id} question={q} index={idx} onAnswerChange={handleQuestionAnswerChange} />
                 ))}
 
                 {formError && <AlertaComponent type="danger" title="No se pudo enviar">{formError}</AlertaComponent>}
@@ -684,25 +918,17 @@ const CrearHistoriaUsuarioContenido = () => {
                   <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(2)}>
                     Atrás
                   </BotonComponent>
-                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                    <BotonComponent
-                      variant={unsentQuestions.length > 0 ? 'primary' : 'secondary'}
-                      icon={Sparkles}
-                      onClick={handleSendAnswers}
-                      disabled={unsentQuestions.length === 0}
-                    >
-                      Enviar respuestas al agente{unsentQuestions.length > 0 ? ` (${unsentQuestions.length})` : ''}
-                    </BotonComponent>
-                    <BotonComponent
-                      variant={agentReady ? 'primary' : 'secondary'}
-                      icon={ArrowRight}
-                      onClick={handleGenerateStory}
-                      disabled={unsentQuestions.length > 0}
-                      title={unsentQuestions.length > 0 ? 'Envíe primero las respuestas al agente' : undefined}
-                    >
-                      {agentReady ? 'Generar Historia de Usuario' : 'Continuar con preguntas pendientes'}
-                    </BotonComponent>
-                  </div>
+                  {!workflowResponse && (
+                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                      <BotonComponent variant={unsentQuestions.length > 0 ? 'primary' : 'secondary'} icon={Sparkles} onClick={handleSendAnswers} disabled={unsentQuestions.length === 0}>
+                        Enviar respuestas al agente{unsentQuestions.length > 0 ? ` (${unsentQuestions.length})` : ''}
+                      </BotonComponent>
+                      <BotonComponent variant={agentReady ? 'primary' : 'secondary'} icon={ArrowRight} onClick={handleGenerateStory} disabled={unsentQuestions.length > 0 || pendingCount > 0} title={pendingCount > 0 ? 'Responda y envíe todas las preguntas pendientes' : undefined}>
+                        Generar Historia de Usuario
+                      </BotonComponent>
+                      {pendingCount > 0 && <BotonComponent variant="secondary" onClick={handleSaveDraft}>Guardar borrador pendiente</BotonComponent>}
+                    </div>
+                  )}
                 </div>
               </TarjetaComponent>
             </div>
@@ -715,9 +941,26 @@ const CrearHistoriaUsuarioContenido = () => {
                 title="Paso 4 — Historia de Usuario Generada"
                 subtitle="Visualización de la historia en formato estándar y criterios de aceptación."
               >
-                <AlertaComponent type="warning" title="Borrador simulado: edítelo antes de continuar">
-                  El Agente Redactor-Revisor todavía no está implementado. El texto de abajo es una plantilla genérica: redacte la historia y los criterios con las respuestas de Negocio. Solo se guardará lo que usted deje aquí.
-                </AlertaComponent>
+                {workflowResponse
+                  ? <>
+                    <WorkflowResultsPanel results={workflowResponse.results} showStory />
+                    {workflowStoryEdited && <AlertaComponent type="warning" title="El contrato PO actual no incluye ediciones de HU">
+                      El checkpoint conserva la versión original del Redactor. Para que esta edición sea la que se persista, abandone el checkpoint y continúe por el guardado manual; la decisión del workflow no se enviará.
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                        <BotonComponent variant="secondary" onClick={() => { setWorkflowResponse(null); setWorkflowError('Se abandonó el checkpoint. La HU continuará por el flujo manual y no se enviará una aprobación LangGraph.'); }}>
+                          Abandonar workflow y continuar en modo manual
+                        </BotonComponent>
+                        <BotonComponent variant="secondary" onClick={refreshWorkflow} disabled={workflowBusy}>
+                          Restaurar borrador del checkpoint
+                        </BotonComponent>
+                      </div>
+                    </AlertaComponent>}
+                  </>
+                  : (
+                    <AlertaComponent type="warning" title="Borrador simulado: edítelo antes de continuar">
+                      El servicio de workflow no está disponible. Este borrador sigue el flujo manual existente, con generación simulada; edítelo antes de continuar.
+                    </AlertaComponent>
+                  )}
                 <AreaTextoComponent label="Como" id="story-as-a" required rows={2} value={userStory.asA} onChange={(e) => handleUserStoryChange('asA', e.target.value)} />
                 <AreaTextoComponent label="Quiero" id="story-i-want" required rows={2} value={userStory.iWant} onChange={(e) => handleUserStoryChange('iWant', e.target.value)} />
                 <AreaTextoComponent label="Para" id="story-so-that" required rows={2} value={userStory.soThat} onChange={(e) => handleUserStoryChange('soThat', e.target.value)} />
@@ -821,6 +1064,33 @@ const CrearHistoriaUsuarioContenido = () => {
                   <AlertaComponent type="warning" title="No se puede aprobar con preguntas pendientes">
                     Vuelva al paso 3, envíe las respuestas de Negocio al agente y repita hasta que no queden vacíos.{historiaOrigen ? '' : ' Mientras tanto puede guardar la HU como borrador.'}
                   </AlertaComponent>
+                ) : workflowResponse?.interrupt?.kind === 'po_approval' && !workflowStoryEdited ? (
+                  <>
+                    <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', margin: '1rem 0', fontSize: '0.95rem' }}>
+                      <input type="checkbox" checked={confirmAnonymized} onChange={(e) => setConfirmAnonymized(e.target.checked)} style={{ marginTop: '0.2rem' }} />
+                      <span>Confirmo que revisé la anonimización y que mi selección de Product Owner es deliberada.</span>
+                    </label>
+                    <WorkflowResultsPanel results={workflowResponse.results} />
+                    <WorkflowInterruptionForm
+                      interrupt={workflowResponse.interrupt}
+                      onResume={resumeWorkflowInterrupt}
+                      busy={workflowBusy}
+                      error={workflowError}
+                      canSubmit={confirmAnonymized}
+                    />
+                  </>
+                ) : workflowResponse?.interrupt?.kind === 'po_approval' && workflowStoryEdited ? (
+                  <AlertaComponent type="warning" title="La edición no se enviará a la API de aprobación">
+                    Restaure la versión del checkpoint para aprobarla en LangGraph, o abandone el workflow y use el guardado manual disponible en el paso 4. La edición manual nunca se enviará como aprobación del checkpoint.
+                  </AlertaComponent>
+                ) : workflowResponse?.results?.persistence_result?.status === 'saved' ? (
+                  <AlertaComponent type="success" title="HU aprobada y guardada por el backend">
+                    {workflowResponse.results.completion_reason}
+                  </AlertaComponent>
+                ) : workflowResponse ? (
+                  <AlertaComponent type={workflowResponse.status === 'cancelled' ? 'warning' : 'info'} title="Este workflow no espera una decisión PO ahora">
+                    {workflowResponse.results?.completion_reason || `Etapa actual: ${workflowResponse.stage}.`}
+                  </AlertaComponent>
                 ) : (
                   <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', margin: '1rem 0', fontSize: '0.95rem' }}>
                     <input
@@ -849,20 +1119,16 @@ const CrearHistoriaUsuarioContenido = () => {
                     <BotonComponent variant="secondary" icon={FileDown} onClick={handleDownloadPdf}>
                       Descargar PDF
                     </BotonComponent>
-                    {!historiaOrigen && (
+                    {!historiaOrigen && !workflowResponse && (
                       <BotonComponent variant="secondary" icon={Save} onClick={handleSaveDraft}>
                         Guardar borrador
                       </BotonComponent>
                     )}
-                    <BotonComponent
-                      variant="primary"
-                      icon={CheckCircle2}
-                      size="lg"
-                      onClick={handleApproveStory}
-                      disabled={pendingQuestions.length > 0 || !confirmAnonymized || isApproving}
-                    >
-                      {isApproving ? 'Guardando...' : 'Aprobar y guardar en el Repositorio'}
-                    </BotonComponent>
+                    {!workflowResponse && (
+                      <BotonComponent variant="primary" icon={CheckCircle2} size="lg" onClick={handleApproveStory} disabled={pendingQuestions.length > 0 || !confirmAnonymized || isApproving}>
+                        {isApproving ? 'Guardando...' : 'Aprobar y guardar en el Repositorio'}
+                      </BotonComponent>
+                    )}
                   </div>
                 </div>
               </TarjetaComponent>
