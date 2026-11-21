@@ -2,11 +2,11 @@
 
 **Spec**: [spec.md](spec.md)  
 **Plan**: [plan.md](plan.md)  
-**Estado**: T005-T009 y T055-T060 implementadas y validadas localmente. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. No se avanzo a fases posteriores.
+**Estado**: T005-T015 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
 
-> Por instruccion explicita del usuario se ejecuto solo T005-T009 y T055-T060. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitucion aun declara ratificacion pendiente. T002 se reviso contra el texto 2.0.0, pero queda pendiente su cierre formal. No se implementaron fases posteriores.
+> T005-T009 y T055-T060 se implementaron primero. Por instruccion posterior se implemento T010-T015 en modo experimental en esta rama. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitucion aun declara ratificacion pendiente. T002 se reviso contra el texto 2.0.0, pero queda pendiente su cierre formal. Este avance tecnico no representa aceptacion formal.
 
-## Fase 0 — Puertas de gobernanza (bloquea toda implementación)
+## Fase 0 — Puertas de gobernanza (aceptación formal pendiente)
 
 - [ ] T001 La [PR correctiva #4](https://github.com/gilmonge/cenfotec-curso-agentes-ia/pull/4) esta fusionada, pero GitHub registra `No reviews` y `.specify/memory/constitution.md` conserva `Ratification status: pending a human approval recorded in GitHub`. Falta aprobacion humana verificable; no se marca como completada.
 - [ ] T002 Se reviso `spec.md` frente al texto constitucional 2.0.0 y no se detectaron contradicciones para esta fase; el cierre formal depende de la ratificacion verificable de T001.
@@ -32,15 +32,15 @@
 
 ## Fase 2 — Analista y espera de Negocio (US1)
 
-- [ ] T010 Añadir pruebas de no regresión del Analista existente y pruebas de loop de preguntas, pausa y reanudación por `Command(resume=...)`.
-- [ ] T011 Adaptar el Analista existente como nodo sin cambiar su responsabilidad ni salida contractual. Archivos reutilizados: `agentes/analista/core/orchestrator.py`, `core/models.py`, `core/opencode_client.py`, `mcp/tools.py`.
-- [ ] T012 Implementar `espera_negocio` con `interrupt()` y respuesta humana tipada; respuestas vuelven a `analista`, vacíos resueltos continúan a Redactor.
+- [x] T010 Añadir pruebas de no regresión del Analista existente y pruebas de loop de preguntas, pausa y reanudación por `Command(resume=...)`. Evidencia: pruebas existentes de `run_turn` más `tests/integration/test_workflow_analyst_writer.py`.
+- [x] T011 Adaptar el Analista existente como nodo sin cambiar su responsabilidad ni salida contractual. El nodo llama `orchestrator.run_turn` y valida su `AgentTurnResponse` existente.
+- [x] T012 Implementar `espera_negocio` con `interrupt()` y `BusinessAnswerSubmission`; `WorkflowRuntime.resume` usa `Command(resume=...)` y vuelve a ejecutar Analista antes de decidir si continúa.
 
 ## Fase 3 — Redactor y revisión (US2)
 
-- [ ] T013 Añadir pruebas primero para Como/Quiero/Para, criterios Dado/Cuando/Entonces, salida estructurada y ausencia de decisión de aprobación.
-- [ ] T014 Crear prompt externo y nodo Python Redactor-Revisor, usando OpenCode a través del cliente existente y LangChain para prompt/parsing.
-- [ ] T015 Implementar revisión con contador limitado a dos rondas y observaciones estructuradas; falla final permanece no aprobada y espera al PO.
+- [x] T013 Probar Como/Quiero/Para, criterios Dado/Cuando/Entonces, salida estructurada y ausencia de decisión de aprobación. Evidencia: `tests/unit/test_redactor_revisor.py`.
+- [x] T014 Integrar el prompt externo existente y nodo Python Redactor-Revisor, usando OpenCode a través del cliente existente y LangChain para prompt/parsing.
+- [x] T015 Implementar revisión con contador limitado a dos rondas y observaciones estructuradas; al agotar rondas la historia queda `needs_attention` y espera al PO, sin aprobarse. Evidencia de integración con OpenCode simulado en `tests/integration/test_workflow_analyst_writer.py`.
 
 ## Fase 4 — Asesor Técnico (US3)
 
@@ -110,9 +110,9 @@
 
 ## Dependencias
 
-- La puerta constitucional de T001/T002 sigue pendiente; por instruccion expresa se completo unicamente la base T005-T009 y el aislamiento T055-T060.
+- La ratificacion formal T001/T002 sigue pendiente; se completaron experimentalmente T005-T015 y T055-T060 por instruccion expresa en esta rama, sin declarar aceptacion formal.
 - Fases 2–6 dependen de fundamentos T005–T009.
 - T055–T060 deben preceder la ejecución de los nodos multiagente; T055 y T060 prueban selección y aislamiento con OpenCode simulado.
 - La publicación de una HU depende de T019–T021; decisiones de cambio dependen de T022–T024.
-- No se avanzara a T010-T054 hasta validar esta fase y resolver la ratificacion de T001; no ejecutar ingesta real ni llamadas Pinecone en pytest.
+- La ratificacion formal de T001/T002 sigue pendiente. T010-T015 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; esto no equivale a aceptacion formal. No ejecutar ingesta real ni llamadas Pinecone en pytest.
 - T037–T043 preceden a T044; T044 precede a integración de retrieval T045–T050; T051–T052 documentan la integración; T030–T032 y T053–T054 son aceptación final después de T050.
