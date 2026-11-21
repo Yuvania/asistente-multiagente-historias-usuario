@@ -16,6 +16,7 @@ import httpx
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from agentes.analista.core.agent_registry import AgentId, get_agent_spec
 from agentes.analista.core.prompt_loader import PromptSnapshot, load_prompt, verify_loaded_prompt
 from agentes.analista.core.opencode_compat import (
     SUPPORTED_OPENCODE_VERSIONS,
@@ -118,11 +119,17 @@ class OpenCodeClient:
         *,
         client: httpx.AsyncClient | None = None,
         prompt: PromptSnapshot | None = None,
+        agent_id: AgentId | str = AgentId.ANALYST,
     ) -> None:
         self.settings = settings or OpenCodeSettings.from_environment()
         if not self.settings.server_password.get_secret_value():
             raise OpenCodeClientError("OPENCODE_AUTH_FAILED", "Falta configurar la autenticación local de OpenCode.")
-        self.prompt = prompt or load_prompt()
+        try:
+            self.agent_spec = get_agent_spec(agent_id)
+        except ValueError as exc:
+            raise OpenCodeClientError("OPENCODE_INCOMPATIBLE", "El agente solicitado no está configurado.") from exc
+        self.agent_id = self.agent_spec.agent_id.value
+        self.prompt = prompt or load_prompt(self.agent_spec.prompt_path)
         self._client = client
         self._owns_client = client is None
         self._deadline: float | None = None
@@ -211,12 +218,22 @@ class OpenCodeClient:
             raise OpenCodeClientError("OPENCODE_INCOMPATIBLE", "La versión o el esquema de OpenCode no coincide.")
         return value
 
-    async def verify_agent(self, agent_id: str = "analista") -> dict[str, Any]:
+    def _selected_agent(self, agent_id: AgentId | str | None) -> str:
+        requested = self.agent_id if agent_id is None else str(agent_id)
+        if requested != self.agent_id:
+            raise OpenCodeClientError(
+                "OPENCODE_INCOMPATIBLE",
+                "La invocación solicitó un agente distinto al configurado en este cliente.",
+            )
+        return self.agent_id
+
+    async def verify_agent(self, agent_id: AgentId | str | None = None) -> dict[str, Any]:
+        selected_agent = self._selected_agent(agent_id)
         envelope = await self._request("GET", "/api/agent", params=self._location_params())
         agents = envelope.get("data") if isinstance(envelope, dict) else None
-        agent = next((item for item in agents or [] if item.get("id") == agent_id), None)
+        agent = next((item for item in agents or [] if item.get("id") == selected_agent), None)
         if not isinstance(agent, dict):
-            raise OpenCodeClientError("OPENCODE_INCOMPATIBLE", "El agente Analista no está cargado en el location esperado.")
+            raise OpenCodeClientError("OPENCODE_INCOMPATIBLE", "El agente seleccionado no está cargado en el location esperado.")
         permissions = agent.get("permission", agent.get("permissions", []))
         if not _contains_deny_all(permissions):
             raise OpenCodeClientError("OPENCODE_INCOMPATIBLE", "El agente no conserva permisos deny-all.")
@@ -286,10 +303,14 @@ class OpenCodeClient:
             )
         return {"providerID": provider_id, "id": str(match["modelID"])}
 
-    async def create_session(self, *, title: str, agent_id: str = "analista", model: Mapping[str, str] | None = None) -> dict[str, Any]:
+    async def create_session(
+        self, *, title: str, agent_id: AgentId | str | None = None,
+        model: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
+        selected_agent = self._selected_agent(agent_id)
         body = {
             "title": title,
-            "agent": agent_id,
+            "agent": selected_agent,
             "model": dict(model or await self.select_model()),
             "location": {"directory": str(PROJECT_ROOT)},
             "permissions": DENY_ALL,
@@ -383,8 +404,12 @@ class OpenCodeClient:
                 raise
 
     @asynccontextmanager
-    async def session(self, *, title: str, agent_id: str = "analista", model: Mapping[str, str] | None = None) -> AsyncIterator[dict[str, Any]]:
-        value = await self.create_session(title=title, agent_id=agent_id, model=model)
+    async def session(
+        self, *, title: str, agent_id: AgentId | str | None = None,
+        model: Mapping[str, str] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        selected_agent = self._selected_agent(agent_id)
+        value = await self.create_session(title=title, agent_id=selected_agent, model=model)
         failed = False
         try:
             yield value

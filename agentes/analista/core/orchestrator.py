@@ -16,6 +16,7 @@ from langchain_core.exceptions import OutputParserException
 from langchain_core.runnables import RunnableLambda, RunnableParallel
 from pydantic import TypeAdapter, ValidationError
 
+from agentes.analista.core.agent_registry import AgentId, AgentPermissionError, allowed_mcp_tools, authorize_mcp_tool
 from agentes.analista.core.context_builder import build_context, render_user_prompt
 from agentes.analista.core.models import (
     AgentTurnResponse,
@@ -124,7 +125,12 @@ def _result_count(name: str, data: Any) -> int:
     return len(data[fields[name][0]])
 
 
-async def _execute_tools(query: str, trace: Any = None) -> tuple[list[dict[str, Any]], list[ToolExecution], list[str]]:
+async def _execute_tools(
+    query: str,
+    trace: Any = None,
+    *,
+    agent_id: AgentId | str = AgentId.ANALYST,
+) -> tuple[list[dict[str, Any]], list[ToolExecution], list[str]]:
     started = time.monotonic()
     try:
         async with MCPAdapter(MCP_SERVER) as adapter:
@@ -132,8 +138,22 @@ async def _execute_tools(query: str, trace: Any = None) -> tuple[list[dict[str, 
             by_name = {tool.name: tool for tool in tools}
             if set(by_name) != EXPECTED_TOOLS:
                 raise OrchestrationError(ErrorCode.MCP_UNAVAILABLE, "El servidor MCP no expone el conjunto autorizado.", retryable=True)
+            try:
+                allowed = allowed_mcp_tools(agent_id)
+                selected_tools = {
+                    name: tool for name, tool in by_name.items()
+                    if name in allowed and authorize_mcp_tool(agent_id, name)
+                }
+            except AgentPermissionError as exc:
+                raise OrchestrationError(
+                    ErrorCode.MCP_UNAVAILABLE,
+                    "El rol no está autorizado para consultar estas herramientas.",
+                ) from exc
+            if not selected_tools:
+                return [], [], ["Este rol no tiene herramientas MCP asignadas en esta fase."]
 
             async def invoke(name: str, tool: Any) -> dict[str, Any]:
+                authorize_mcp_tool(agent_id, name)
                 start = time.monotonic()
                 operation = trace.operation(
                     kind="tool", name=f"mcp-{name}", metadata={"tool_name": name}
@@ -175,7 +195,7 @@ async def _execute_tools(query: str, trace: Any = None) -> tuple[list[dict[str, 
 
             parallel = RunnableParallel(**{
                 name: tool_runner(name, tool)
-                for name, tool in by_name.items()
+                for name, tool in selected_tools.items()
             })
             results = await asyncio.wait_for(parallel.ainvoke({"consulta": query}), timeout=MCP_TIMEOUT_SECONDS + 1)
     except OrchestrationError:
@@ -187,7 +207,7 @@ async def _execute_tools(query: str, trace: Any = None) -> tuple[list[dict[str, 
     observations: list[dict[str, Any]] = []
     executions: list[ToolExecution] = []
     limitations: list[str] = []
-    for name in sorted(EXPECTED_TOOLS):
+    for name in sorted(selected_tools):
         result = results[name]
         status = result["status"]
         error_code = None if status == ToolStatus.OK else ("MCP_TIMEOUT" if status == ToolStatus.TIMEOUT else "MCP_TOOL_FAILED")

@@ -1,9 +1,9 @@
 # Plan de implementación: Sistema multiagente para Historias de Usuario
 
-**Rama**: `feat/sistema-multiagente-rag` | **Fecha**: 2026-11-19 | **Spec**: [spec.md](spec.md)  
+**Rama**: `feat/sistema-multiagente-rag` | **Fecha**: 2026-11-21 | **Spec**: [spec.md](spec.md)
 **Entrada**: Requisitos proporcionados por el usuario; constitución vigente; especificación `002-chat-agente-analista`.
 
-> **Estado del gate**: STOP. La constitución vigente 1.0.1 excluye el sistema multiagente y los agentes Redactor-Revisor, Asesor Técnico y Gestor de Cambios. La rama separada `docs/constitution-multiagent-system` contiene una propuesta 2.0.0 pendiente de PR, revisión y aprobación humana. Este plan no autoriza implementación. Reanudar el plan de ejecución solo después de la aprobación y de validar la spec contra la constitución aprobada.
+> **Estado del gate**: La constitucion 2.0.0 esta presente en esta rama y la PR correctiva #4 esta fusionada. La verificacion de GitHub muestra que la PR no recibio reviews y la constitucion conserva `Ratification status: pending a human approval recorded in GitHub`; T001 sigue abierto. La spec se reviso contra el texto 2.0.0: la base de LangGraph, los cuatro roles, OpenCode deny-all y el aislamiento MCP son compatibles. Por instruccion explicita del usuario se implementa unicamente T005-T009 y T055-T060; no se avanza a etapas posteriores. El gate documental no se declarara cerrado hasta contar con ratificacion verificable en GitHub.
 
 ## Resumen
 
@@ -17,18 +17,18 @@ Extender el backend Python del Analista a dos flujos coordinados por un `StateGr
 **Pruebas**: pytest existente, mocks de OpenCode/MCP/repositorio, pruebas unitarias de nodos, contratos y transiciones; no se realizan llamadas reales a modelos.  
 **Plataforma**: backend actual y despliegue actual; ningún servicio Render adicional.  
 **Metas de desempeño**: no se fija SLA nuevo en ausencia de mediciones/requisitos; se reutilizan deadlines y errores controlados del backend existente donde apliquen.  
-**Límites**: no tocar el rol del Analista; no escribir código hasta aprobar gobernanza; Asesor solo lee el ejemplo ficticio permitido; agentes consultan Pinecone en modo read-only; la única escritura a Pinecone ocurre por el comando de ingesta sobre fuentes permitidas; no crear servicios Render adicionales; no registrar secretos, código completo ni datos personales en observabilidad.
+**Limites**: conservar el rol del Analista; la implementacion actual se limita a T005-T009 y T055-T060; Asesor solo lee evidencia permitida; agentes consultan Pinecone en modo read-only; la unica escritura a Pinecone ocurre por el comando de ingesta sobre fuentes permitidas; no crear servicios Render adicionales; no registrar secretos, codigo completo ni datos personales en observabilidad.
 
 ## Puerta constitucional
 
 | Revisión | Resultado actual | Acción previa a implementación |
 |---|---|---|
-| Constitución 1.0.1 y alcance | **Falla / bloquea**: excluye sistema multiagente, Pinecone y tres de los cuatro agentes | Revisar y aprobar mediante PR la propuesta 2.0.0 en `docs/constitution-multiagent-system-proposal.md` según Governance |
+| Constitucion 2.0.0 y alcance | Texto 2.0.0 presente y alcance compatible; PR #4 fusionada sin review y el estado de ratificacion sigue pendiente | Obtener aprobacion humana registrada en GitHub antes de cerrar T001 |
 | Stack | React/SCSS y Python se mantienen | Agregar cambios del frontend solo con JSX/SCSS existentes |
 | OpenCode | Se mantiene como único motor de IA | Reutilizar `opencode_client.py`; no llamar proveedores directamente |
 | Seguridad | Lectura de conocimiento en allowlist; escritura Pinecone confinada a ingesta explícita; secreto solo en entorno | OpenCode deny-all; el backend Python aplica allowlist MCP por agente/rol y namespace; índice fijo, validación de esquema y redacción de trazas |
 | Checkpoint | `InMemorySaver` solicitado | Documentar pérdida al reiniciar; no llamarlo persistencia permanente |
-| Spec Kit | Requisitos y plan en Draft | Tras enmienda, ejecutar revisión/clarificación/análisis del equipo antes de código |
+| Spec Kit | Revision de `spec.md` contra el texto 2.0.0 completada; no se encontraron contradicciones en el alcance de esta fase | Registrar la ratificacion y cerrar T001/T002 en `tasks.md` |
 
 ## Decisiones técnicas propuestas (condicionadas a aprobación)
 
@@ -128,7 +128,7 @@ Cuando se apruebe la enmienda y el plan actualizado, ejecutar pytest del backend
 - [data-model.md](data-model.md) — estado tipado y entidades.
 - [contracts/workflow-api.md](contracts/workflow-api.md) — contratos propuestos del backend.
 - [quickstart.md](quickstart.md) — arranque y verificación previstos en PowerShell.
-- [tasks.md](tasks.md) — tareas bloqueadas por aprobación de gobernanza.
+- [tasks.md](tasks.md) - alcance, dependencias y evidencia de la fase actual; T001 continua abierto.
 
 ## Seguimiento de complejidad
 

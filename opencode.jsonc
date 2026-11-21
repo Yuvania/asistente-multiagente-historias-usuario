@@ -2,9 +2,33 @@
   "$schema": "https://opencode.ai/config.json",
   "agents": {
     "analista": {
-      "description": "Agente de análisis de vacíos de requerimientos para el proyecto Historias de Usuario.",
+      "description": "Análisis de vacíos de requerimientos; conserva el contrato actual del Analista.",
       "mode": "primary",
       "system": "{file:./agentes/analista/prompts/sistema.md}",
+      "permissions": [
+        { "action": "*", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "redactor_revisor": {
+      "description": "Redacta y revisa HU en dos rondas como máximo; nunca aprueba.",
+      "mode": "subagent",
+      "system": "{file:./agentes/analista/prompts/redactor_revisor.md}",
+      "permissions": [
+        { "action": "*", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "asesor_tecnico": {
+      "description": "Evalúa implicaciones técnicas con evidencia recuperada y permitida.",
+      "mode": "subagent",
+      "system": "{file:./agentes/analista/prompts/asesor_tecnico.md}",
+      "permissions": [
+        { "action": "*", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "gestor_cambios": {
+      "description": "Clasifica solicitudes frente a HU aprobadas; recomienda y no decide.",
+      "mode": "subagent",
+      "system": "{file:./agentes/analista/prompts/gestor_cambios.md}",
       "permissions": [
         { "action": "*", "resource": "*", "effect": "deny" }
       ]

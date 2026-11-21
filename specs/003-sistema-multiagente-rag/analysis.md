@@ -1,17 +1,17 @@
 # Análisis de consistencia Spec Kit — Feature 003
 
-**Fecha**: 2026-11-19
+**Fecha**: 2026-11-21
 **Alcance**: `spec.md`, `plan.md`, `tasks.md`, constitución vigente, `research.md`, `data-model.md`, `contracts/workflow-api.md` y `quickstart.md`.
-**Método**: análisis cruzado según `.opencode/commands/speckit.analyze.md`; se ejecutó `check-prerequisites.ps1 -Json -RequireSpec -RequireTasks -IncludeTasks` y se revisaron cobertura, orden, contradicciones y restricciones constitucionales. Sin implementación ni pruebas funcionales.
+**Metodo**: revision cruzada de spec, plan, tareas y constitucion 2.0.0 despues de actualizar la rama desde `origin`; verificacion de la PR #4 en GitHub y ejecucion de pruebas automatizadas de esta fase registrada al final. La PR #4 aparece fusionada, sin reviews, y el archivo constitucional mantiene la ratificacion pendiente.
 
 ## Specification Analysis Report
 
 | ID | Categoría | Severidad | Ubicación | Hallazgo y corrección/estado |
 |---|---|---|---|---|
-| C1 | Alineación constitucional | CRITICAL | Constitución 1.0.1; T001–T002 | La constitución vigente aún excluye sistema multiagente, Pinecone y tres roles. La rama constitucional ahora contiene una propuesta 2.0.0, pero sigue pendiente de PR y aprobación humana. No se trata como vigente; el gate continúa abierto. |
+| C1 | Alineacion constitucional | CRITICAL | Constitucion 2.0.0; T001-T002 | La rama ya contiene el texto 2.0.0 y la [PR correctiva #4](https://github.com/gilmonge/cenfotec-curso-agentes-ia/pull/4) esta fusionada. GitHub muestra No reviews y el archivo conserva Ratification status: pending a human approval recorded in GitHub; T001 sigue abierto. |
 | I1 | Inconsistencia técnica | HIGH — corregida | `research.md` D-007/D-008; `spec.md` FR-017; `plan.md`; tareas T005/T033–T035; contrato y quickstart | Se eliminó el enfoque document-index/integrated embeddings. La decisión única es índice vectorial convencional con `PineconeEmbeddings` y `PineconeVectorStore` de `langchain-pinecone`. Dimensión 1024, cosine, AWS `us-east-1`. |
 | I2 | Divergencia de guía | HIGH — corregida | `research.md`; propuesta constitucional; `spec.md` FR-006/FR-026 | La guía original indicada por el equipo usa .NET; feature 003 conserva el repositorio ficticio en Python. La guía fuente no está versionada y no se infiere contenido adicional. |
-| I3 | Versión constitucional | HIGH — corregida en la propuesta | T001; rama `docs/constitution-multiagent-system`; `research.md` | Se sustituyó la propuesta MINOR 1.1.0 por MAJOR 2.0.0 porque se redefinen reglas incompatibles de alcance y arquitectura. La constitución activa permanece 1.0.1 hasta aprobación. |
+| I3 | Version constitucional | HIGH - corregida en el texto 2.0.0 | T001; [PR #4](https://github.com/gilmonge/cenfotec-curso-agentes-ia/pull/4); `research.md` | La version presente es MAJOR 2.0.0 y habilita el alcance de feature 003. La [PR #4](https://github.com/gilmonge/cenfotec-curso-agentes-ia/pull/4) corrigio el alcance declarado, pero no registra review humana; la ratificacion formal sigue pendiente. |
 | G1 | Cobertura de tareas | HIGH — corregida | `tasks.md` T055–T060; `spec.md` FR-028–FR-032 | Se añadieron tareas de registro en `opencode.jsonc`, prompts individuales, permisos mínimos, selección explícita en `OpenCodeClient` y pruebas de ejecución/aislamiento por agente. |
 | O1 | Orden de tareas | HIGH — corregida | `tasks.md` Fases 9–13 | Las pruebas de aceptación final (T030–T032, T053–T054) ahora se ejecutan después de la integración Pinecone T033–T050. |
 | U1 | Límites de API/UI | MEDIUM — resuelta documentalmente | `spec.md` FR-033; `data-model.md`; `contracts/workflow-api.md`; T004 | Se fijaron límites de entrada de 4.000 caracteres, solicitud de cambio de 2.000 y una operación activa por workflow. Se documentan estados/interrupciones, reanudación humana y pérdida del checkpoint al reiniciar. |
@@ -44,8 +44,8 @@
 
 ## Constitution Alignment Issues
 
-- **Un bloqueo CRITICAL sigue abierto**: `.specify/memory/constitution.md` en la rama activa `feat/sistema-multiagente-rag` es 1.0.1 y excluye la feature. La propuesta 2.0.0 en la rama constitucional es borrador para revisión, no una aprobación. Solo el equipo mediante PR puede resolver este bloqueo.
-- No se accedió a secretos. No se usó una credencial Pinecone, no se creó índice y no se llamó Pinecone.
+- **Un bloqueo CRITICAL sigue abierto**: la constitucion 2.0.0 ya esta en `feat/sistema-multiagente-rag`, pero la ratificacion figura pendiente y la [PR #4](https://github.com/gilmonge/cenfotec-curso-agentes-ia/pull/4) no tiene reviews en GitHub. El usuario pidio implementar expresamente esta fase; esa instruccion no constituye evidencia de aprobacion registrada para cerrar T001.
+- No se accedio a secretos, no se uso una credencial Pinecone, no se creo indice ni se llamo a Pinecone real. Las pruebas de esta fase usan dependencias/imports y mocks locales.
 
 ## Unmapped Tasks
 
@@ -60,12 +60,21 @@ No se detectaron tareas de implementación sin requisito/escenario asociado. T00
 - Cobertura de SC: **100%**
 - Ambigüedades documentales abiertas: **0**
 - Duplicaciones críticas: **0**
-- Bloqueos CRITICAL: **1** (aprobación constitucional pendiente)
+- Bloqueos CRITICAL: **1** (ratificacion constitucional pendiente en GitHub; PR #4 fusionada sin reviews)
+
+## Resultados verificados
+
+| Comprobacion | Evidencia |
+|---|---|
+| pytest backend completo | `python -m pytest .\agentes\analista\tests -q`: **171 passed, 1 warning** (aviso beta de `langchain.mcp`). |
+| Dependencias Python 3.12 | `uv pip compile requirements.txt --python-version 3.12 --constraint requirements.lock --output-file $env:TEMP\requirements-feature-003-verify.lock` (desde `agentes/analista`): 129 paquetes resueltos; los 129 coinciden con el lock (106 pins preexistentes preservados y 23 paquetes faltantes incorporados). |
+| Integridad del entorno | `.\.venv\Scripts\python.exe -m pip check` (desde `agentes/analista`): `No broken requirements found.` |
+| Imports de integracion | `PineconeEmbeddings`, `PineconeVectorStore`, `Pinecone`, `StateGraph` e `InMemorySaver`: instanciados con catalogo e indice simulados; sin llamadas de red a Pinecone. |
 
 ## Próximas acciones
 
-1. Abrir/revisar PR de la enmienda constitucional 2.0.0 y obtener aprobación explícita; retirar el informe temporal de impacto antes del merge.
-2. Después de esa aprobación, completar T002 y revisar la spec contra la constitución ya vigente.
-3. No iniciar T005 hasta cerrar la puerta constitucional. T003 y T004 están completadas.
+1. Registrar la aprobacion humana de la constitucion 2.0.0 en GitHub; PR #4 esta fusionada pero no tiene reviews.
+2. T002: la spec se contrasto con el texto 2.0.0 y no se encontraron contradicciones; mantener la puerta formal pendiente mientras T001 siga abierto.
+3. T005-T009 y T055-T060 se ejecutan por instruccion explicita; no avanzar a tareas posteriores hasta validar esta fase.
 
-**Resultado**: las contradicciones documentales de stack, Pinecone, versión propuesta, cobertura de agentes y orden de aceptación quedaron corregidas. La implementación permanece bloqueada por T001.
+**Resultado**: la revision contra el texto constitucional 2.0.0 no encontro contradicciones de arquitectura para esta fase. La evidencia de GitHub no permite cerrar T001 ni afirmar que no quedan bloqueos CRITICAL; la ratificacion continua pendiente. La implementacion se restringe al conjunto T005-T009 y T055-T060 solicitado.

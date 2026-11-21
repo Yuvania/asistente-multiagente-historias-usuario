@@ -2,33 +2,33 @@
 
 **Spec**: [spec.md](spec.md)  
 **Plan**: [plan.md](plan.md)  
-**Estado**: Draft; T003 y T004 documentales completadas. La implementación sigue bloqueada mientras T001 (PR y aprobación humana de la enmienda) esté pendiente.
+**Estado**: T005-T009 y T055-T060 implementadas y validadas localmente. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. No se avanzo a fases posteriores.
 
-> No hay tareas de código autorizadas mientras Governance no apruebe una enmienda que habilite el sistema multiagente. Todos los checks de implementación permanecen sin marcar. No afirmar ejecución de pruebas de esta feature.
+> Por instruccion explicita del usuario se ejecuto solo T005-T009 y T055-T060. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitucion aun declara ratificacion pendiente. T002 se reviso contra el texto 2.0.0, pero queda pendiente su cierre formal. No se implementaron fases posteriores.
 
 ## Fase 0 — Puertas de gobernanza (bloquea toda implementación)
 
-- [ ] T001 Revisar mediante PR y aprobar humanamente la enmienda constitucional propuesta 2.0.0 en `docs/constitution-multiagent-system`; retirar el informe temporal de impacto antes de fusionar. La rama/propuesta preparada no equivale a aprobación.
-- [ ] T002 Tras aprobar la enmienda, actualizar el texto final de la enmienda y volver a revisar `spec.md` contra la constitución vigente; resolver contradicciones antes de continuar.
+- [ ] T001 La [PR correctiva #4](https://github.com/gilmonge/cenfotec-curso-agentes-ia/pull/4) esta fusionada, pero GitHub registra `No reviews` y `.specify/memory/constitution.md` conserva `Ratification status: pending a human approval recorded in GitHub`. Falta aprobacion humana verificable; no se marca como completada.
+- [ ] T002 Se reviso `spec.md` frente al texto constitucional 2.0.0 y no se detectaron contradicciones para esta fase; el cierre formal depende de la ratificacion verificable de T001.
 - [x] T003 Ejecutar análisis de consistencia Spec Kit sobre spec, plan y tareas; corregir hallazgos documentales y registrar decisiones técnicas en `research.md` y el reporte de análisis. La discrepancia constitucional queda bloqueada por T001.
 - [x] T004 Confirmar Python 3.12 desde el Dockerfile actual; fijar en el contrato requerimiento ≤4.000 caracteres, solicitud de cambio ≤2.000 y una operación activa por workflow; documentar la presentación/reanudación de interrupciones y la pérdida de checkpoint tras reinicio.
 
-## Fase 1 — Fundamentos (solo tras T001–T004)
+## Fase 1 - Fundamentos (alcance ejecutado por instruccion expresa; ratificacion T001 pendiente)
 
-- [ ] T005 Añadir LangGraph, `pinecone` y `langchain-pinecone` con pins compatibles con Python 3.12; validar `PineconeEmbeddings` + `PineconeVectorStore` para el índice vectorial convencional y regenerar el lock sin actualizar dependencias ajenas. No fijar versiones por el requisito de document indexes. Archivos: `agentes/analista/requirements.txt`, `agentes/analista/requirements.lock`.
-- [ ] T006 Escribir primero pruebas unitarias de contratos tipados, serialización del estado, transiciones y flujo nominal con mocks. Archivos: `agentes/analista/tests/unit/`, `agentes/analista/tests/integration/`.
-- [ ] T007 Definir estado del workflow y contratos Pydantic, conservando los modelos/API existentes del Analista. Archivos: `agentes/analista/core/models.py` y módulos de workflow nuevos.
-- [ ] T008 Implementar `StateGraph` compilado con `InMemorySaver`, estado tipado y aristas explícitas; garantizar que los IDs de hilo se mantienen solo durante la vida del proceso.
-- [ ] T009 Integrar spans Langfuse correlacionados y seguros por etapa reutilizando `agentes/analista/core/observability.py`; probar degradación cuando Langfuse no está disponible.
+- [x] T005 Anadir LangGraph, `pinecone` y `langchain-pinecone` con pins compatibles con Python 3.12; validar construccion de `PineconeEmbeddings` + `PineconeVectorStore` con catalogo/indice simulados y sin red, y regenerar el lock preservando los 106 pins previos; se anadieron solo paquetes faltantes. Evidencia: `requirements.txt`, `requirements.lock`, `tests/unit/test_vector_store_dependency_contract.py`.
+- [x] T006 Escribir primero pruebas unitarias de contratos tipados, serializacion del estado, ruteo y flujo nominal con dobles. Evidencia: `tests/unit/test_workflow_foundation.py`, `tests/integration/test_workflow_agent_isolation.py`.
+- [x] T007 Definir estado `WorkflowState` y contratos Pydantic serializables para workflow, HU en borrador, evidencia tecnica y recomendacion de cambio; se conservan los modelos actuales del Analista. Evidencia: `core/workflow_models.py`.
+- [x] T008 Implementar `StateGraph` compilado con `InMemorySaver`, ruteo explicito por modo y `WorkflowRuntime`; los IDs `thread_id` quedan internos al runtime en memoria y no se devuelven en snapshots. Evidencia: `core/workflow_graph.py` y pruebas de checkpoint.
+- [x] T009 Reutilizar `core/observability.py` para spans correlacionados de etapa/agente, con metadatos operativos sin prompts o respuestas; probar backend deshabilitado y fallo de exportacion sin detener el flujo.
 
 ## Fase transversal — Configuración y aislamiento de agentes OpenCode
 
-- [ ] T055 Añadir primero pruebas unitarias con OpenCode simulado para cargar y seleccionar cada agente, incluido rechazo de agente desconocido, OpenCode deny-all y contextos/herramientas cruzados del backend.
-- [ ] T056 Registrar en `opencode.jsonc` los cuatro agentes con identificadores estables (`analista`, `redactor_revisor`, `asesor_tecnico`, `gestor_cambios`) y configuración explícita por agente; todos mantienen permisos de herramientas deny-all.
-- [ ] T057 Crear prompts individuales versionados fuera del código para las cuatro responsabilidades, con contrato de entrada/salida y límites de rol. Los prompts indican qué herramientas MCP puede invocar el backend para el rol, sin habilitar herramientas de OpenCode. Conservar el prompt actual del Analista sin cambiar su misión.
-- [ ] T058 Mantener todas las herramientas de OpenCode en deny-all, incluidas shell, filesystem, red y MCP. Controlar desde el backend Python las herramientas MCP read-only permitidas por agente/rol y namespace mediante allowlist explícita; no conceder shell, filesystem libre, escritura ni acceso de red general. Cambiar esta arquitectura requiere justificación de seguridad explícita, revisión humana y validación de aislamiento antes de autorizarse.
-- [ ] T059 Extender `OpenCodeClient` para seleccionar por identificador el agente asociado al nodo/rol y verificar configuración/prompt; un agente ausente o incompatible produce error controlado, nunca fallback silencioso a `analista`.
-- [ ] T060 Añadir pruebas de ejecución e aislamiento por agente: comprobar selección del agente y prompt correctos, OpenCode deny-all, allowlist MCP del backend, rechazo de acciones no autorizadas y ausencia de contexto/salidas/namespace de otros agentes.
+- [x] T055 Anadir primero pruebas con OpenCode simulado para los cuatro agentes, agente desconocido, deny-all y aislamiento de contexto/herramientas. Evidencia: `tests/unit/test_opencode_agent_selection.py`, `test_agent_registry.py` y `test_orchestrator.py`.
+- [x] T056 Registrar los cuatro identificadores en `opencode.jsonc` con prompt externo, modo y permisos explicitos deny-all; prueba de estructura JSON/config en `test_agent_registry.py`.
+- [x] T057 Mantener intacto el prompt del Analista y anadir prompts versionados para Redactor-Revisor, Asesor Tecnico y Gestor de Cambios con contratos, limites y herramientas backend indicadas; OpenCode permanece deny-all.
+- [x] T058 Mantener deny-all en OpenCode y aplicar `MCP_TOOL_ALLOWLIST`/`AGENT_NAMESPACE_ALLOWLIST` desde el backend antes de invocar MCP; probar permisos por rol y namespace, incluidos shell/filesystem y namespaces cruzados.
+- [x] T059 Extender `OpenCodeClient` para cargar/verificar el prompt del agente seleccionado y usar ese ID al crear sesion; agente desconocido o discrepancia produce error controlado sin fallback.
+- [x] T060 Probar seleccion/prompt, deny-all, allowlist MCP, rechazo de acciones no autorizadas y separacion de checkpoints/contextos; pytest usa dobles, no servicios reales.
 
 ## Fase 2 — Analista y espera de Negocio (US1)
 
@@ -75,7 +75,7 @@
 - [ ] T035 Crear/validar un índice vectorial denso convencional con nombre `historias-usuario`, serverless, AWS `us-east-1`, 1024 dimensiones y métrica `cosine`; usar embeddings de `PineconeEmbeddings(model="multilingual-e5-large")` y `PineconeVectorStore`. No crear document index ni configurar integrated embedding.
 - [ ] T036 Añadir valores no secretos de Pinecone a `agentes/analista/.env.example` y `render.yaml`; declarar solo el nombre de la clave con `sync: false`, sin crear servicios Render adicionales ni incorporar valores secretos.
 
-## Fase 10 — Fuentes ficticias y documentos de conocimiento
+## Fase 10 - Fuentes ficticias y documentos de conocimiento
 
 - [ ] T037 Crear primero pruebas de recuperación/fuente para los JSON existentes y la asignación a los namespaces establecidos; conservar los cuatro MCP existentes.
 - [ ] T038 Crear `ejemplos/polizas_demo/` en Python con modelos de póliza, servicio de pólizas, cálculo de primas, coberturas, renovaciones, pagos, validaciones y mapa de dependencias Markdown; usar escenarios completamente ficticios sin datos personales.
@@ -85,7 +85,7 @@
 - [ ] T042 Añadir pruebas que ejecutan dos ingestas con mismos documentos/IDs y verifican upserts repetibles sin duplicados, errores parciales reportados y namespaces aislados.
 - [ ] T043 Implementar fuente de `RepositorioHU` usando las APIs públicas existentes para HU aprobadas y lecciones `aprobada`; no leer base de datos por SQL paralelo ni indexar propuestas/rechazos.
 
-## Fase 11 — Ingesta y recuperación para agentes
+## Fase 11 - Ingesta y recuperacion para agentes
 
 - [ ] T044 Implementar CLI `python -m agentes.conocimiento.ingesta --fuente todas`, que solo admite fuentes allowlisted, crea/valida el índice y reporta conteos/errores sanitizados.
 - [ ] T045 Añadir pruebas primero de búsqueda semántica mockeada por los seis namespaces y prueba de que una consulta de un rol no accede a namespaces no autorizados.
@@ -95,12 +95,12 @@
 - [ ] T049 Implementar fallback a búsqueda local con `status=degraded`, `backend=local` cuando Pinecone falle; asegurar que errores o resultados locales nunca se etiqueten como consulta Pinecone.
 - [ ] T050 Añadir pruebas de errores de Pinecone (auth, timeout, rate limit, index incompatible), fallback local y procedencia verdadera de cada fuente.
 
-## Fase 12 — Inyección y documentación
+## Fase 12 - Inyeccion y documentacion
 
 - [ ] T051 Añadir pruebas adversariales de prompt injection en JSON, Markdown y código recuperado; verificar que el contenido no cambia rol/permisos/transiciones y no se ejecuta.
 - [ ] T052 Actualizar guía PowerShell, `.env.example`, `render.yaml` y documentación del paquete con índice/namespaces, comando de ingesta, estado degradado y manejo seguro de secretos.
 
-## Fase 13 — Aceptación final (después de integrar Pinecone)
+## Fase 13 - Aceptacion final (despues de integrar Pinecone)
 
 - [ ] T030 Ejecutar pruebas Python del backend, incluida feature 003 con mocks; registrar comando y resultado real.
 - [ ] T031 Ejecutar build y pruebas frontend existentes y recorrer rutas/Stepper/chat para verificar no regresión.
@@ -110,9 +110,9 @@
 
 ## Dependencias
 
-- T001–T004 bloquean todas las fases de implementación.
+- La puerta constitucional de T001/T002 sigue pendiente; por instruccion expresa se completo unicamente la base T005-T009 y el aislamiento T055-T060.
 - Fases 2–6 dependen de fundamentos T005–T009.
 - T055–T060 deben preceder la ejecución de los nodos multiagente; T055 y T060 prueban selección y aislamiento con OpenCode simulado.
 - La publicación de una HU depende de T019–T021; decisiones de cambio dependen de T022–T024.
-- T033–T054 y T055–T060 dependen de T001–T004; no ejecutar ingesta real ni pruebas contra Pinecone en ningún pytest.
+- No se avanzara a T010-T054 hasta validar esta fase y resolver la ratificacion de T001; no ejecutar ingesta real ni llamadas Pinecone en pytest.
 - T037–T043 preceden a T044; T044 precede a integración de retrieval T045–T050; T051–T052 documentan la integración; T030–T032 y T053–T054 son aceptación final después de T050.
