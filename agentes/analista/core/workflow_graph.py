@@ -1,6 +1,7 @@
 """LangGraph workflow with Analyst business interrupts and a bounded writer loop."""
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
@@ -11,6 +12,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from agentes.analista.core.agent_registry import AgentId
+from agentes.analista.core.change_manager import ChangeManager
 from agentes.analista.core.conversation_store import ConversationStore
 from agentes.analista.core.models import AgentTurnResponse, SendMessageRequest, QuestionState
 from agentes.analista.core.observability import Observability
@@ -19,6 +21,10 @@ from agentes.analista.core.redactor_revisor import RedactorRevisor
 from agentes.analista.core.technical_advisor import TechnicalAdvisor
 from agentes.analista.core.workflow_models import (
     BusinessAnswerSubmission,
+    ChangeDecision,
+    ChangeDecisionSubmission,
+    ChangePersistenceResult,
+    ChangeRecommendation,
     DraftStory,
     FlowMode,
     PersistenceResult,
@@ -41,6 +47,7 @@ AnalystNode = Callable[[WorkflowState], Awaitable[AgentTurnResponse | Mapping[st
 DraftNode = Callable[[WorkflowState], Awaitable[StoryDraftContent | Mapping[str, Any]]]
 ReviewNode = Callable[[WorkflowState], Awaitable[StoryReviewOutput | Mapping[str, Any]]]
 TechnicalAdvisorNode = Callable[[WorkflowState], Awaitable[TechnicalAssessment | Mapping[str, Any]]]
+ChangeManagerNode = Callable[[WorkflowState, Any], Awaitable[ChangeRecommendation | Mapping[str, Any]]]
 
 
 class WorkflowNotFoundError(LookupError):
@@ -57,6 +64,7 @@ def _public_snapshot(state: Mapping[str, Any]) -> WorkflowSnapshot:
         "pending_questions", "analyst_response", "draft_story", "review_observations",
         "technical_assessment", "completion_reason",
         "po_decision", "persistence_result",
+        "change_recommendation", "change_decision", "change_persistence_result",
     }
     return WorkflowSnapshot.model_validate({key: value for key, value in state.items() if key in allowed})
 
@@ -82,6 +90,31 @@ def _trace_stage(
     trace.finish(status="ready", metadata={"stage": stage.value, "agent_id": agent.value})
 
 
+def _analysis_state_from_approved_hu(state: WorkflowState) -> dict[str, Any]:
+    """Build a new analysis request from the approved version and the authorized change request."""
+    context = state.get("approved_story_context")
+    if not isinstance(context, Mapping):
+        raise ValueError("No hay contexto de HU aprobada para el nuevo análisis.")
+    payload = {
+        "approved_story_id": state.get("approved_story_id"),
+        "approved_story": {
+            "title": context.get("titulo"),
+            "requirement": context.get("requerimiento"),
+            "story": context.get("historia"),
+            "acceptance_criteria": context.get("criterios"),
+            "clarifications": context.get("aclaraciones"),
+        },
+        "change_request": state.get("change_request"),
+        "human_return_reason": (state.get("change_decision") or {}).get("reason"),
+        "instruction": (
+            "Analiza la solicitud frente a la versión aprobada. Conserva los hechos provistos, "
+            "separa lo conocido de lo faltante y pregunta lo necesario. La versión aprobada no "
+            "se reemplaza hasta una nueva aprobación humana explícita."
+        ),
+    }
+    return {"requirement_input": json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}
+
+
 def build_workflow_graph(
     *,
     checkpointer: InMemorySaver | None = None,
@@ -90,11 +123,13 @@ def build_workflow_graph(
     draft: DraftNode | None = None,
     review: ReviewNode | None = None,
     advisor: TechnicalAdvisorNode | None = None,
+    change_manager: ChangeManagerNode | None = None,
     repository: Any | None = None,
 ):
-    """Compile pre-grooming orchestration; callbacks keep model and store access injectable."""
+    """Compile pre/post-grooming orchestration with injectable agents and repository."""
     writer = RedactorRevisor()
     technical_advisor = TechnicalAdvisor()
+    manager = ChangeManager()
     repository_instance = repository
 
     async def call_analyst(state: WorkflowState) -> AgentTurnResponse | Mapping[str, Any]:
@@ -132,6 +167,14 @@ def build_workflow_graph(
             },
         )
 
+    def get_repository() -> Any:
+        nonlocal repository_instance
+        if repository_instance is None:
+            from agentes.analista.memory.repositorio import RepositorioHU
+
+            repository_instance = RepositorioHU()
+        return repository_instance
+
     def prepare_pre_grooming(state: WorkflowState) -> dict[str, Any]:
         if FlowMode(state["mode"]) != FlowMode.PRE_GROOMING:
             raise ValueError("El modo no corresponde al nodo pre_grooming.")
@@ -145,6 +188,164 @@ def build_workflow_graph(
         stage, agent = WorkflowStage.CHANGE_MANAGER, AgentId.CHANGE_MANAGER
         _trace_stage(observability, state, stage=stage, agent=agent)
         return {"current_stage": stage, "active_agent": agent, "status": WorkflowStatus.READY}
+
+    async def change_manager_node(state: WorkflowState) -> dict[str, Any]:
+        approved_story_id = state.get("approved_story_id")
+        change_request = state.get("change_request")
+        if not approved_story_id or not change_request:
+            raise ValueError("El Gestor de Cambios requiere la referencia aprobada y la solicitud.")
+        repository_ref = get_repository()
+        try:
+            approved_story = repository_ref.obtener_hu(approved_story_id)
+        except Exception as exc:
+            from agentes.analista.memory.repositorio import RepositorioError
+
+            if isinstance(exc, RepositorioError) and exc.not_found:
+                raise ValueError("La HU aprobada no existe en el Repositorio.") from exc
+            raise ValueError("No se pudo consultar la HU aprobada.") from exc
+        if not isinstance(approved_story, Mapping) or approved_story.get("id") != approved_story_id:
+            raise ValueError("El Repositorio no devolvió la HU aprobada solicitada.")
+        if change_manager is None:
+            recommendation = await manager.evaluate(
+                approved_story_id=approved_story_id,
+                change_request=change_request,
+                repository=repository_ref,
+                approved_story=approved_story,
+            )
+        else:
+            recommendation = await change_manager(state, repository_ref)
+        recommendation = ChangeRecommendation.model_validate(recommendation)
+        context = {
+            key: approved_story[key] for key in (
+                "id", "titulo", "tipo_informacion", "requerimiento", "historia", "criterios", "aclaraciones",
+                "aprobada_en",
+            ) if key in approved_story
+        }
+        _trace_stage(observability, state, stage=WorkflowStage.CHANGE_MANAGER, agent=AgentId.CHANGE_MANAGER)
+        return {
+            "approved_story_context": context,
+            "change_recommendation": recommendation.model_dump(mode="json"),
+            "current_stage": WorkflowStage.HUMAN_DECISION,
+            "active_agent": AgentId.CHANGE_MANAGER,
+            "status": WorkflowStatus.INTERRUPTED,
+        }
+
+    def human_change_decision_node(state: WorkflowState) -> dict[str, Any]:
+        recommendation = ChangeRecommendation.model_validate(state.get("change_recommendation"))
+        raw_decision = interrupt({
+            "kind": "change_decision",
+            "recommendation": recommendation.model_dump(mode="json"),
+            "decisions": [item.value for item in ChangeDecision],
+            "lesson_decisions": ["aprobar", "rechazar"],
+        })
+        decision = ChangeDecisionSubmission.model_validate(raw_decision)
+        if any(item.index >= len(recommendation.lessons_proposed) for item in decision.lesson_decisions):
+            raise ValueError("La decisión incluye una lección que no fue propuesta.")
+        route = "apply" if decision.decision == ChangeDecision.APPLY else (
+            "analyze" if decision.decision == ChangeDecision.RETURN else "end"
+        )
+        updates: dict[str, Any] = {
+            "change_decision": decision.model_dump(mode="json"),
+            "change_route": route,
+            "current_stage": WorkflowStage.HUMAN_DECISION,
+            "active_agent": AgentId.CHANGE_MANAGER,
+            "status": WorkflowStatus.RUNNING if route != "end" else WorkflowStatus.CANCELLED,
+            "completion_reason": decision.reason if route == "end" else None,
+        }
+        if route == "end":
+            updates["change_persistence_result"] = ChangePersistenceResult(
+                status="rejected",
+            ).model_dump(mode="json")
+        elif route == "analyze":
+            updates.update(_analysis_state_from_approved_hu(state))
+        _trace_stage(observability, state, stage=WorkflowStage.HUMAN_DECISION, agent=AgentId.CHANGE_MANAGER)
+        return updates
+
+    def apply_change_decision_node(state: WorkflowState) -> dict[str, Any]:
+        recommendation = ChangeRecommendation.model_validate(state.get("change_recommendation"))
+        decision = ChangeDecisionSubmission.model_validate(state.get("change_decision"))
+        if decision.decision != ChangeDecision.APPLY:
+            raise ValueError("El nodo de aplicación requiere autorización humana explícita.")
+        if any(item.index >= len(recommendation.lessons_proposed) for item in decision.lesson_decisions):
+            raise ValueError("La decisión incluye una lección que no fue propuesta.")
+        lessons = [
+            {
+                "categoria": item.category,
+                "pregunta_sugerida": item.suggested_question,
+                "terminos": item.terms,
+            }
+            for item in recommendation.lessons_proposed
+        ]
+        repository_ref = get_repository()
+        try:
+            result = repository_ref.registrar_cambio(
+                hu_id=state["approved_story_id"],
+                solicitud=state["change_request"],
+                clasificacion=recommendation.recommendation.value,
+                causa_raiz=lessons[0]["categoria"] if lessons else "",
+                lecciones_propuestas=lessons,
+                cambio_id=state["workflow_id"],
+                incluir_ids_lecciones=True,
+            )
+            lesson_ids = result.get("leccion_ids") or ([result["leccion_id"]] if result.get("leccion_id") else [])
+            if len(lesson_ids) != len(lessons):
+                raise ValueError("El Repositorio devolvió IDs de lección incompatibles.")
+            for lesson_decision in decision.lesson_decisions:
+                repository_ref.decidir_leccion(
+                    lesson_ids[lesson_decision.index], lesson_decision.decision.value,
+                )
+        except Exception:
+            persisted = ChangePersistenceResult(
+                status="failed", error_code="REPOSITORY_UNAVAILABLE",
+            )
+            logger.warning("workflow_change_apply_failed", extra={
+                "event": "workflow_change_apply_failed", "error_code": "REPOSITORY_UNAVAILABLE",
+            })
+            return {
+                "change_persistence_result": persisted.model_dump(mode="json"),
+                "current_stage": WorkflowStage.APPLY_DECISION,
+                "active_agent": AgentId.CHANGE_MANAGER,
+                "status": WorkflowStatus.FAILED,
+                "completion_reason": "No fue posible registrar la decisión autorizada.",
+                "change_route": "end",
+            }
+
+        try:
+            persisted = ChangePersistenceResult(
+                status="recorded", change_id=result["solicitud_id"], lesson_ids=lesson_ids,
+            )
+        except Exception:
+            persisted = ChangePersistenceResult(
+                status="failed", error_code="REPOSITORY_RESPONSE_INVALID",
+            )
+            return {
+                "change_persistence_result": persisted.model_dump(mode="json"),
+                "current_stage": WorkflowStage.APPLY_DECISION,
+                "active_agent": AgentId.CHANGE_MANAGER,
+                "status": WorkflowStatus.FAILED,
+                "completion_reason": "El Repositorio devolvió un resultado inválido.",
+                "change_route": "end",
+            }
+
+        updates: dict[str, Any] = {
+            "change_persistence_result": persisted.model_dump(mode="json"),
+            "current_stage": WorkflowStage.APPLY_DECISION,
+            "active_agent": AgentId.CHANGE_MANAGER,
+            "status": WorkflowStatus.COMPLETED,
+            "completion_reason": "La solicitud autorizada quedó registrada.",
+            "change_route": "end",
+        }
+        if recommendation.recommendation.value == "cambio_alcance":
+            updates.update(_analysis_state_from_approved_hu(state))
+            updates.update({
+                "current_stage": WorkflowStage.ANALYST,
+                "active_agent": AgentId.ANALYST,
+                "status": WorkflowStatus.RUNNING,
+                "completion_reason": None,
+                "change_route": "analyze",
+            })
+        _trace_stage(observability, state, stage=WorkflowStage.APPLY_DECISION, agent=AgentId.CHANGE_MANAGER)
+        return updates
 
     async def analyst_node(state: WorkflowState) -> dict[str, Any]:
         response = AgentTurnResponse.model_validate(await call_analyst(state))
@@ -317,7 +518,7 @@ def build_workflow_graph(
         if decision.decision != POApprovalDecision.APPROVE:
             raise ValueError("El repositorio requiere una aprobación explícita del Product Owner.")
         story = DraftStory.model_validate(state.get("draft_story"))
-        story_id = str(state["workflow_id"])
+        story_id = str(state.get("approved_story_id") or state["workflow_id"])
         title = story.quiero[:200]
         hu = {
             "id": story_id,
@@ -332,11 +533,36 @@ def build_workflow_graph(
             ],
         }
         nonlocal repository_instance
+        change_persistence_result = state.get("change_persistence_result")
         try:
             if repository_instance is None:
                 from agentes.analista.memory.repositorio import RepositorioHU
 
                 repository_instance = RepositorioHU()
+            if (
+                FlowMode(state["mode"]) == FlowMode.POST_GROOMING
+                and not state.get("change_persistence_result")
+            ):
+                recommendation = ChangeRecommendation.model_validate(state.get("change_recommendation"))
+                lessons = [
+                    {"categoria": item.category, "pregunta_sugerida": item.suggested_question, "terminos": item.terms}
+                    for item in recommendation.lessons_proposed
+                ]
+                change_record = repository_instance.registrar_cambio(
+                    hu_id=state["approved_story_id"],
+                    solicitud=state["change_request"],
+                    clasificacion=recommendation.recommendation.value,
+                    causa_raiz=lessons[0]["categoria"] if lessons else "",
+                    lecciones_propuestas=lessons,
+                    cambio_id=state["workflow_id"],
+                    incluir_ids_lecciones=True,
+                )
+                lesson_ids = change_record.get("leccion_ids") or []
+                if len(lesson_ids) != len(lessons):
+                    raise ValueError("El Repositorio devolvió IDs de lección incompatibles.")
+                change_persistence_result = ChangePersistenceResult(
+                    status="recorded", change_id=change_record["solicitud_id"], lesson_ids=lesson_ids,
+                ).model_dump(mode="json")
             raw_result = repository_instance.guardar_hu(hu)
         except Exception:
             result = PersistenceResult(
@@ -346,6 +572,13 @@ def build_workflow_graph(
                                                                      "error_code": "REPOSITORY_UNAVAILABLE"})
             status = WorkflowStatus.FAILED
             completion_reason = "La aprobación humana se registró, pero no fue posible guardar la HU."
+            if (
+                FlowMode(state["mode"]) == FlowMode.POST_GROOMING
+                and not change_persistence_result
+            ):
+                change_persistence_result = ChangePersistenceResult(
+                    status="failed", error_code="REPOSITORY_UNAVAILABLE",
+                ).model_dump(mode="json")
         else:
             try:
                 result = PersistenceResult(
@@ -372,6 +605,7 @@ def build_workflow_graph(
                      agent=AgentId.TECHNICAL_ADVISOR)
         return {
             "persistence_result": result.model_dump(mode="json"),
+            **({"change_persistence_result": change_persistence_result} if change_persistence_result else {}),
             "current_stage": WorkflowStage.REPOSITORY,
             "active_agent": AgentId.TECHNICAL_ADVISOR,
             "status": status,
@@ -385,6 +619,9 @@ def build_workflow_graph(
     builder = StateGraph(WorkflowState)
     builder.add_node("prepare_pre_grooming", prepare_pre_grooming)
     builder.add_node("prepare_post_grooming", prepare_post_grooming)
+    builder.add_node("change_manager", change_manager_node)
+    builder.add_node("human_change_decision", human_change_decision_node)
+    builder.add_node("apply_change_decision", apply_change_decision_node)
     builder.add_node("analyst", analyst_node)
     builder.add_node("business_wait", wait_for_business)
     builder.add_node("writer", writer_node)
@@ -406,7 +643,22 @@ def build_workflow_graph(
         lambda state: "analyst" if state.get("execute_agents") else END,
         {"analyst": "analyst", END: END},
     )
-    builder.add_edge("prepare_post_grooming", END)
+    builder.add_conditional_edges(
+        "prepare_post_grooming",
+        lambda state: "change_manager" if state.get("execute_agents") else END,
+        {"change_manager": "change_manager", END: END},
+    )
+    builder.add_edge("change_manager", "human_change_decision")
+    builder.add_conditional_edges(
+        "human_change_decision",
+        lambda state: state["change_route"],
+        {"apply": "apply_change_decision", "analyze": "analyst", "end": END},
+    )
+    builder.add_conditional_edges(
+        "apply_change_decision",
+        lambda state: state["change_route"],
+        {"analyze": "analyst", "end": END},
+    )
     builder.add_conditional_edges(
         "analyst",
         lambda state: (
@@ -445,6 +697,7 @@ class WorkflowRuntime:
         draft: DraftNode | None = None,
         review: ReviewNode | None = None,
         advisor: TechnicalAdvisorNode | None = None,
+        change_manager: ChangeManagerNode | None = None,
         repository: Any | None = None,
     ) -> None:
         self.observability = observability or Observability()
@@ -466,6 +719,7 @@ class WorkflowRuntime:
             draft=draft,
             review=review,
             advisor=advisor,
+            change_manager=change_manager,
             repository=repository,
         )
 
@@ -519,7 +773,11 @@ class WorkflowRuntime:
         from agentes.analista.core.orchestrator import run_turn
 
         workflow_id = UUID(state["workflow_id"])
-        conversation_id = self._conversation_ids[workflow_id]
+        conversation_id = self._conversation_ids.get(workflow_id)
+        if conversation_id is None:
+            conversation = await self._analyst_store.create()
+            conversation_id = conversation.conversation_id
+            self._conversation_ids[workflow_id] = conversation_id
         answers = state.get("latest_business_answers", [])
         if answers:
             message = "Respuestas de Negocio a preguntas pendientes:\n" + "\n".join(
@@ -542,8 +800,11 @@ class WorkflowRuntime:
         current = self._graph.get_state(self._thread_config(identifier))
         if not any(getattr(task, "interrupts", ()) for task in current.tasks):
             raise WorkflowNotInterruptedError("El workflow no está esperando una decisión humana.")
-        if current.values.get("current_stage") == WorkflowStage.PO_APPROVAL:
+        current_stage = current.values.get("current_stage")
+        if current_stage == WorkflowStage.PO_APPROVAL:
             submission = POApprovalSubmission.model_validate(answers)
+        elif current_stage == WorkflowStage.HUMAN_DECISION:
+            submission = ChangeDecisionSubmission.model_validate(answers)
         else:
             submission = BusinessAnswerSubmission.model_validate(answers)
         result = await self._graph.ainvoke(

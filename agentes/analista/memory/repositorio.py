@@ -212,6 +212,8 @@ class RepositorioHU:
     def registrar_cambio(
         self, *, hu_id: str, solicitud: str, clasificacion: str, causa_raiz: str,
         pregunta_sugerida: str | None = None, terminos: list[str] | None = None,
+        lecciones_propuestas: list[dict[str, Any]] | None = None, cambio_id: str | None = None,
+        incluir_ids_lecciones: bool = False,
     ) -> dict[str, Any]:
         """Registra la solicitud; solo genera lección si trae la pregunta que debió hacerse.
 
@@ -221,27 +223,80 @@ class RepositorioHU:
         if clasificacion not in CLASIFICACIONES:
             raise RepositorioError("Clasificación no permitida.")
         pregunta_sugerida = (pregunta_sugerida or "").strip()
-        con_leccion = clasificacion != "correccion" and bool(pregunta_sugerida)
-        if con_leccion and causa_raiz not in CATEGORIAS:
+        propuestas = list(lecciones_propuestas or [])
+        if pregunta_sugerida:
+            propuestas.insert(0, {
+                "categoria": causa_raiz, "pregunta_sugerida": pregunta_sugerida, "terminos": terminos or [],
+            })
+        if clasificacion == "correccion":
+            propuestas = []
+        for propuesta in propuestas:
+            if (
+                not isinstance(propuesta, dict)
+                or propuesta.get("categoria") not in CATEGORIAS
+                or not isinstance(propuesta.get("pregunta_sugerida"), str)
+                or not propuesta["pregunta_sugerida"].strip()
+                or not isinstance(propuesta.get("terminos", []), list)
+            ):
+                raise RepositorioError("La lección propuesta no satisface el contrato del Repositorio.")
+        if propuestas and causa_raiz and causa_raiz not in CATEGORIAS:
             raise RepositorioError("La causa raíz debe ser una categoría del checklist de vacíos.")
-        causa_raiz = causa_raiz if con_leccion else ""
+        causa_raiz = causa_raiz if propuestas else ""
         self.obtener_hu(hu_id)
         creada_en = _now()
         with self.motor.begin() as conexion:
-            solicitud_id = nuevo_guid()
+            solicitud_id = cambio_id or nuevo_guid()
+            if not es_guid(solicitud_id):
+                raise RepositorioError("La clave idempotente del cambio debe ser un GUID.")
+            existente = conexion.execute(
+                select(solicitud_cambio).where(solicitud_cambio.c.id == solicitud_id)
+            ).first()
+            if existente is not None:
+                row = existente._mapping
+                if (row["hu_id"], row["solicitud"], row["clasificacion"]) != (hu_id, solicitud, clasificacion):
+                    raise RepositorioError("La clave de cambio ya se usó para otra solicitud.")
+                lesson_rows = conexion.execute(
+                    select(leccion).where(leccion.c.solicitud_id == solicitud_id).order_by(leccion.c.id)
+                ).all()
+                expected = sorted([
+                    (item["categoria"], item["pregunta_sugerida"], json.dumps(item.get("terminos", []), ensure_ascii=False))
+                    for item in propuestas
+                ])
+                actual = sorted((item.categoria, item.pregunta_sugerida, item.terminos) for item in lesson_rows)
+                if expected != actual:
+                    raise RepositorioError("La clave de cambio ya se usó con otras lecciones.")
+                lesson_ids = [
+                    str(uuid.uuid5(uuid.UUID(solicitud_id), f"lesson:{index}"))
+                    for index in range(len(propuestas))
+                ]
+                result = {
+                    "solicitud_id": solicitud_id, "leccion_id": lesson_ids[0] if lesson_ids else None,
+                    "estado": "propuesta" if lesson_ids else None,
+                }
+                if incluir_ids_lecciones:
+                    result["leccion_ids"] = lesson_ids
+                return result
             conexion.execute(insert(solicitud_cambio).values(
                 id=solicitud_id, hu_id=hu_id, solicitud=solicitud, clasificacion=clasificacion,
                 causa_raiz=causa_raiz, creada_en=creada_en,
             ))
-            if not con_leccion:
-                return {"solicitud_id": solicitud_id, "leccion_id": None, "estado": None}
-            leccion_id = nuevo_guid()
-            conexion.execute(insert(leccion).values(
-                id=leccion_id, codigo=_siguiente_codigo_leccion(conexion), solicitud_id=solicitud_id, hu_id=hu_id,
-                categoria=causa_raiz, pregunta_sugerida=pregunta_sugerida,
-                terminos=json.dumps(terminos or [], ensure_ascii=False), estado="propuesta", creada_en=creada_en,
-            ))
-        return {"solicitud_id": solicitud_id, "leccion_id": leccion_id, "estado": "propuesta"}
+            lesson_ids = []
+            for index, propuesta in enumerate(propuestas):
+                lesson_id = str(uuid.uuid5(uuid.UUID(solicitud_id), f"lesson:{index}"))
+                lesson_ids.append(lesson_id)
+                conexion.execute(insert(leccion).values(
+                    id=lesson_id, codigo=_siguiente_codigo_leccion(conexion), solicitud_id=solicitud_id, hu_id=hu_id,
+                    categoria=propuesta["categoria"], pregunta_sugerida=propuesta["pregunta_sugerida"].strip(),
+                    terminos=json.dumps(propuesta.get("terminos", []), ensure_ascii=False),
+                    estado="propuesta", creada_en=creada_en,
+                ))
+        result = {
+            "solicitud_id": solicitud_id, "leccion_id": lesson_ids[0] if lesson_ids else None,
+            "estado": "propuesta" if lesson_ids else None,
+        }
+        if incluir_ids_lecciones:
+            result["leccion_ids"] = lesson_ids
+        return result
 
     def listar_cambios(self, hu_id: str | None = None) -> list[dict[str, Any]]:
         consulta = select(

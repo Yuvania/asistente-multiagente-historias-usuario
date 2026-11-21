@@ -47,6 +47,17 @@ class POApprovalDecision(StrEnum):
     STOP = "detener"
 
 
+class ChangeDecision(StrEnum):
+    APPLY = "aplicar"
+    REJECT = "rechazar"
+    RETURN = "devolver"
+
+
+class LessonDecisionKind(StrEnum):
+    APPROVE = "aprobar"
+    REJECT = "rechazar"
+
+
 class POApprovalSubmission(BaseModel):
     """An explicit Product Owner decision; agent output cannot satisfy this contract."""
 
@@ -232,9 +243,73 @@ class ChangeRecommendation(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     recommendation: ChangeKind
+    comparison: list["ChangeDifference"] = Field(min_length=1, max_length=20)
+    impact: list[str] = Field(min_length=1, max_length=20)
     rationale: str = Field(min_length=1, max_length=2000)
-    evidence: list[EvidenceReference] = Field(default_factory=list, max_length=30)
-    lessons_proposed: list[str] = Field(default_factory=list, max_length=20)
+    uncertainties: list[str] = Field(default_factory=list, max_length=20)
+    lessons_proposed: list["ProposedLesson"] = Field(default_factory=list, max_length=20)
+
+    @field_validator("impact", "uncertainties")
+    @classmethod
+    def validate_nonempty_items(cls, items: list[str]) -> list[str]:
+        if any(not item.strip() or len(item) > 1000 for item in items):
+            raise ValueError("Cada elemento debe tener entre 1 y 1.000 caracteres.")
+        return [item.strip() for item in items]
+
+
+class ChangeDifference(BaseModel):
+    """Traceable excerpts supporting a comparison with the approved version."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    approved_excerpt: str = Field(min_length=1, max_length=1000)
+    request_excerpt: str = Field(min_length=1, max_length=1000)
+    explanation: str = Field(min_length=1, max_length=1000)
+
+
+class ProposedLesson(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    category: Literal[
+        "Reglas de negocio", "Datos requeridos", "Validaciones", "Excepciones", "Comportamiento esperado",
+    ]
+    suggested_question: str = Field(min_length=1, max_length=2000)
+    terms: list[str] = Field(default_factory=list, max_length=30)
+
+
+class LessonDecisionSubmission(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int = Field(ge=0, le=19)
+    decision: LessonDecisionKind
+
+
+class ChangeDecisionSubmission(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    decision: ChangeDecision
+    reason: str | None = Field(default=None, min_length=1, max_length=1000)
+    lesson_decisions: list[LessonDecisionSubmission] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_human_decision(self) -> "ChangeDecisionSubmission":
+        if self.decision == ChangeDecision.RETURN and not self.reason:
+            raise ValueError("Devolver requiere un motivo.")
+        if self.decision != ChangeDecision.APPLY and self.lesson_decisions:
+            raise ValueError("Las lecciones solo se pueden decidir al aplicar el cambio.")
+        indexes = [item.index for item in self.lesson_decisions]
+        if len(indexes) != len(set(indexes)):
+            raise ValueError("No se puede decidir dos veces la misma lección.")
+        return self
+
+
+class ChangePersistenceResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    status: Literal["recorded", "rejected", "returned", "failed"]
+    change_id: str | None = Field(default=None, max_length=100)
+    lesson_ids: list[str] = Field(default_factory=list, max_length=20)
+    error_code: Literal["REPOSITORY_UNAVAILABLE", "REPOSITORY_RESPONSE_INVALID"] | None = None
 
 
 class WorkflowCreateRequest(BaseModel):
@@ -323,6 +398,11 @@ class WorkflowState(TypedDict, total=False):
     po_decision: dict
     po_route: str
     persistence_result: dict
+    change_recommendation: dict
+    change_decision: dict
+    change_persistence_result: dict
+    change_route: str
+    approved_story_context: dict
     completion_reason: str | None
 
 
@@ -343,5 +423,8 @@ class WorkflowSnapshot(BaseModel):
     review_observations: list[str] = Field(default_factory=list)
     po_decision: POApprovalSubmission | None = None
     persistence_result: PersistenceResult | None = None
+    change_recommendation: ChangeRecommendation | None = None
+    change_decision: ChangeDecisionSubmission | None = None
+    change_persistence_result: ChangePersistenceResult | None = None
     completion_reason: str | None = None
 

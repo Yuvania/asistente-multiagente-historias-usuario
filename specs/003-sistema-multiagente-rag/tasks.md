@@ -2,7 +2,7 @@
 
 **Spec**: [spec.md](spec.md)  
 **Plan**: [plan.md](plan.md)  
-**Estado**: T005-T021, T038 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
+**Estado**: T005-T024, T038 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
 
 > T005-T009 y T055-T060 se implementaron primero. Por instrucción posterior se implementó T010-T018 en modo experimental; también se creó el fixture T038 por requisito explícito del Asesor. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitución aún declara ratificación pendiente. T002 se revisó contra el texto 2.0.0, pero queda pendiente su cierre formal. Este avance técnico no representa aceptación formal.
 
@@ -54,13 +54,13 @@
 - [x] T020 Implementar `aprobacion_po` con `interrupt()`, decisión humana Pydantic y reanudación con `Command(resume=...)` sobre el mismo `thread_id`; solo enrutar a `repositorio` ante `aprobar` explícito.
 - [x] T021 Implementar `repositorio` con `RepositorioHU.guardar_hu`, payload conforme al contrato real, UUID del workflow como clave idempotente y resultado de persistencia estructurado; pruebas usan un doble, sin tocar TiDB.
 
-> Línea base previa a T019-T021 (2026-11-21): desde la raíz, `agentes/analista/.venv/Scripts/python.exe -m pytest agentes/analista/tests` ejecutó 189 pruebas, todas aprobadas (1 advertencia de LangChain MCP beta). Verificación posterior a T019-T021: 199 pruebas aprobadas, 1 advertencia; incluye pruebas con dobles, sin secretos ni servicios externos.
+> Baseline previa a T019-T021 (2026-11-21): desde la raiz, `agentes/analista/.venv/Scripts/python.exe -m pytest agentes/analista/tests` ejecuto 189 pruebas, todas aprobadas (1 advertencia de LangChain MCP beta). Verificacion posterior a T019-T021: 199 pruebas aprobadas. Verificacion posterior a T022-T024 (2026-11-21): 213 pruebas aprobadas, 1 advertencia; incluye dobles y SQLite temporal, sin secretos, servicios externos ni TiDB real.
 
 ## Fase 6 — Gestor de Cambios y decisión humana (US5)
 
-- [ ] T022 Añadir pruebas primero para HU no aprobada/inexistente, comparación, dos clasificaciones válidas, justificación, lecciones propuestas y ausencia de decisión del agente.
-- [ ] T023 Implementar `gestor_cambios` con acceso solo a una versión aprobada y salidas `aclaracion`/`cambio_alcance` estructuradas.
-- [ ] T024 Implementar `decision_humana` como interrupción y `aplicar_decision` después de reanudar; reutilizar registro de cambios/lecciones solo tras la decisión humana.
+- [x] T022 Anadir primero pruebas para HU inexistente/no aprobada, fragmentos comparativos verificables, ambas clasificaciones, impacto y justificacion, lecciones propuestas, decision humana obligatoria, reanudaciones invalidas/duplicadas y cero escrituras antes de decidir. Evidencia: `tests/integration/test_workflow_change_management.py`, `tests/unit/test_repositorio.py`.
+- [x] T023 Implementar `gestor_cambios` con OpenCode `agent_id=gestor_cambios`, prompt externo y lectura solo desde `RepositorioHU.obtener_hu`; Pydantic restringe `aclaracion`/`cambio_alcance`, valida comparaciones contra texto literal de la HU y solicitud, e incluye impacto, incertidumbres y lecciones propuestas. No aprueba ni aplica cambios.
+- [x] T024 Implementar `decision_humana` con `interrupt()` y reanudacion validada por `Command(resume=...)` en el mismo hilo; aplicar/rechazar/devolver con controles idempotentes. Las aclaraciones solo se registran, los cambios de alcance y devoluciones disparan un nuevo analisis que espera aprobacion PO, y las lecciones requieren decision humana explicita. Evidencia: `tests/integration/test_workflow_change_management.py`.
 
 ## Fase 7 — API, frontend y documentación
 
@@ -112,9 +112,9 @@
 
 ## Dependencias
 
-- La ratificacion formal T001/T002 sigue pendiente; se completaron experimentalmente T005-T021, T038 y T055-T060 por instruccion expresa en esta rama, sin declarar aceptacion formal.
+- La ratificacion formal T001/T002 sigue pendiente; se completaron experimentalmente T005-T024, T038 y T055-T060 por instruccion expresa en esta rama, sin declarar aceptacion formal.
 - Fases 2–6 dependen de fundamentos T005–T009.
 - T055–T060 deben preceder la ejecución de los nodos multiagente; T055 y T060 prueban selección y aislamiento con OpenCode simulado.
 - La publicación de una HU depende de T019–T021; decisiones de cambio dependen de T022–T024.
-- La ratificacion formal de T001/T002 sigue pendiente. T010-T021 y el fixture T038 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; esto no equivale a aceptacion formal. La ingesta e integración Pinecone siguen pendientes; pytest no realiza llamadas Pinecone.
+- La ratificacion formal de T001/T002 sigue pendiente. T010-T024 y el fixture T038 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; esto no equivale a aceptacion formal. La ingesta e integración Pinecone siguen pendientes; pytest no realiza llamadas Pinecone.
 - T037–T043 preceden a T044; T044 precede a integración de retrieval T045–T050; T051–T052 documentan la integración; T030–T032 y T053–T054 son aceptación final después de T050.
