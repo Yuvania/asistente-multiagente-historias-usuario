@@ -290,4 +290,4 @@ cambie el alcance. La complejidad añadida DEBE justificarse frente a la alterna
 `agentes/<nombre>/prompts/sistema.md`, `requerimientos_prototipo_historias_usuario.md` y los
 README de arranque.
 
-**Version**: 2.0.0 (propuesta) | **Ratified**: pendiente de aprobación humana | **Proposed**: 2026-11-19
+**Version**: 2.0.0 | **Ratification status**: pending a human approval recorded in GitHub | **Approval scope**: development and testing of feature 003 exclusively on `feat/sistema-multiagente-rag` | **Proposed**: 2026-11-21
