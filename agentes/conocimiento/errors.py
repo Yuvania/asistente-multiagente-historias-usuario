@@ -39,6 +39,11 @@ class PineconeTimeoutError(PineconeKnowledgeError):
     message = "La operación Pinecone agotó el tiempo de espera."
 
 
+class PineconeRateLimitError(PineconeKnowledgeError):
+    code = "PINECONE_RATE_LIMITED"
+    message = "Pinecone limitó temporalmente las solicitudes del backend."
+
+
 class PineconeServiceError(PineconeKnowledgeError):
     code = "PINECONE_SERVICE_UNAVAILABLE"
     message = "El servicio Pinecone no está disponible."

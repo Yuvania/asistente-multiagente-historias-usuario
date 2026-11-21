@@ -131,11 +131,22 @@ async def _retrieve_sources(query: str) -> tuple[list[dict[str, Any]], list[dict
     except Exception as exc:
         raise TechnicalAdvisorError("No fue posible recuperar las fuentes técnicas permitidas.") from exc
 
-    code_sources = code["fuentes"]
+    code_citations = {item["source_id"]: item for item in code.get("sources", [])}
+    code_sources = [
+        {**source, **{key: value for key, value in code_citations.get(source["source_id"], {}).items()
+                      if key not in {"source_id", "source_ref"}}}
+        for source in code["fuentes"]
+    ]
+    standards_citations = {item["source_id"]: item for item in standards.get("sources", [])}
     standards_sources = [
         {
-            "source_id": f"estandares:{entry['id']}",
-            "source_ref": STANDARD_SOURCE_PATH,
+            "source_id": standards_citations.get(entry["id"], {}).get("source_id", f"estandares:{entry['id']}"),
+            "source_ref": standards_citations.get(entry["id"], {}).get("source_ref", STANDARD_SOURCE_PATH),
+            "source_kind": standards_citations.get(entry["id"], {}).get("source_kind", "simulated_fixture"),
+            "namespace": standards_citations.get(entry["id"], {}).get("namespace", "estandares"),
+            "chunk": standards_citations.get(entry["id"], {}).get("chunk", 0),
+            "score": standards_citations.get(entry["id"], {}).get("score"),
+            "backend": standards_citations.get(entry["id"], {}).get("backend", standards.get("backend")),
             "titulo": entry["titulo"],
             "regla": entry["regla"],
             "referencia": entry["referencia"],
@@ -161,19 +172,22 @@ class TechnicalAdvisor:
     async def assess(self, *, requirement: str, story: Mapping[str, Any]) -> TechnicalAssessment:
         query = " ".join(part for part in (requirement.strip(), json.dumps(dict(story), ensure_ascii=False)) if part)
         code_sources, standards_sources = await self._source_provider(query)
-        source_catalog: dict[str, str] = {}
+        source_catalog: dict[str, dict[str, Any]] = {}
         for source in [*code_sources, *standards_sources]:
             source_id, source_ref = source.get("source_id"), source.get("source_ref")
             if not isinstance(source_id, str) or not isinstance(source_ref, str):
                 raise TechnicalAdvisorError("El backend devolvió una referencia de fuente inválida.")
             try:
-                citation = SourceCitation(source_id=source_id, source_ref=source_ref)
+                citation = SourceCitation(source_id=source_id, source_ref=source_ref, backend=source.get("backend"))
             except ValueError as exc:
                 raise TechnicalAdvisorError("El backend devolvió una fuente fuera de la allowlist.") from exc
-            existing_ref = source_catalog.get(citation.source_id)
+            existing_ref = source_catalog.get(citation.source_id, {}).get("source_ref")
             if existing_ref is not None and existing_ref != citation.source_ref:
                 raise TechnicalAdvisorError("El backend devolvió identificadores de fuente ambiguos.")
-            source_catalog[citation.source_id] = citation.source_ref
+            source_catalog[citation.source_id] = {
+                "source_ref": citation.source_ref,
+                "backend": source.get("backend"),
+            }
 
         try:
             parser = PydanticOutputParser(pydantic_object=_TechnicalAdviceDraft)
@@ -217,8 +231,8 @@ class TechnicalAdvisor:
             ):
                 draft.uncertainties.append("La evidencia consultada no permite identificar impactos técnicos con certeza.")
             citations = [
-                SourceCitation(source_id=source_id, source_ref=source_ref)
-                for source_id, source_ref in source_catalog.items()
+                SourceCitation(source_id=source_id, source_ref=entry["source_ref"], backend=entry.get("backend"))
+                for source_id, entry in source_catalog.items()
             ]
             return TechnicalAssessment(
                 **draft.model_dump(),
@@ -230,12 +244,12 @@ class TechnicalAdvisor:
             raise TechnicalAdvisorOutputError("El Asesor devolvió una salida inválida o sin evidencia consultada.") from exc
 
     @staticmethod
-    def _validate_citations(draft: _TechnicalAdviceDraft, source_catalog: Mapping[str, str]) -> None:
+    def _validate_citations(draft: _TechnicalAdviceDraft, source_catalog: Mapping[str, Mapping[str, Any]]) -> None:
         references = [
             *draft.affected_modules, *draft.dependencies, *draft.risks, *draft.critical_processes
         ]
         for item in references:
-            if source_catalog.get(item.source_id) != item.source_ref:
+            if source_catalog.get(item.source_id, {}).get("source_ref") != item.source_ref:
                 raise TechnicalAdvisorOutputError("El Asesor citó una fuente que no fue consultada en este turno.")
         if not source_catalog and references:
             raise TechnicalAdvisorOutputError("No hay fuentes consultadas para respaldar afirmaciones técnicas.")

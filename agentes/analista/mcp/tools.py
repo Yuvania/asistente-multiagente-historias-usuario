@@ -1,6 +1,7 @@
 """The only four read-only tools exposed by the Analyst MCP server."""
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from enum import StrEnum
@@ -9,6 +10,8 @@ from typing import Annotated, Literal
 from fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from agentes.analista.core.agent_registry import AgentId
+from agentes.conocimiento.retrieval import get_knowledge_retriever
 from agentes.analista.mcp.repositories import load_sources
 
 
@@ -22,6 +25,16 @@ class Category(StrEnum):
 
 class ToolModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class KnowledgeCitation(ToolModel):
+    source_id: str = Field(min_length=1, max_length=300)
+    source_kind: str = Field(min_length=1, max_length=40)
+    source_ref: str = Field(min_length=1, max_length=300)
+    namespace: str = Field(min_length=1, max_length=40)
+    chunk: int = Field(ge=0)
+    score: float
+    backend: Literal["pinecone", "local"]
 
 
 class GlossaryEntry(ToolModel):
@@ -62,6 +75,9 @@ class GlossaryResult(ToolModel):
     total: int = Field(ge=0, le=5)
     origen: Literal["simulado", "anonimizado"]
     contenido_no_confiable: Literal[True]
+    status: Literal["ok", "degraded"] = "ok"
+    backend: Literal["pinecone", "local", "none"] = "local"
+    sources: list[KnowledgeCitation] = Field(default_factory=list, max_length=25)
 
     @field_validator("total")
     @classmethod
@@ -75,8 +91,11 @@ class GlossaryResult(ToolModel):
 class StoriesResult(ToolModel):
     historias: list[SimilarStory] = Field(max_length=5)
     total: int = Field(ge=0, le=5)
-    origen: Literal["anonimizado"]
+    origen: Literal["simulado", "anonimizado"]
     contenido_no_confiable: Literal[True]
+    status: Literal["ok", "degraded"] = "ok"
+    backend: Literal["pinecone", "local", "none"] = "local"
+    sources: list[KnowledgeCitation] = Field(default_factory=list, max_length=25)
 
     @field_validator("total")
     @classmethod
@@ -92,6 +111,9 @@ class StandardsResult(ToolModel):
     total: int = Field(ge=0, le=5)
     origen: Literal["simulado", "anonimizado"]
     contenido_no_confiable: Literal[True]
+    status: Literal["ok", "degraded"] = "ok"
+    backend: Literal["pinecone", "local", "none"] = "local"
+    sources: list[KnowledgeCitation] = Field(default_factory=list, max_length=25)
 
     @field_validator("total")
     @classmethod
@@ -105,8 +127,11 @@ class StandardsResult(ToolModel):
 class ChecklistResult(ToolModel):
     categorias: list[ChecklistCategory] = Field(max_length=5)
     total: int = Field(ge=0, le=25)
-    origen: Literal["simulado"]
+    origen: Literal["simulado", "anonimizado"]
     contenido_no_confiable: Literal[True]
+    status: Literal["ok", "degraded"] = "ok"
+    backend: Literal["pinecone", "local", "none"] = "local"
+    sources: list[KnowledgeCitation] = Field(default_factory=list, max_length=25)
 
     @field_validator("total")
     @classmethod
@@ -165,14 +190,38 @@ def _matches(items: list[dict], query_tokens: set[str], text_keys: tuple[str, ..
     return [item for _, _, item in ranked[:limit]]
 
 
+def _retrieved(namespace: str, consulta: str, limite: int) -> tuple[list[dict], str, str, list[dict]]:
+    result = get_knowledge_retriever().search(
+        agent_role=AgentId.ANALYST, query=consulta, namespace=namespace, limit=limite,
+    )
+    found: list[dict] = []
+    for source in result.sources:
+        try:
+            item = json.loads(source.text)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(item, dict):
+            found.append(item)
+    citations = [
+        {
+            "source_id": source.source_id, "source_kind": source.source_kind,
+            "source_ref": source.source_ref, "namespace": source.namespace,
+            "chunk": source.chunk, "score": source.score, "backend": source.backend,
+        }
+        for source in result.sources
+    ]
+    return found, result.status, result.backend, citations
+
+
 @mcp.tool(name="consultar_glosario", title="Consultar glosario de negocio")
 def consultar_glosario(consulta: _Consulta, limite: _Limite = 5) -> GlossaryResult:
     """Busca definiciones ficticias; no registra la consulta ni los resultados."""
     tokens = _validate_query(consulta)
     _validate_limit(limite)
-    found = _matches(_SOURCES["glosario"], tokens, ("termino", "definicion"), limite)
+    found, status, backend, sources = _retrieved("glosario", consulta, limite)
     entries = [GlossaryEntry.model_validate({key: item[key] for key in GlossaryEntry.model_fields}) for item in found]
-    return GlossaryResult(definiciones=entries, total=len(entries), origen="simulado", contenido_no_confiable=True)
+    return GlossaryResult(definiciones=entries, total=len(entries), origen="simulado", contenido_no_confiable=True,
+                          status=status, backend=backend, sources=sources)
 
 
 @mcp.tool(name="buscar_hu_similares", title="Buscar historias de usuario similares")
@@ -180,9 +229,11 @@ def buscar_hu_similares(consulta: _Consulta, limite: _Limite = 5) -> StoriesResu
     """Busca ejemplos ficticios o anonimizados, nunca reglas para el caso actual."""
     tokens = _validate_query(consulta)
     _validate_limit(limite)
-    found = _matches(_SOURCES["historias"], tokens, ("titulo", "resumen", "aclaraciones"), limite)
+    found, status, backend, sources = _retrieved("hu_aprobadas", consulta, limite)
     entries = [SimilarStory.model_validate({key: item[key] for key in SimilarStory.model_fields}) for item in found]
-    return StoriesResult(historias=entries, total=len(entries), origen="anonimizado", contenido_no_confiable=True)
+    origin = "simulado" if any(item["source_kind"] == "simulated_reference" for item in sources) else "anonimizado"
+    return StoriesResult(historias=entries, total=len(entries), origen=origin, contenido_no_confiable=True,
+                         status=status, backend=backend, sources=sources)
 
 
 @mcp.tool(name="consultar_estandares", title="Consultar estándares internos")
@@ -190,9 +241,10 @@ def consultar_estandares(consulta: _Consulta, limite: _Limite = 5) -> StandardsR
     """Busca estándares ficticios que deben confirmarse con Negocio."""
     tokens = _validate_query(consulta)
     _validate_limit(limite)
-    found = _matches(_SOURCES["estandares"], tokens, ("titulo", "regla", "referencia"), limite)
+    found, status, backend, sources = _retrieved("estandares", consulta, limite)
     entries = [StandardEntry.model_validate({key: item[key] for key in StandardEntry.model_fields}) for item in found]
-    return StandardsResult(estandares=entries, total=len(entries), origen="simulado", contenido_no_confiable=True)
+    return StandardsResult(estandares=entries, total=len(entries), origen="simulado", contenido_no_confiable=True,
+                          status=status, backend=backend, sources=sources)
 
 
 @mcp.tool(name="aplicar_checklist_vacios", title="Aplicar checklist de vacíos")
@@ -200,7 +252,14 @@ def aplicar_checklist_vacios(consulta: _Consulta, limite: _Limite = 5) -> Checkl
     """Devuelve preguntas de revisión de forma determinista, sin decidir por Negocio."""
     tokens = _validate_query(consulta)
     _validate_limit(limite)
-    matches = _matches(_SOURCES["checklist"], tokens, ("categoria", "descripcion"), 25)
+    checklist_matches, checklist_status, checklist_backend, checklist_sources = _retrieved("checklist", consulta, 25)
+    lesson_matches, lesson_status, lesson_backend, lesson_sources = _retrieved("lecciones", consulta, 25)
+    matches = (checklist_matches + lesson_matches)[:25]
+    statuses = {checklist_status, lesson_status}
+    status = "degraded" if "degraded" in statuses else "ok"
+    backends = {checklist_backend, lesson_backend}
+    backend = "local" if "local" in backends else ("pinecone" if "pinecone" in backends else "none")
+    sources = [*checklist_sources, *lesson_sources][:25]
     grouped: dict[str, list[ChecklistItem]] = {category.value: [] for category in Category}
     for item in matches:
         category = item["categoria"]
@@ -216,4 +275,6 @@ def aplicar_checklist_vacios(consulta: _Consulta, limite: _Limite = 5) -> Checkl
         )
     categories = [ChecklistCategory(categoria=category, items=items) for category, items in grouped.items() if items]
     total = sum(len(category.items) for category in categories)
-    return ChecklistResult(categorias=categories, total=total, origen="simulado", contenido_no_confiable=True)
+    origin = "anonimizado" if any(item["source_kind"] == "approved_lesson" for item in sources) else "simulado"
+    return ChecklistResult(categorias=categories, total=total, origen=origin, contenido_no_confiable=True,
+                           status=status, backend=backend, sources=sources)

@@ -190,6 +190,7 @@ class SourceCitation(BaseModel):
 
     source_id: str = Field(min_length=1, max_length=160)
     source_ref: str = Field(min_length=1, max_length=300)
+    backend: Literal["pinecone", "local"] | None = None
 
     @field_validator("source_ref")
     @classmethod
@@ -205,11 +206,17 @@ class SourceCitation(BaseModel):
             and self.source_ref.endswith((".py", ".md"))
             and self.source_id == self.source_ref
         )
+        standard_prefix = "agentes/analista/fuentes/estandares.json#"
         is_standards_file = (
+            self.source_ref.startswith(standard_prefix)
+            and self.source_id == self.source_ref[len(standard_prefix):]
+            and bool(self.source_id)
+        )
+        is_legacy_standards_file = (
             self.source_ref == "agentes/analista/fuentes/estandares.json"
             and self.source_id.startswith("estandares:")
         )
-        if not (is_demo_file or is_standards_file):
+        if not (is_demo_file or is_standards_file or is_legacy_standards_file):
             raise ValueError("La cita no pertenece a las fuentes técnicas allowlisted.")
         return self
 

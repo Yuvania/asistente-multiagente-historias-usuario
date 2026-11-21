@@ -9,9 +9,11 @@ from .errors import (
     PineconeCredentialsMissingError,
     PineconeIndexIncompatibleError,
     PineconeIndexNotFoundError,
+    PineconeRateLimitError,
     PineconeServiceError,
     PineconeTimeoutError,
 )
+from .retrieval import KnowledgeRetriever, KnowledgeSource, RetrievalResult
 
 __all__ = [
     "DEFAULT_INDEX_CONTRACT",
@@ -21,8 +23,12 @@ __all__ = [
     "PineconeIndexContract",
     "PineconeIndexIncompatibleError",
     "PineconeIndexNotFoundError",
+    "PineconeRateLimitError",
     "PineconeKnowledgeClient",
     "PineconeServiceError",
     "PineconeSettings",
     "PineconeTimeoutError",
+    "KnowledgeRetriever",
+    "KnowledgeSource",
+    "RetrievalResult",
 ]

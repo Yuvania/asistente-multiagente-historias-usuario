@@ -160,12 +160,13 @@ def _siguiente_codigo_leccion(conexion) -> str:
 
 
 class RepositorioHU:
-    def __init__(self, fuente: str | Path | None = None) -> None:
-        """``fuente``: URL de base de datos, ruta de archivo SQLite o None (usa DATABASE_URL / SQLite local)."""
+    def __init__(self, fuente: str | Path | None = None, *, crear_esquema: bool = True) -> None:
+        """``fuente``: URL, SQLite o None; ``crear_esquema=False`` habilita lectura sin DDL."""
         self.fuente = str(fuente) if fuente is not None else url_desde_entorno()
         self.motor = crear_motor(fuente)
         _verificar_esquema(self.motor)
-        _metadata.create_all(self.motor)
+        if crear_esquema:
+            _metadata.create_all(self.motor)
 
     # --- HU aprobadas -------------------------------------------------
     def guardar_hu(self, hu: dict[str, Any]) -> dict[str, Any]:

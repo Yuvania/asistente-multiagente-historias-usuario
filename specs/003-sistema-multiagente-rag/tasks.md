@@ -2,7 +2,7 @@
 
 **Spec**: [spec.md](spec.md)  
 **Plan**: [plan.md](plan.md)  
-**Estado**: T005-T029, T037-T038, T039-T043 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
+**Estado**: T005-T029, T037-T038, T039-T050 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
 
 > T005-T009 y T055-T060 se implementaron primero. Por instrucción posterior se implementó T010-T018 en modo experimental; también se creó el fixture T038 por requisito explícito del Asesor. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitución aún declara ratificación pendiente. T002 se revisó contra el texto 2.0.0, pero queda pendiente su cierre formal. Este avance técnico no representa aceptación formal.
 
@@ -91,13 +91,13 @@
 
 ## Fase 11 - Ingesta y recuperacion para agentes
 
-- [ ] T044 Implementar CLI `python -m agentes.conocimiento.ingesta --fuente todas`, que solo admite fuentes allowlisted, crea/valida el índice y reporta conteos/errores sanitizados.
-- [ ] T045 Añadir pruebas primero de búsqueda semántica mockeada por los seis namespaces y prueba de que una consulta de un rol no accede a namespaces no autorizados.
-- [ ] T046 Implementar retrieval read-only con mapeo agente→namespace y citas desde metadata validada; conservar `consultar_glosario`, `buscar_hu_similares`, `consultar_estandares` y `aplicar_checklist_vacios`.
-- [ ] T047 Añadir herramientas MCP de búsqueda de código que solo consultan Pinecone/fuentes locales; devolver la ruta exacta del archivo recuperado.
-- [ ] T048 Integrar recuperación en los cuatro agentes, manteniendo los límites de rol y `source_kind`; el Gestor solo consume HU aprobadas/lecciones aprobadas.
-- [ ] T049 Implementar fallback a búsqueda local con `status=degraded`, `backend=local` cuando Pinecone falle; asegurar que errores o resultados locales nunca se etiqueten como consulta Pinecone.
-- [ ] T050 Añadir pruebas de errores de Pinecone (auth, timeout, rate limit, index incompatible), fallback local y procedencia verdadera de cada fuente.
+- [x] T044 Implementar CLI `python -m agentes.conocimiento.ingesta --fuente todas`, que solo admite fuentes allowlisted, crea/valida el índice y reporta conteos/errores sanitizados. Evidencia: `agentes/conocimiento/ingesta.py`; `test_knowledge_ingesta.py` prueba `main()`/dry-run, índice mockeado, IDs repetibles, reconciliación exacta, fallos parciales y ausencia de secretos. No se ejecutó ingesta real.
+- [x] T045 Añadir pruebas primero de búsqueda semántica mockeada por los seis namespaces y prueba de que una consulta de un rol no accede a namespaces no autorizados. Evidencia: `test_knowledge_retrieval.py` comprueba los seis espacios, aislamiento, resultados vacíos, orden, límite y namespaces arbitrarios.
+- [x] T046 Implementar retrieval read-only con mapeo agente→namespace y citas desde metadata validada; conservar `consultar_glosario`, `buscar_hu_similares`, `consultar_estandares` y `aplicar_checklist_vacios`. Evidencia: `agentes/conocimiento/retrieval.py`; las cuatro herramientas originales conservan nombre/contrato funcional y agregan estado, backend y citas validadas.
+- [x] T047 Añadir herramientas MCP de búsqueda de código que solo consultan Pinecone/fuentes locales; devolver la ruta exacta del archivo recuperado. Evidencia: `consultar_codigo_demo` recupera solo `codigo`, valida la ruta con `AuthorizedSourceLoader` y devuelve contenido no confiable sin importar ni ejecutar archivos.
+- [x] T048 Integrar recuperación en los cuatro agentes, manteniendo los límites de rol y `source_kind`; el Gestor solo consume HU aprobadas/lecciones aprobadas. Evidencia: Analista usa las cuatro herramientas originales; Redactor y Gestor reciben evidencia mediante `workflow_graph.py`; Asesor consulta su MCP técnico. `test_knowledge_agent_integration.py` verifica namespaces y decisiones humanas pendientes.
+- [x] T049 Implementar fallback a búsqueda local con `status=degraded`, `backend=local` cuando Pinecone falle; asegurar que errores o resultados locales nunca se etiqueten como consulta Pinecone. Evidencia: `KnowledgeRetriever.search()` devuelve fuentes con su backend real o resultado vacío `degraded/none`; pruebas simulan fallo y disponibilidad local/ausente.
+- [x] T050 Añadir pruebas de errores de Pinecone (auth, timeout, rate limit, index incompatible), fallback local y procedencia verdadera de cada fuente. Evidencia: `test_knowledge_retrieval.py` y `test_knowledge_ingesta.py` cubren clave ausente, autenticación, timeout, rate limit, índice ausente/incompatible, fallo parcial, citas, namespaces y aislamiento.
 
 ## Fase 12 - Inyeccion y documentacion
 
@@ -118,5 +118,5 @@
 - Fases 2–6 dependen de fundamentos T005–T009.
 - T055–T060 deben preceder la ejecución de los nodos multiagente; T055 y T060 prueban selección y aislamiento con OpenCode simulado.
 - La publicación de una HU depende de T019–T021; decisiones de cambio dependen de T022–T024.
-- La ratificacion formal de T001/T002 sigue pendiente. T010-T024 y el fixture T038 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; T037 y T039-T043 ya tienen código y pruebas, sin que esto equivalga a aceptación formal. T044 y la integración de ingesta/retrieval Pinecone siguen pendientes; pytest no realiza llamadas Pinecone.
-- T037–T043 preceden a T044; T044 precede a integración de retrieval T045–T050; T051–T052 documentan la integración; T030–T032 y T053–T054 son aceptación final después de T050.
+- La ratificacion formal de T001/T002 sigue pendiente. T010-T024 y el fixture T038 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; T037 y T039-T050 ya tienen código y pruebas, sin que esto equivalga a aceptación formal. Las pruebas usan clientes simulados; la ingesta real sigue sin ejecutarse.
+- T037–T043 preceden a T044; T044–T050 ya están implementadas en esta rama; T051–T052 documentan la integración; T030–T032 y T053–T054 son aceptación final después de T050.

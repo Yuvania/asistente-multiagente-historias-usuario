@@ -8,7 +8,7 @@ import pytest
 from langchain_core.documents import Document
 
 from agentes.conocimiento.batches import PreparedBatch, obsolete_ids, prepare_batches
-from agentes.conocimiento.chunking import MAX_EMBEDDING_INPUT_TOKENS, chunk_documents
+from agentes.conocimiento.chunking import MAX_EMBEDDING_INPUT_TOKENS, RESERVED_SPECIAL_TOKENS, chunk_documents
 from agentes.conocimiento.documents import source_to_document, split_approval_classes
 from agentes.conocimiento.ids import stable_document_id
 from agentes.conocimiento.sources import SourceRecord
@@ -102,6 +102,16 @@ def test_chunking_rejects_a_chunk_that_cannot_fit_a_single_character():
     document = source_to_document(_source("x"))
     with pytest.raises(ValueError, match="carácter"):
         chunk_documents([document], token_counter=lambda _text: 2, token_limit=1)
+
+
+def test_default_chunk_bound_uses_utf8_bytes_and_reserves_model_special_tokens():
+    text = "🙂 póliza 界 " * 300
+    document = source_to_document(_source(text))
+    chunks = chunk_documents([document])
+    safe_content_limit = MAX_EMBEDDING_INPUT_TOKENS - RESERVED_SPECIAL_TOKENS
+    assert "".join(chunk.page_content for chunk in chunks) == text
+    assert len(chunks) > 1
+    assert all(len(chunk.page_content.encode("utf-8")) <= safe_content_limit for chunk in chunks)
 
 
 def test_ids_include_namespace_source_reference_and_chunk_number():

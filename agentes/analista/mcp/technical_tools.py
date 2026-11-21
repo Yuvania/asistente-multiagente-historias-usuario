@@ -10,6 +10,8 @@ from typing import Annotated, Literal
 from fastmcp import FastMCP
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from agentes.analista.core.agent_registry import AgentId
+from agentes.conocimiento.retrieval import get_knowledge_retriever
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 STANDARD_FIXTURE = "agentes/analista/fuentes/estandares.json"
@@ -27,11 +29,24 @@ class StandardEntry(ToolModel):
     referencia: str = Field(min_length=1, max_length=200)
 
 
+class KnowledgeCitation(ToolModel):
+    source_id: str = Field(min_length=1, max_length=300)
+    source_kind: str = Field(min_length=1, max_length=40)
+    source_ref: str = Field(min_length=1, max_length=300)
+    namespace: str = Field(min_length=1, max_length=40)
+    chunk: int = Field(ge=0)
+    score: float
+    backend: Literal["pinecone", "local"]
+
+
 class StandardsResult(ToolModel):
     estandares: list[StandardEntry] = Field(max_length=5)
     total: int = Field(ge=0, le=5)
     origen: Literal["simulado", "anonimizado"]
     contenido_no_confiable: Literal[True]
+    status: Literal["ok", "degraded"] = "ok"
+    backend: Literal["pinecone", "local", "none"] = "local"
+    sources: list[KnowledgeCitation] = Field(default_factory=list, max_length=25)
 
     @field_validator("total")
     @classmethod
@@ -62,6 +77,9 @@ class CodeSearchResult(ToolModel):
     fuentes: list[CodeSource] = Field(max_length=12)
     total: int = Field(ge=0, le=12)
     origen: Literal["simulado"]
+    status: Literal["ok", "degraded"] = "ok"
+    backend: Literal["pinecone", "local", "none"] = "local"
+    sources: list[KnowledgeCitation] = Field(default_factory=list, max_length=25)
 
     @field_validator("total")
     @classmethod
@@ -123,20 +141,26 @@ def consultar_estandares(consulta: str, limite: int = 5) -> StandardsResult:
         raise ValueError("consulta debe contener entre 1 y 4.000 caracteres no vacíos")
     if not isinstance(limite, int) or isinstance(limite, bool) or not 1 <= limite <= 5:
         raise ValueError("limite debe ser un entero entre 1 y 5")
-    query = _content_tokens(consulta)
-    ranked: list[tuple[int, int, dict]] = []
-    for index, item in enumerate(_load_standards()):
-        text = " ".join(str(item.get(key, "")) for key in ("titulo", "regla", "referencia", "terminos"))
-        score = len(query & _content_tokens(text))
-        if score:
-            ranked.append((score, index, item))
-    ranked.sort(key=lambda row: (-row[0], row[1]))
-    found = [
-        StandardEntry.model_validate({key: item[key] for key in StandardEntry.model_fields})
-        for _, _, item in ranked[:limite]
-    ]
+    retrieved = get_knowledge_retriever().search(
+        agent_role=AgentId.TECHNICAL_ADVISOR, query=consulta, namespace="estandares", limit=limite,
+    )
+    items = []
+    for source in retrieved.sources:
+        try:
+            item = json.loads(source.text)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(item, dict):
+            items.append(item)
+    found = [StandardEntry.model_validate({key: item[key] for key in StandardEntry.model_fields}) for item in items]
     return StandardsResult(
-        estandares=found, total=len(found), origen="simulado", contenido_no_confiable=True
+        estandares=found, total=len(found), origen="simulado", contenido_no_confiable=True,
+        status=retrieved.status, backend=retrieved.backend,
+        sources=[{
+            "source_id": source.source_id, "source_kind": source.source_kind,
+            "source_ref": source.source_ref, "namespace": source.namespace,
+            "chunk": source.chunk, "score": source.score, "backend": source.backend,
+        } for source in retrieved.sources],
     )
 
 
@@ -144,29 +168,24 @@ def consultar_estandares(consulta: str, limite: int = 5) -> StandardsResult:
 def consultar_codigo_demo(consulta: str, limite: int = 12) -> CodeSearchResult:
     """Read matching allowlisted demo files as untrusted data; never import or execute."""
     request = CodeSearchRequest(consulta=consulta, limite=limite)
-    query_tokens = _content_tokens(request.consulta)
-    ranked: list[tuple[int, int, str]] = []
-    for index, (source_ref, tags) in enumerate(_CODE_DEMO_FILES):
-        score = len(query_tokens & _content_tokens(" ".join(tags)))
-        if score:
-            ranked.append((score, index, source_ref))
-    ranked.sort(key=lambda row: (-row[0], row[1]))
-
+    retrieved = get_knowledge_retriever().search(
+        agent_role=AgentId.TECHNICAL_ADVISOR, query=request.consulta, namespace="codigo", limit=request.limite,
+    )
     sources: list[CodeSource] = []
-    for _, _, source_ref in ranked[:request.limite]:
-        path = (PROJECT_ROOT / source_ref).resolve()
-        try:
-            path.relative_to(PROJECT_ROOT)
-            if path.suffix not in {".py", ".md"}:
-                continue
-            content = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeError, ValueError):
-            continue
-        if content.strip() and len(content) <= 12000:
+    for source in retrieved.sources:
+        if len(source.text) <= 12000:
             sources.append(CodeSource(
-                source_id=source_ref,
-                source_ref=source_ref,
-                contenido=content,
+                source_id=source.source_id,
+                source_ref=source.source_ref,
+                contenido=source.text,
                 contenido_no_confiable=True,
             ))
-    return CodeSearchResult(fuentes=sources, total=len(sources), origen="simulado")
+    return CodeSearchResult(
+        fuentes=sources, total=len(sources), origen="simulado",
+        status=retrieved.status, backend=retrieved.backend,
+        sources=[{
+            "source_id": source.source_id, "source_kind": source.source_kind,
+            "source_ref": source.source_ref, "namespace": source.namespace,
+            "chunk": source.chunk, "score": source.score, "backend": source.backend,
+        } for source in retrieved.sources],
+    )

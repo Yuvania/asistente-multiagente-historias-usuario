@@ -14,6 +14,7 @@ from .errors import (
     PineconeIndexIncompatibleError,
     PineconeIndexNotFoundError,
     PineconeKnowledgeError,
+    PineconeRateLimitError,
     PineconeServiceError,
     PineconeTimeoutError,
 )
@@ -162,6 +163,11 @@ class PineconeKnowledgeClient:
         except Exception as exc:
             raise _translate_error(exc) from None
 
+    def get_vector_index(self) -> Any:
+        """Return the conventional data-plane index after explicit contract validation."""
+        self.validate_index()
+        return self._get_adapter().vector_index(self.contract.name)
+
     def _get_adapter(self) -> PineconeControlPlane:
         api_key = self._api_key()
         if self._adapter is None:
@@ -259,6 +265,8 @@ def _translate_error(error: Exception) -> PineconeKnowledgeError:
     name = type(error).__name__.lower()
     if status_code in (401, 403) or "unauthor" in name or "authentication" in name:
         return PineconeAuthenticationError()
+    if status_code == 429 or "ratelimit" in name or "rate_limit" in name:
+        return PineconeRateLimitError()
     if isinstance(error, TimeoutError) or "timeout" in name or "timedout" in name:
         return PineconeTimeoutError()
     return PineconeServiceError()

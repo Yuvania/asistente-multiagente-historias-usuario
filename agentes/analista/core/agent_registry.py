@@ -77,6 +77,7 @@ AGENT_NAMESPACE_ALLOWLIST: Final[dict[AgentId, frozenset[KnowledgeNamespace]]] =
     AgentId.ANALYST: frozenset({
         KnowledgeNamespace.GLOSSARY, KnowledgeNamespace.STANDARDS,
         KnowledgeNamespace.CHECKLIST, KnowledgeNamespace.APPROVED_STORIES,
+        KnowledgeNamespace.LESSONS,
     }),
     AgentId.WRITER_REVIEWER: frozenset({
         KnowledgeNamespace.STANDARDS, KnowledgeNamespace.CHECKLIST,

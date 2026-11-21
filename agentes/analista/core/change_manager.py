@@ -48,6 +48,7 @@ class ChangeManager:
         change_request: str,
         repository: Any,
         approved_story: Mapping[str, Any] | None = None,
+        knowledge_context: list[dict[str, Any]] | None = None,
     ) -> ChangeRecommendation:
         """Read an approved HU, then ask the dedicated deny-all agent for a validated proposal."""
         try:
@@ -72,6 +73,7 @@ class ChangeManager:
                     "approved_at": approved["aprobada_en"],
                 },
                 "new_request": change_request,
+                "approved_knowledge_evidence": list(knowledge_context or []),
             }
             approved_text = "\n".join(_strings(payload["approved_story"]))
         except (KeyError, TypeError, ValueError) as exc:

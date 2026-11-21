@@ -1,6 +1,7 @@
 """LangGraph workflow with Analyst business interrupts and a bounded writer loop."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
@@ -130,12 +131,25 @@ def build_workflow_graph(
     advisor: TechnicalAdvisorNode | None = None,
     change_manager: ChangeManagerNode | None = None,
     repository: Any | None = None,
+    knowledge_retriever: Any | None = None,
 ):
     """Compile pre/post-grooming orchestration with injectable agents and repository."""
     writer = RedactorRevisor()
     technical_advisor = TechnicalAdvisor()
     manager = ChangeManager()
     repository_instance = repository
+
+    async def retrieve_knowledge(role: AgentId, query: str, namespaces: tuple[str, ...]) -> list[dict[str, Any]]:
+        from agentes.conocimiento.retrieval import get_knowledge_retriever
+
+        retriever = knowledge_retriever or get_knowledge_retriever()
+        results = await asyncio.gather(*(
+            asyncio.to_thread(
+                retriever.search, agent_role=role, query=query, namespace=namespace, limit=5,
+            )
+            for namespace in namespaces
+        ))
+        return [result.model_dump(mode="json") for result in results]
 
     async def call_analyst(state: WorkflowState) -> AgentTurnResponse | Mapping[str, Any]:
         if analyst is None:
@@ -145,20 +159,30 @@ def build_workflow_graph(
     async def call_draft(state: WorkflowState) -> StoryDraftContent | Mapping[str, Any]:
         if draft is not None:
             return await draft(state)
+        query = " ".join((state.get("requirement_input") or "", json.dumps(state.get("analyst_response", {}), ensure_ascii=False)))
+        knowledge = await retrieve_knowledge(
+            AgentId.WRITER_REVIEWER, query, ("estandares", "checklist", "hu_aprobadas"),
+        )
         return await writer.draft(
             requirement=state["requirement_input"] or "",
             analyst_response=state["analyst_response"],
             previous_story=state.get("draft_story"),
             observations=state.get("review_observations", []),
+            knowledge_context=knowledge,
         )
 
     async def call_review(state: WorkflowState) -> StoryReviewOutput | Mapping[str, Any]:
         if review is not None:
             return await review(state)
+        query = " ".join((state.get("requirement_input") or "", json.dumps(state.get("draft_story", {}), ensure_ascii=False)))
+        knowledge = await retrieve_knowledge(
+            AgentId.WRITER_REVIEWER, query, ("estandares", "checklist", "hu_aprobadas"),
+        )
         return await writer.review(
             requirement=state["requirement_input"] or "",
             analyst_response=state["analyst_response"],
             story=state["draft_story"],
+            knowledge_context=knowledge,
         )
 
     async def call_advisor(state: WorkflowState) -> TechnicalAssessment | Mapping[str, Any]:
@@ -211,11 +235,17 @@ def build_workflow_graph(
         if not isinstance(approved_story, Mapping) or approved_story.get("id") != approved_story_id:
             raise WorkflowDependencyError("El Repositorio no devolvió la HU aprobada solicitada.")
         if change_manager is None:
+            knowledge = await retrieve_knowledge(
+                AgentId.CHANGE_MANAGER,
+                " ".join((change_request, json.dumps(approved_story, ensure_ascii=False))),
+                ("hu_aprobadas", "lecciones"),
+            )
             recommendation = await manager.evaluate(
                 approved_story_id=approved_story_id,
                 change_request=change_request,
                 repository=repository_ref,
                 approved_story=approved_story,
+                knowledge_context=knowledge,
             )
         else:
             recommendation = await change_manager(state, repository_ref)
@@ -704,6 +734,7 @@ class WorkflowRuntime:
         advisor: TechnicalAdvisorNode | None = None,
         change_manager: ChangeManagerNode | None = None,
         repository: Any | None = None,
+        knowledge_retriever: Any | None = None,
     ) -> None:
         self.observability = observability or Observability()
         self._checkpointer = InMemorySaver(
@@ -732,6 +763,7 @@ class WorkflowRuntime:
             advisor=advisor,
             change_manager=change_manager,
             repository=repository,
+            knowledge_retriever=knowledge_retriever,
         )
 
     @property

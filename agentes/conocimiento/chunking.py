@@ -10,16 +10,19 @@ from .documents import validate_document_metadata
 from .ids import stable_document_id
 
 
-# Pinecone documenta 507 tokens máximos para multilingual-e5-large.
-# Se deja reserva para tokens de inicio/fin del modelo en el límite conservador local.
+# Pinecone documenta 507 tokens máximos para multilingual-e5-large. El conteo
+# local usa bytes UTF-8 como cota superior conservadora para SentencePiece: cada
+# pieza consume al menos un byte del texto. Se reservan dos posiciones para los
+# tokens especiales de inicio y fin que agrega el tokenizer del modelo.
 MAX_EMBEDDING_INPUT_TOKENS = 507
+RESERVED_SPECIAL_TOKENS = 2
 DEFAULT_CHUNK_CHAR_LIMIT = 480
 TokenCounter = Callable[[str], int]
 
 
 def _conservative_token_count(text: str) -> int:
-    """Cota local conservadora por puntos de código; puede sustituirse por el tokenizer XLM-R exacto."""
-    return len(text)
+    """Cota superior conservadora en bytes para el tokenizer SentencePiece XLM-R."""
+    return len(text.encode("utf-8"))
 
 
 def _fit_chunk(text: str, start: int, max_end: int, token_counter: TokenCounter, token_limit: int) -> int:
@@ -46,6 +49,9 @@ def chunk_documents(
         raise ValueError("El límite de tokens debe estar entre 1 y el máximo del modelo.")
     if isinstance(char_limit, bool) or not isinstance(char_limit, int) or char_limit < 1:
         raise ValueError("El límite de caracteres debe ser positivo.")
+    # La cota también deja espacio para <s> y </s> que el tokenizer de XLM-R
+    # agrega alrededor de cada entrada.
+    safe_content_limit = min(token_limit, MAX_EMBEDDING_INPUT_TOKENS - RESERVED_SPECIAL_TOKENS)
     output: list[Document] = []
     for document in documents:
         validate_document_metadata(document.metadata)
@@ -56,8 +62,8 @@ def chunk_documents(
         start = 0
         while start < len(text):
             end = min(start + char_limit, len(text))
-            if token_counter(text[start:end]) > token_limit:
-                end = _fit_chunk(text, start, end, token_counter, token_limit)
+            if token_counter(text[start:end]) > safe_content_limit:
+                end = _fit_chunk(text, start, end, token_counter, safe_content_limit)
             pieces.append(text[start:end])
             start = end
         for index, piece in enumerate(pieces):
