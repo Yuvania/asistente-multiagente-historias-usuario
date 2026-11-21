@@ -50,6 +50,13 @@ def _analyst_response(*, ready: bool, pending: bool = False) -> AgentTurnRespons
     )
 
 
+async def _empty_technical_assessment(_state):
+    return {
+        "affected_modules": [], "dependencies": [], "risks": [], "critical_processes": [],
+        "consulted_sources": [], "uncertainties": ["Integración aislada del Asesor Técnico."],
+    }
+
+
 @pytest.mark.asyncio
 async def test_pending_business_question_interrupts_resumes_and_calls_existing_run_turn(monkeypatch):
     analyst_messages = []
@@ -76,7 +83,7 @@ async def test_pending_business_question_interrupts_resumes_and_calls_existing_r
     async def review(_state):
         return {"requires_correction": False, "observations": []}
 
-    runtime = WorkflowRuntime(draft=draft, review=review)
+    runtime = WorkflowRuntime(draft=draft, review=review, advisor=_empty_technical_assessment)
     paused = await runtime.execute(WorkflowCreateRequest(
         mode=FlowMode.PRE_GROOMING, requirement="Consultar saldos de cuentas activas"
     ))
@@ -112,7 +119,7 @@ async def test_unresolved_gaps_without_questions_never_reach_writer():
     async def review(_state):
         pytest.fail("El Revisor no debe ejecutarse si no existe borrador.")
 
-    runtime = WorkflowRuntime(analyst=analyst, draft=draft, review=review)
+    runtime = WorkflowRuntime(analyst=analyst, draft=draft, review=review, advisor=_empty_technical_assessment)
     result = await runtime.execute(WorkflowCreateRequest(
         mode=FlowMode.PRE_GROOMING, requirement="Consultar un saldo"
     ))
@@ -193,7 +200,7 @@ async def test_writer_review_loop_allows_two_corrections_then_stops_for_po(monke
             story=state["draft_story"],
         )
 
-    runtime = WorkflowRuntime(analyst=analyst, draft=draft, review=review)
+    runtime = WorkflowRuntime(analyst=analyst, draft=draft, review=review, advisor=_empty_technical_assessment)
     result = await runtime.execute(WorkflowCreateRequest(
         mode=FlowMode.PRE_GROOMING, requirement="Consultar saldos de cuentas activas"
     ))

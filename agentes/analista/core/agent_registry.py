@@ -62,15 +62,14 @@ AGENT_SPECS: Final[dict[AgentId, AgentSpec]] = {
     ),
 }
 
-# These are the only MCP tools currently registered by the Analyst MCP server.
-# New tools must be added here for each role explicitly before they can execute.
+# Tool permissions are backend-owned and scoped to each role-specific MCP server.
 MCP_TOOL_ALLOWLIST: Final[dict[AgentId, frozenset[str]]] = {
     AgentId.ANALYST: frozenset({
         "consultar_glosario", "buscar_hu_similares",
         "consultar_estandares", "aplicar_checklist_vacios",
     }),
     AgentId.WRITER_REVIEWER: frozenset({"consultar_estandares", "aplicar_checklist_vacios"}),
-    AgentId.TECHNICAL_ADVISOR: frozenset({"consultar_estandares"}),
+    AgentId.TECHNICAL_ADVISOR: frozenset({"consultar_estandares", "consultar_codigo_demo"}),
     AgentId.CHANGE_MANAGER: frozenset(),
 }
 
@@ -91,6 +90,7 @@ _TOOL_NAMESPACE: Final[dict[str, KnowledgeNamespace]] = {
     "consultar_glosario": KnowledgeNamespace.GLOSSARY,
     "consultar_estandares": KnowledgeNamespace.STANDARDS,
     "aplicar_checklist_vacios": KnowledgeNamespace.CHECKLIST,
+    "consultar_codigo_demo": KnowledgeNamespace.CODE,
 }
 
 

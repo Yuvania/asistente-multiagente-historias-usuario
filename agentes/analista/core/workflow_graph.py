@@ -15,12 +15,14 @@ from agentes.analista.core.models import AgentTurnResponse, SendMessageRequest, 
 from agentes.analista.core.observability import Observability
 from agentes.analista.core.prompt_loader import load_prompt
 from agentes.analista.core.redactor_revisor import RedactorRevisor
+from agentes.analista.core.technical_advisor import TechnicalAdvisor
 from agentes.analista.core.workflow_models import (
     BusinessAnswerSubmission,
     DraftStory,
     FlowMode,
     StoryDraftContent,
     StoryReviewOutput,
+    TechnicalAssessment,
     WorkflowCreateRequest,
     WorkflowSnapshot,
     WorkflowStage,
@@ -33,6 +35,7 @@ from agentes.analista.core.workflow_models import (
 AnalystNode = Callable[[WorkflowState], Awaitable[AgentTurnResponse | Mapping[str, Any]]]
 DraftNode = Callable[[WorkflowState], Awaitable[StoryDraftContent | Mapping[str, Any]]]
 ReviewNode = Callable[[WorkflowState], Awaitable[StoryReviewOutput | Mapping[str, Any]]]
+TechnicalAdvisorNode = Callable[[WorkflowState], Awaitable[TechnicalAssessment | Mapping[str, Any]]]
 
 
 class WorkflowNotFoundError(LookupError):
@@ -47,7 +50,7 @@ def _public_snapshot(state: Mapping[str, Any]) -> WorkflowSnapshot:
     allowed = {
         "workflow_id", "mode", "status", "current_stage", "active_agent",
         "pending_questions", "analyst_response", "draft_story", "review_observations",
-        "completion_reason",
+        "technical_assessment", "completion_reason",
     }
     return WorkflowSnapshot.model_validate({key: value for key, value in state.items() if key in allowed})
 
@@ -80,9 +83,11 @@ def build_workflow_graph(
     analyst: AnalystNode | None = None,
     draft: DraftNode | None = None,
     review: ReviewNode | None = None,
+    advisor: TechnicalAdvisorNode | None = None,
 ):
     """Compile pre-grooming orchestration; callbacks keep model and store access injectable."""
     writer = RedactorRevisor()
+    technical_advisor = TechnicalAdvisor()
 
     async def call_analyst(state: WorkflowState) -> AgentTurnResponse | Mapping[str, Any]:
         if analyst is None:
@@ -106,6 +111,14 @@ def build_workflow_graph(
             requirement=state["requirement_input"] or "",
             analyst_response=state["analyst_response"],
             story=state["draft_story"],
+        )
+
+    async def call_advisor(state: WorkflowState) -> TechnicalAssessment | Mapping[str, Any]:
+        if advisor is not None:
+            return await advisor(state)
+        return await technical_advisor.assess(
+            requirement=state.get("requirement_input") or "",
+            story=state.get("draft_story", {}),
         )
 
     def prepare_pre_grooming(state: WorkflowState) -> dict[str, Any]:
@@ -196,7 +209,7 @@ def build_workflow_graph(
         )
         revised_story = story.model_copy(update={"review_status": status, "observations": observations})
         should_correct = result.requires_correction and not at_limit
-        stage = WorkflowStage.WRITER if should_correct else WorkflowStage.PO_APPROVAL
+        stage = WorkflowStage.WRITER if should_correct else WorkflowStage.TECHNICAL_ADVISOR
         workflow_status = WorkflowStatus.RUNNING if should_correct else WorkflowStatus.READY
         _trace_stage(observability, state, stage=WorkflowStage.REVIEW, agent=AgentId.WRITER_REVIEWER)
         return {
@@ -205,8 +218,19 @@ def build_workflow_graph(
             "review_requires_correction": should_correct,
             "completion_reason": "La revisión agotó dos rondas; requiere revisión del PO." if needs_attention else None,
             "current_stage": stage,
-            "active_agent": AgentId.WRITER_REVIEWER,
+            "active_agent": AgentId.WRITER_REVIEWER if should_correct else AgentId.TECHNICAL_ADVISOR,
             "status": workflow_status,
+        }
+
+    async def technical_advisor_node(state: WorkflowState) -> dict[str, Any]:
+        assessment = TechnicalAssessment.model_validate(await call_advisor(state))
+        _trace_stage(observability, state, stage=WorkflowStage.TECHNICAL_ADVISOR,
+                     agent=AgentId.TECHNICAL_ADVISOR)
+        return {
+            "technical_assessment": assessment.model_dump(mode="json"),
+            "current_stage": WorkflowStage.PO_APPROVAL,
+            "active_agent": AgentId.TECHNICAL_ADVISOR,
+            "status": WorkflowStatus.READY,
         }
 
     def hold_for_unresolved_gaps(state: WorkflowState) -> dict[str, Any]:
@@ -220,6 +244,7 @@ def build_workflow_graph(
     builder.add_node("business_wait", wait_for_business)
     builder.add_node("writer", writer_node)
     builder.add_node("reviewer", reviewer_node)
+    builder.add_node("technical_advisor", technical_advisor_node)
     builder.add_node("hold_for_unresolved_gaps", hold_for_unresolved_gaps)
     builder.add_conditional_edges(
         START,
@@ -247,9 +272,10 @@ def build_workflow_graph(
     builder.add_edge("writer", "reviewer")
     builder.add_conditional_edges(
         "reviewer",
-        lambda state: "writer" if state.get("review_requires_correction") else END,
-        {"writer": "writer", END: END},
+        lambda state: "writer" if state.get("review_requires_correction") else "technical_advisor",
+        {"writer": "writer", "technical_advisor": "technical_advisor"},
     )
+    builder.add_edge("technical_advisor", END)
     builder.add_edge("hold_for_unresolved_gaps", END)
     return builder.compile(checkpointer=checkpointer or InMemorySaver())
 
@@ -264,6 +290,7 @@ class WorkflowRuntime:
         analyst: AnalystNode | None = None,
         draft: DraftNode | None = None,
         review: ReviewNode | None = None,
+        advisor: TechnicalAdvisorNode | None = None,
     ) -> None:
         self.observability = observability or Observability()
         self._checkpointer = InMemorySaver()
@@ -283,6 +310,7 @@ class WorkflowRuntime:
             analyst=self._run_analyst if analyst is None else analyst,
             draft=draft,
             review=review,
+            advisor=advisor,
         )
 
     @property

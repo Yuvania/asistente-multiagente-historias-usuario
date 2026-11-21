@@ -134,12 +134,58 @@ class EvidenceReference(BaseModel):
     evidence: str = Field(min_length=1, max_length=1000)
 
 
+class SourceCitation(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    source_id: str = Field(min_length=1, max_length=160)
+    source_ref: str = Field(min_length=1, max_length=300)
+
+    @field_validator("source_ref")
+    @classmethod
+    def only_allow_relative_source_paths(cls, value: str) -> str:
+        if value.startswith(("/", "\\")) or "\\" in value or ".." in value.split("/") or ":" in value:
+            raise ValueError("La fuente debe ser una ruta relativa allowlisted.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_allowlisted_source(self) -> "SourceCitation":
+        is_demo_file = (
+            self.source_ref.startswith("ejemplos/polizas_demo/")
+            and self.source_ref.endswith((".py", ".md"))
+            and self.source_id == self.source_ref
+        )
+        is_standards_file = (
+            self.source_ref == "agentes/analista/fuentes/estandares.json"
+            and self.source_id.startswith("estandares:")
+        )
+        if not (is_demo_file or is_standards_file):
+            raise ValueError("La cita no pertenece a las fuentes técnicas allowlisted.")
+        return self
+
+
 class TechnicalAssessment(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    """Technical observations constrained to sources consulted for this turn."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     affected_modules: list[EvidenceReference] = Field(default_factory=list, max_length=30)
+    dependencies: list[EvidenceReference] = Field(default_factory=list, max_length=30)
     risks: list[EvidenceReference] = Field(default_factory=list, max_length=30)
     critical_processes: list[EvidenceReference] = Field(default_factory=list, max_length=30)
+    consulted_sources: list[SourceCitation] = Field(default_factory=list, max_length=30)
+    uncertainties: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def findings_must_cite_consulted_sources(self) -> "TechnicalAssessment":
+        catalog = {item.source_id: item.source_ref for item in self.consulted_sources}
+        findings = [
+            *self.affected_modules, *self.dependencies, *self.risks, *self.critical_processes
+        ]
+        if any(catalog.get(item.source_id) != item.source_ref for item in findings):
+            raise ValueError("Cada conclusión técnica debe citar una fuente consultada.")
+        if not catalog and not self.uncertainties:
+            raise ValueError("Sin fuentes consultadas se debe indicar explícitamente la incertidumbre.")
+        return self
 
 
 class ChangeRecommendation(BaseModel):
@@ -230,6 +276,7 @@ class WorkflowState(TypedDict, total=False):
     pending_questions: list[dict]
     latest_business_answers: list[dict]
     draft_story: dict
+    technical_assessment: dict
     review_observations: list[str]
     completion_reason: str | None
 
@@ -247,6 +294,7 @@ class WorkflowSnapshot(BaseModel):
     pending_questions: list[Question] = Field(default_factory=list)
     analyst_response: AgentTurnResponse | None = None
     draft_story: DraftStory | None = None
+    technical_assessment: TechnicalAssessment | None = None
     review_observations: list[str] = Field(default_factory=list)
     completion_reason: str | None = None
 

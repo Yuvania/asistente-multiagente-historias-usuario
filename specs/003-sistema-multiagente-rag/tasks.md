@@ -2,9 +2,9 @@
 
 **Spec**: [spec.md](spec.md)  
 **Plan**: [plan.md](plan.md)  
-**Estado**: T005-T015 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
+**Estado**: T005-T018, T038 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
 
-> T005-T009 y T055-T060 se implementaron primero. Por instruccion posterior se implemento T010-T015 en modo experimental en esta rama. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitucion aun declara ratificacion pendiente. T002 se reviso contra el texto 2.0.0, pero queda pendiente su cierre formal. Este avance tecnico no representa aceptacion formal.
+> T005-T009 y T055-T060 se implementaron primero. Por instrucción posterior se implementó T010-T018 en modo experimental; también se creó el fixture T038 por requisito explícito del Asesor. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitución aún declara ratificación pendiente. T002 se revisó contra el texto 2.0.0, pero queda pendiente su cierre formal. Este avance técnico no representa aceptación formal.
 
 ## Fase 0 — Puertas de gobernanza (aceptación formal pendiente)
 
@@ -44,9 +44,9 @@
 
 ## Fase 4 — Asesor Técnico (US3)
 
-- [ ] T016 Crear fixtures versionados de estándares y repositorio ficticio Python en allowlist read-only; excluir filesystem libre y repositorios reales.
-- [ ] T017 Añadir pruebas primero para evidencia de cada archivo realmente consultado, falta de evidencia, no invención y no decisión de alcance.
-- [ ] T018 Implementar herramientas/nodo del Asesor con resultado estructurado de módulos, riesgos y procesos críticos; fuentes no consultadas no aparecen.
+- [x] T016 Crear fixtures versionados de estándares y repositorio ficticio Python `ejemplos/polizas_demo/` en allowlist read-only; excluir filesystem libre y repositorios reales. El fixture de aplicación es `1.0.0` e incluye modelos, pólizas, coberturas, primas, renovaciones, pagos, validaciones y mapa de dependencias.
+- [x] T017 Añadir pruebas unitarias y de integración con OpenCode/MCP simulados para evidencia consultada, falta de evidencia, referencias no recuperadas y ausencia de decisión de alcance. Evidencia: `tests/unit/test_technical_advisor.py`, `tests/integration/test_workflow_technical_advisor.py` y `tests/contract/test_technical_mcp_stdio.py`.
+- [x] T018 Implementar herramientas MCP read-only y nodo LangGraph del Asesor; OpenCode usa `asesor_tecnico` y su prompt independiente. Resultado estructurado identifica módulos, dependencias, riesgos, procesos críticos, fuentes consultadas e incertidumbre; se rechazan citas no recuperadas.
 
 ## Fase 5 — Aprobación del PO y repositorio de HU (US4)
 
@@ -78,7 +78,7 @@
 ## Fase 10 - Fuentes ficticias y documentos de conocimiento
 
 - [ ] T037 Crear primero pruebas de recuperación/fuente para los JSON existentes y la asignación a los namespaces establecidos; conservar los cuatro MCP existentes.
-- [ ] T038 Crear `ejemplos/polizas_demo/` en Python con modelos de póliza, servicio de pólizas, cálculo de primas, coberturas, renovaciones, pagos, validaciones y mapa de dependencias Markdown; usar escenarios completamente ficticios sin datos personales.
+- [x] T038 Crear `ejemplos/polizas_demo/` en Python con modelos de póliza, servicio de pólizas, cálculo de primas, coberturas, renovaciones, pagos, validaciones y mapa de dependencias Markdown; usar escenarios completamente ficticios sin datos personales. Fixture 1.0.0, entregado como requisito explícito de T016.
 - [ ] T039 Añadir pruebas de lectura estática de `.py` y `.md` que verifican rutas de fuente y aseguran que ningún módulo se importa ni ejecuta.
 - [ ] T040 Implementar conversión de JSON, `RepositorioHU` y ejemplo ficticio a documentos; separar `hu_similares.json` como referencia simulada y filtrar solo HU/lecciones aprobadas desde el repositorio.
 - [ ] T041 Implementar fragmentación determinista bajo el límite del embedding y IDs estables por namespace, origen y fragmento; reconciliar solo IDs de la fuente correspondiente.
@@ -110,9 +110,9 @@
 
 ## Dependencias
 
-- La ratificacion formal T001/T002 sigue pendiente; se completaron experimentalmente T005-T015 y T055-T060 por instruccion expresa en esta rama, sin declarar aceptacion formal.
+- La ratificacion formal T001/T002 sigue pendiente; se completaron experimentalmente T005-T018, T038 y T055-T060 por instruccion expresa en esta rama, sin declarar aceptacion formal.
 - Fases 2–6 dependen de fundamentos T005–T009.
 - T055–T060 deben preceder la ejecución de los nodos multiagente; T055 y T060 prueban selección y aislamiento con OpenCode simulado.
 - La publicación de una HU depende de T019–T021; decisiones de cambio dependen de T022–T024.
-- La ratificacion formal de T001/T002 sigue pendiente. T010-T015 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; esto no equivale a aceptacion formal. No ejecutar ingesta real ni llamadas Pinecone en pytest.
+- La ratificacion formal de T001/T002 sigue pendiente. T010-T018 y el fixture T038 se implementaron por instruccion expresa en modo experimental, limitada a esta rama; esto no equivale a aceptacion formal. La ingesta e integración Pinecone siguen pendientes; pytest no realiza llamadas Pinecone.
 - T037–T043 preceden a T044; T044 precede a integración de retrieval T045–T050; T051–T052 documentan la integración; T030–T032 y T053–T054 son aceptación final después de T050.
