@@ -74,10 +74,10 @@
 
 ## Fase 9 — Contrato Pinecone y configuración segura
 
-- [ ] T033 Añadir pruebas unitarias primero para creación/validación del índice Pinecone, configuración coincidente e índice existente incompatible, usando un adapter mockeado.
-- [ ] T034 Implementar `agentes/conocimiento/` con cliente Pinecone inyectable, settings no secretos y lectura de `PINECONE_API_KEY` exclusivamente desde el entorno; nunca imprimir/loggear la clave.
-- [ ] T035 Crear/validar un índice vectorial denso convencional con nombre `historias-usuario`, serverless, AWS `us-east-1`, 1024 dimensiones y métrica `cosine`; usar embeddings de `PineconeEmbeddings(model="multilingual-e5-large")` y `PineconeVectorStore`. No crear document index ni configurar integrated embedding.
-- [ ] T036 Añadir valores no secretos de Pinecone a `agentes/analista/.env.example` y `render.yaml`; declarar solo el nombre de la clave con `sync: false`, sin crear servicios Render adicionales ni incorporar valores secretos.
+- [x] T033 Añadir pruebas unitarias primero para creación/validación del índice Pinecone, configuración coincidente e índice existente incompatible, usando un adapter mockeado. Evidencia: `agentes/analista/tests/unit/test_pinecone_client.py` cubre índice ausente, creación explícita, compatibilidad, incompatibilidades, errores de API y ausencia del cliente SDK real.
+- [x] T034 Implementar `agentes/conocimiento/` con cliente Pinecone inyectable, settings no secretos y lectura de `PINECONE_API_KEY` exclusivamente desde el entorno; nunca imprimir/loggear la clave. Evidencia: `config.py`, `client.py`, `errors.py`; la clave queda fuera de `repr` y se lee desde `os.environ` sin dotenv.
+- [x] T035 Crear/validar un índice vectorial denso convencional con nombre `historias-usuario`, serverless, AWS `us-east-1`, 1024 dimensiones y métrica `cosine`; usar embeddings de `PineconeEmbeddings(model="multilingual-e5-large")` y `PineconeVectorStore`. No crear document index ni configurar integrated embedding. Evidencia: `contract.py`, adaptador SDK con `ServerlessSpec`/`vector_type="dense"` y fábrica LangChain; la validación incompatible no modifica ni elimina el índice.
+- [x] T036 Añadir valores no secretos de Pinecone a `agentes/analista/.env.example` y `render.yaml`; declarar solo el nombre de la clave con `sync: false`, sin crear servicios Render adicionales ni incorporar valores secretos.
 
 ## Fase 10 - Fuentes ficticias y documentos de conocimiento
 
