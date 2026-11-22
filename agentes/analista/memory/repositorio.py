@@ -384,6 +384,8 @@ def load_memory_entries(fuente: str | Path | None = None) -> tuple[list[dict[str
     historias: list[dict[str, Any]] = []
     for fila in historias_db:
         row = fila._mapping
+        if detect_personal_data(json.dumps(dict(row), ensure_ascii=False, default=str)):
+            continue
         hist = json.loads(row["historia"])
         aclaraciones = json.loads(row["aclaraciones"])[:5]
         resumen = (
@@ -398,14 +400,16 @@ def load_memory_entries(fuente: str | Path | None = None) -> tuple[list[dict[str
             "similitud": 0.6,
             "terminos": _tokens(f"{row['titulo']} {row['requerimiento']}")[:30],
         })
-    checklist = [
-        {
+    checklist = []
+    for fila in lecciones_db:
+        row = fila._mapping
+        if detect_personal_data(json.dumps(dict(row), ensure_ascii=False, default=str)):
+            continue
+        checklist.append({
             "id": fila.id,
             "categoria": fila.categoria,
             "descripcion": fila.pregunta_sugerida[:500],
             "terminos": json.loads(fila.terminos),
             "evidencia": "Lección aprendida aprobada tras un cambio posterior al grooming de una HU del Repositorio; requiere validación humana.",
-        }
-        for fila in lecciones_db
-    ]
+        })
     return historias, checklist
