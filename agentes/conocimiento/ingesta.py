@@ -20,6 +20,17 @@ JSON_SOURCE_CHOICES = ("glosario", "estandares", "checklist", "hu_similares")
 NAMESPACES = ("glosario", "estandares", "checklist", "hu_aprobadas", "lecciones", "codigo")
 _SOURCE_MAP = {"glosario": "glosario", "estandares": "estandares", "checklist": "checklist", "hu_similares": "hu_similares"}
 _RECONCILE_TOP_K = 10_000
+_SOURCE_RECONCILIATION_SCOPES = {
+    "glosario": (("glosario", "agentes/analista/fuentes/glosario.json#", frozenset({"simulated_fixture"})),),
+    "estandares": (("estandares", "agentes/analista/fuentes/estandares.json#", frozenset({"simulated_fixture"})),),
+    "checklist": (("checklist", "agentes/analista/fuentes/checklist_vacios.json#", frozenset({"simulated_fixture"})),),
+    "hu_similares": (("hu_aprobadas", "agentes/analista/fuentes/hu_similares.json#", frozenset({"simulated_reference"})),),
+    "repositorio": (
+        ("hu_aprobadas", "RepositorioHU:hu_aprobada/", frozenset({"approved_history"})),
+        ("lecciones", "RepositorioHU:leccion/", frozenset({"approved_lesson"})),
+    ),
+    "codigo": (("codigo", "ejemplos/polizas_demo/", frozenset({"simulated_code"})),),
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -132,6 +143,93 @@ def _reconcile_source(index: Any, batch: PreparedBatch) -> int:
     return len(stale_ids)
 
 
+def _listed_ids(index: Any, namespace: str) -> list[str]:
+    listing = index.list(namespace=namespace)
+    pages = [listing] if isinstance(listing, (Mapping, str)) else listing
+    identifiers: set[str] = set()
+    for page in pages:
+        if isinstance(page, str):
+            identifiers.add(page)
+            continue
+        if isinstance(page, Mapping):
+            values = page.get("vectors")
+            if values is None:
+                values = [page] if "id" in page else []
+        elif isinstance(page, Iterable):
+            values = page
+        else:
+            values = []
+        for value in values:
+            identifier = value if isinstance(value, str) else _match_id(value)
+            if identifier:
+                identifiers.add(identifier)
+    return sorted(identifiers)
+
+
+def _fetched_vector_metadata(index: Any, identifiers: list[str], namespace: str) -> Iterable[tuple[str, Mapping[str, Any]]]:
+    response = index.fetch(ids=identifiers, namespace=namespace)
+    vectors = response.get("vectors", {}) if isinstance(response, Mapping) else getattr(response, "vectors", {})
+    if isinstance(vectors, Mapping):
+        for identifier, vector in vectors.items():
+            metadata = _match_metadata(vector)
+            if isinstance(identifier, str) and metadata:
+                yield identifier, metadata
+        return
+    if isinstance(vectors, Iterable):
+        for vector in vectors:
+            identifier = _match_id(vector)
+            metadata = _match_metadata(vector)
+            if identifier and metadata:
+                yield identifier, metadata
+
+
+def _reconcile_removed_sources(
+    index: Any, loaded: list[tuple[str, list[SourceRecord]]],
+) -> list[dict[str, str]]:
+    """Purge records removed from successfully loaded sources, scoped by exact prefix and kind."""
+    scopes_by_namespace: dict[str, list[tuple[str, str, frozenset[str], set[str]]]] = {}
+    for source_name, records in loaded:
+        for namespace, prefix, kinds in _SOURCE_RECONCILIATION_SCOPES.get(source_name, ()):
+            current_refs = {
+                record.source_ref for record in records
+                if record.namespace == namespace and record.source_kind in kinds and record.source_ref.startswith(prefix)
+            }
+            scopes_by_namespace.setdefault(namespace, []).append((source_name, prefix, kinds, current_refs))
+
+    errors: list[dict[str, str]] = []
+    if not callable(getattr(index, "list", None)) or not callable(getattr(index, "fetch", None)):
+        # The production Pinecone serverless index supports both methods; lightweight adapters may omit enumeration.
+        return errors
+
+    for namespace, scopes in scopes_by_namespace.items():
+        try:
+            identifiers = _listed_ids(index, namespace)
+            stale_ids: set[str] = set()
+            for offset in range(0, len(identifiers), 100):
+                for identifier, metadata in _fetched_vector_metadata(index, identifiers[offset:offset + 100], namespace):
+                    if metadata.get("namespace", namespace) != namespace:
+                        continue
+                    source_ref = metadata.get("source_ref")
+                    source_kind = metadata.get("source_kind")
+                    if not isinstance(source_ref, str):
+                        continue
+                    for _source_name, prefix, kinds, current_refs in scopes:
+                        if source_ref.startswith(prefix) and source_kind in kinds:
+                            if source_ref not in current_refs:
+                                stale_ids.add(identifier)
+                            break
+            if stale_ids:
+                index.delete(ids=sorted(stale_ids), namespace=namespace)
+        except Exception:
+            # A cleanup failure is safe and visible; never broaden the delete scope or expose SDK details.
+            for source_name in sorted({scope[0] for scope in scopes}):
+                errors.append({
+                    "source": source_name, "namespace": namespace,
+                    "code": "STALE_SOURCE_RECONCILIATION_FAILED",
+                })
+    return errors
+
+
 def _upsert_batches(
     batches: Iterable[PreparedBatch],
     *,
@@ -204,6 +302,15 @@ def run_ingestion(
             "index": "not_ready", "namespaces": counts, "errors": errors,
         }
     errors.extend(_upsert_batches(batches, client=client, counts=counts))
+    if not errors:
+        try:
+            index = client.get_vector_index()
+            errors.extend(_reconcile_removed_sources(index, loaded))
+        except Exception as exc:
+            errors.append({
+                "source": "source_reconciliation",
+                "code": _safe_code(exc, "STALE_SOURCE_RECONCILIATION_FAILED"),
+            })
     return {
         "status": "success" if not errors else "partial_failure",
         "dry_run": False,

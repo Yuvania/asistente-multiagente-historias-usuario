@@ -13,7 +13,7 @@ from langchain_core.documents import Document
 from pydantic import BaseModel, ConfigDict, Field
 
 from agentes.analista.core.agent_registry import AGENT_NAMESPACE_ALLOWLIST, AgentId
-from agentes.analista.memory.repositorio import load_memory_entries
+from agentes.analista.memory.repositorio import detect_personal_data, load_memory_entries
 
 from .client import PineconeKnowledgeClient
 from .documents import APPROVED_KINDS, validate_document_metadata
@@ -107,24 +107,28 @@ def _local_sources() -> list[SourceRecord]:
         # The existing local repository reader fails closed and may be absent.
         histories, lessons = [], []
     for item in histories:
+        if not isinstance(item, Mapping):
+            continue
         source_id = str(item.get("id", ""))
-        if not source_id:
+        text = json.dumps(item, ensure_ascii=False, sort_keys=True)
+        if not source_id or detect_personal_data(text):
             continue
         records.append(SourceRecord(
             namespace="hu_aprobadas", source_id=source_id, source_kind="approved_history",
             source_ref=f"RepositorioHU:hu_aprobada/{source_id}",
-            origin="RepositorioHU (registro aprobado)",
-            text=json.dumps(item, ensure_ascii=False, sort_keys=True), approval_status="aprobada",
+            origin="RepositorioHU (registro aprobado)", text=text, approval_status="aprobada",
         ))
     for item in lessons:
+        if not isinstance(item, Mapping):
+            continue
         source_id = str(item.get("id", ""))
-        if not source_id:
+        text = json.dumps(item, ensure_ascii=False, sort_keys=True)
+        if not source_id or detect_personal_data(text):
             continue
         records.append(SourceRecord(
             namespace="lecciones", source_id=source_id, source_kind="approved_lesson",
             source_ref=f"RepositorioHU:leccion/{source_id}",
-            origin="RepositorioHU (lección aprobada)",
-            text=json.dumps(item, ensure_ascii=False, sort_keys=True), approval_status="aprobada",
+            origin="RepositorioHU (lección aprobada)", text=text, approval_status="aprobada",
         ))
     return records
 
@@ -243,11 +247,12 @@ class KnowledgeRetriever:
         if metadata.get("namespace") != namespace or not _valid_source_ref(metadata):
             raise ValueError("La metadata de la fuente recuperada no es válida.")
         citation = str(metadata["source_ref"])
+        source_text = metadata.get("source_payload", document.page_content)
         return KnowledgeSource(
             source_id=metadata["source_id"], source_kind=metadata["source_kind"],
             source_ref=citation, namespace=namespace, chunk=metadata["chunk"],
             score=score, backend=backend, citation=citation,
-            text=document.page_content, content_untrusted=True,
+            text=source_text, content_untrusted=True,
         )
 
 

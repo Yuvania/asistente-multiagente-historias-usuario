@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
@@ -147,27 +148,33 @@ class AuthorizedSourceLoader:
         return records
 
     def load_approved_repository(self, repository: RepositorioHU) -> list[SourceRecord]:
-        """Usa únicamente métodos públicos, y conserva solo HU/lecciones aprobadas."""
+        """Usa métodos públicos y normaliza HU/lecciones aprobadas al contrato MCP."""
         records: list[SourceRecord] = []
         try:
             for summary in repository.listar_hu():
                 hu = repository.obtener_hu(str(summary["id"]))
-                content = _repository_text(hu)
-                _reject_personal_data(content)
+                raw_content = _repository_text(hu)
+                _reject_personal_data(raw_content)
+                payload = _approved_history_payload(hu)
                 records.append(SourceRecord(
                     namespace="hu_aprobadas", source_id=str(hu["id"]),
                     source_kind="approved_history", source_ref=f"RepositorioHU:hu_aprobada/{hu['id']}",
-                    origin="RepositorioHU (registro aprobado)", text=content, approval_status="aprobada",
+                    origin="RepositorioHU (registro aprobado)",
+                    text=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                    approval_status="aprobada",
                 ))
             for lesson in repository.listar_lecciones(estado="aprobada"):
                 if lesson.get("estado") != "aprobada":
                     continue
-                content = _repository_text(lesson)
-                _reject_personal_data(content)
+                raw_content = _repository_text(lesson)
+                _reject_personal_data(raw_content)
+                payload = _approved_lesson_payload(lesson)
                 records.append(SourceRecord(
                     namespace="lecciones", source_id=str(lesson["id"]),
                     source_kind="approved_lesson", source_ref=f"RepositorioHU:leccion/{lesson['id']}",
-                    origin="RepositorioHU (lección aprobada)", text=content, approval_status="aprobada",
+                    origin="RepositorioHU (lección aprobada)",
+                    text=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                    approval_status="aprobada",
                 ))
         except SourceError:
             raise
@@ -175,7 +182,6 @@ class AuthorizedSourceLoader:
             # No propagar SQL, URLs, filas ni mensajes que puedan incluir datos sensibles.
             raise SourceError("No fue posible consultar el RepositorioHU de forma segura.") from None
         return records
-
     def load_demo_code(self) -> list[SourceRecord]:
         """Lee estáticamente solo archivos .py/.md, sin importarlos ni ejecutarlos."""
         if not self.code_root.is_dir():
@@ -237,6 +243,75 @@ class AuthorizedSourceLoader:
             namespace="codigo", source_id=rel, source_kind="simulated_code", source_ref=rel,
             origin="Código ficticio leído estáticamente; contenido no confiable", text=text,
         )
+
+
+def _decode_repository_json(
+    record: dict[str, Any], field: str, default: Any, expected_type: type,
+) -> Any:
+    value = record.get(field, default)
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            raise SourceError("El registro del RepositorioHU no cumple el esquema esperado.") from None
+    if not isinstance(value, expected_type):
+        raise SourceError("El registro del RepositorioHU no cumple el esquema esperado.")
+    return value
+
+
+def _approved_history_payload(hu: dict[str, Any]) -> dict[str, Any]:
+    history = _decode_repository_json(hu, "historia", {}, dict)
+    criteria = _decode_repository_json(hu, "criterios", [], list)
+    clarifications = _decode_repository_json(hu, "aclaraciones", [], list)
+    if any(not isinstance(item, dict) for item in clarifications):
+        raise SourceError("El registro del RepositorioHU no cumple el esquema esperado.")
+    title = str(hu.get("titulo") or "HU aprobada")[:200]
+    requirement = str(hu.get("requerimiento") or "")
+    summary = (
+        f"HU aprobada por el Product Owner. Como {history.get('asA', '')}, "
+        f"quiero {history.get('iWant', '')}, para {history.get('soThat', '')}"
+    )[:1000]
+    terms = [
+        term.casefold() for term in re.findall(r"[^\W_]+", f"{title} {requirement}", flags=re.UNICODE)
+        if len(term) > 2
+    ][:30]
+    return {
+        "id": str(hu.get("codigo") or hu.get("id") or ""),
+        "titulo": title,
+        "resumen": summary,
+        "aclaraciones": [
+            f"{str(item.get('pregunta', '')).strip()} → {str(item.get('respuesta', '')).strip()}"[:400]
+            for item in clarifications[:5]
+        ],
+        "similitud": 0.6,
+        "terminos": terms,
+        "tipo_informacion": str(hu.get("tipo_informacion") or ""),
+        "requerimiento": requirement,
+        "historia": history,
+        "criterios": criteria,
+        "aprobada_en": str(hu.get("aprobada_en") or ""),
+    }
+
+
+def _approved_lesson_payload(lesson: dict[str, Any]) -> dict[str, Any]:
+    terms = lesson.get("terminos", [])
+    if isinstance(terms, str):
+        try:
+            terms = json.loads(terms)
+        except json.JSONDecodeError:
+            raise SourceError("La lección aprobada no cumple el esquema esperado.") from None
+    if not isinstance(terms, list) or any(not isinstance(term, str) for term in terms):
+        raise SourceError("La lección aprobada no cumple el esquema esperado.")
+    return {
+        "id": str(lesson.get("id") or ""),
+        "categoria": str(lesson.get("categoria") or "Datos requeridos"),
+        "descripcion": str(lesson.get("pregunta_sugerida") or "")[:500],
+        "terminos": terms,
+        "evidencia": (
+            "Lección aprendida aprobada tras un cambio posterior al grooming de una HU del Repositorio; "
+            "requiere validación humana."
+        ),
+    }
 
 
 def _repository_text(record: dict[str, Any]) -> str:

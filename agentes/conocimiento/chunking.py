@@ -1,12 +1,13 @@
 """Fragmentación determinista con límite de entrada del embedding Pinecone configurado."""
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable
 from copy import deepcopy
 
 from langchain_core.documents import Document
 
-from .documents import validate_document_metadata
+from .documents import MAX_STRUCTURED_PAYLOAD_BYTES, validate_document_metadata
 from .ids import stable_document_id
 
 
@@ -66,9 +67,21 @@ def chunk_documents(
                 end = _fit_chunk(text, start, end, token_counter, safe_content_limit)
             pieces.append(text[start:end])
             start = end
+        structured_payload: str | None = None
+        if len(pieces) > 1 and document.metadata.get("source_kind") != "simulated_code":
+            try:
+                parsed = json.loads(text)
+            except (TypeError, json.JSONDecodeError):
+                parsed = None
+            if isinstance(parsed, dict):
+                if len(text.encode("utf-8")) > MAX_STRUCTURED_PAYLOAD_BYTES:
+                    raise ValueError("El registro JSON excede el límite de metadata permitido.")
+                structured_payload = text
         for index, piece in enumerate(pieces):
             metadata = deepcopy(document.metadata)
             metadata["chunk"] = index
+            if structured_payload is not None:
+                metadata["source_payload"] = structured_payload
             validate_document_metadata(metadata)
             source_ref = metadata["source_ref"]
             source_id = metadata["source_id"]

@@ -1,6 +1,7 @@
 """Transformación validada de fuentes autorizadas a documentos LangChain."""
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from langchain_core.documents import Document
@@ -11,6 +12,7 @@ from .sources import SourceError, SourceRecord, validate_namespace
 
 APPROVED_KINDS = frozenset({"approved_history", "approved_lesson"})
 SIMULATED_KINDS = frozenset({"simulated_reference", "simulated_fixture", "simulated_code"})
+MAX_STRUCTURED_PAYLOAD_BYTES = 30_000
 
 
 def validate_document_metadata(metadata: dict[str, Any]) -> None:
@@ -33,6 +35,18 @@ def validate_document_metadata(metadata: dict[str, Any]) -> None:
             raise SourceError("La fuente del repositorio debe estar aprobada.")
     elif metadata.get("approval_status") is not None:
         raise SourceError("Una fuente simulada no puede marcarse como aprobada.")
+    if "source_payload" in metadata:
+        payload = metadata["source_payload"]
+        if metadata["source_kind"] == "simulated_code":
+            raise SourceError("El código recuperado no puede incluir un payload estructurado.")
+        if not isinstance(payload, str) or not payload or len(payload.encode("utf-8")) > MAX_STRUCTURED_PAYLOAD_BYTES:
+            raise SourceError("El payload estructurado excede el límite permitido.")
+        try:
+            parsed_payload = json.loads(payload)
+        except (TypeError, json.JSONDecodeError):
+            raise SourceError("El payload estructurado no es JSON válido.") from None
+        if not isinstance(parsed_payload, dict):
+            raise SourceError("El payload estructurado debe ser un objeto JSON.")
 
 
 def source_to_document(source: SourceRecord, *, chunk: int = 0) -> Document:
