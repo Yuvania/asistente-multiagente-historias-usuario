@@ -27,13 +27,13 @@ Aplicación web para crear historias de usuario (HU) con ayuda de un **Agente An
 
 La aplicación completa (interfaz + backend + OpenCode) corre como **un solo servicio Docker en Render**, con un solo URL. Cada cambio que llega a `main` se despliega solo (`render.yaml`). Las historias, el Repositorio de HU y las lecciones se guardan en TiDB Cloud, así que no se pierden al redesplegar.
 
-El despliegue vigente corresponde al **Agente Analista**. El paso 4 conserva la generación simulada: Redactor-Revisor, Asesor Técnico, Gestor de Cambios, grafos LangGraph, pausas humanas de workflow, Pinecone e ingesta no están implementados en esta revisión. No configures variables Pinecone ni `INGESTA_AL_ARRANCAR` para este servicio hasta que exista y se pruebe esa implementación. El contrato de Render actual se conserva: un Web Service Docker, autenticación existente, TiDB, `/healthz` y un worker.
+El despliegue vigente desde `main` corresponde al **Agente Analista** y conserva la generación simulada del paso 4. La rama `feat/sistema-multiagente-rag` implementa experimentalmente los workflows, recuperación Pinecone con fallback local y CLI de ingesta; esta implementación no forma parte del servicio desplegado desde `main`. El contrato de Render conserva un Web Service Docker, autenticación existente, TiDB, `/healthz` y un worker. La configuración de Pinecone documentada para la feature usa `PINECONE_API_KEY` desde el entorno; no se ejecutó ingesta real durante esta tarea.
 
 ### Feature 003 experimental
 
-La rama `feat/sistema-multiagente-rag` contiene una implementación experimental local de LangGraph y sus endpoints `POST /api/workflows`, `GET /api/workflows/{workflow_id}` y `POST /api/workflows/{workflow_id}/resume`, además de la interfaz React conectada al workflow. Esta rama no cambia `main` ni el servicio de Render. T001 y T002 siguen pendientes de ratificación formal.
+La rama `feat/sistema-multiagente-rag` contiene una implementación experimental local de LangGraph y sus endpoints `POST /api/workflows`, `GET /api/workflows/{workflow_id}` y `POST /api/workflows/{workflow_id}/resume`, además de recuperación de conocimiento en el backend y la interfaz React conectada al workflow. Esta rama no cambia `main` ni el servicio de Render. T001 y T002 siguen pendientes de ratificación formal.
 
-El runtime conserva los checkpoints en memoria: al reiniciar FastAPI se pierden y la interfaz pide iniciar un workflow nuevo. La interfaz no guarda `workflow_id` en `localStorage`. Las fuentes técnicas visibles en la demostración proceden de fixtures ficticios; **RAG/Pinecone todavía no está integrado** y ningún secreto se envía al navegador.
+El runtime conserva los checkpoints en memoria: al reiniciar FastAPI se pierden y la interfaz pide iniciar un workflow nuevo. La interfaz no guarda `workflow_id` en `localStorage`. Las fuentes de demostración son ficticias; Pinecone y las credenciales se usan solo desde el backend. La configuración del índice, los namespaces y los comandos de ingesta están en la [guía PowerShell](docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md) y el [README del paquete de conocimiento](agentes/conocimiento/README.md). Ningún secreto se envía al navegador.
 
 Para probar esta rama en local, sigue los pasos de instalación anteriores y ejecuta:
 

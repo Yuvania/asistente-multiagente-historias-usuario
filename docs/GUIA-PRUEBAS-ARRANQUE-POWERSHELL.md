@@ -22,6 +22,30 @@ if (-not (Test-Path .\.env)) { Copy-Item .\agentes\analista\.env.example .\.env 
 
 Completa `.env` localmente según `.env.example`. No copies secretos al navegador; la UI usa same-origin y conserva la autenticación Basic existente.
 
+La feature 003 de esta rama usa el índice denso convencional de Pinecone `historias-usuario`: 1024 dimensiones, métrica `cosine`, modelo `multilingual-e5-large`, serverless en AWS `us-east-1`. Los seis namespaces allowlisted son `glosario`, `estandares`, `checklist`, `hu_aprobadas`, `lecciones` y `codigo`. `PINECONE_API_KEY` se entrega al backend mediante el entorno; no la guardes en el repositorio, el navegador ni los logs. En Render se declara con `sync: false`.
+
+Antes de cualquier ingesta remota, prepara y valida las fuentes localmente, sin llamadas a Pinecone:
+
+```powershell
+python -m agentes.conocimiento.ingesta --fuente todas --dry-run
+```
+
+Activa primero el entorno virtual del proyecto, o sustituye `python` por `& .\agentes\analista\.venv\Scripts\python.exe`.
+
+La ingesta real, cuando se autorice y se configure `PINECONE_API_KEY` en el entorno, se ejecuta con:
+
+```powershell
+python -m agentes.conocimiento.ingesta --fuente todas
+```
+
+Si el índice todavía no existe, `--crear-indice` permite crear el índice con la configuración declarada y luego ingerir:
+
+```powershell
+python -m agentes.conocimiento.ingesta --fuente todas --crear-indice
+```
+
+El modo `--dry-run` no construye el cliente Pinecone ni realiza upserts. `--fuente todas` también lee el RepositorioHU: si `DATABASE_URL` está configurada, esa lectura puede consultar TiDB. Para ejecutar el dry-run sin red, asegúrate de que `DATABASE_URL` no esté definida y usa el SQLite local. Si la base SQLite falta, la lectura puede crear un archivo vacío; si una fuente local falta o no cumple el esquema, el CLI reporta `partial_failure` con errores sanitizados. Esta tarea no ejecutó la ingesta real ni creó un índice.
+
 Inicia OpenCode, FastAPI y Vite con el script existente:
 
 ```powershell
@@ -78,11 +102,11 @@ Vitest y pytest usan dobles para APIs/modelos y no contactan OpenCode, MCP, TiDB
 | T027/T028: UI React y manejo de interrupciones/checkpoint | Implementados experimentalmente; endpoints simulados por Vitest. |
 | T029: documentación local y PowerShell | Actualizada para el flujo local de UI y pruebas. |
 | Evidencia técnica | Procede de fixtures ficticios de ejemplo. |
-| RAG/Pinecone | No integrado ni anunciado como activo. |
+| RAG/Pinecone | Recuperación backend experimental integrada en esta rama; la ingesta real no se ha ejecutado en esta tarea. |
 | T001/T002 | Pendientes de ratificación formal. |
 | Render/main | Sin cambios ni despliegue por esta tarea. |
 
-La pantalla identifica las fuentes técnicas ficticias y aclara que no hay recuperación RAG/Pinecone integrada.
+Las fuentes de demostración son ficticias. En una respuesta de recuperación, `status=degraded` indica que Pinecone no estuvo disponible y se intentó fallback local; `backend=local` identifica una búsqueda local y `backend=none` indica que tampoco hubo resultado local. Ninguno de esos resultados debe describirse como búsqueda de Pinecone. Solo `backend=pinecone` identifica resultados obtenidos del backend Pinecone.
 
 ## Docker local (opcional)
 

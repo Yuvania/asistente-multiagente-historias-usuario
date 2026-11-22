@@ -101,8 +101,8 @@
 
 ## Fase 12 - Inyeccion y documentacion
 
-- [ ] T051 Añadir pruebas adversariales de prompt injection en JSON, Markdown y código recuperado; verificar que el contenido no cambia rol/permisos/transiciones y no se ejecuta.
-- [ ] T052 Actualizar guía PowerShell, `.env.example`, `render.yaml` y documentación del paquete con índice/namespaces, comando de ingesta, estado degradado y manejo seguro de secretos.
+- [x] T051 Añadir pruebas adversariales de prompt injection en JSON, Markdown y código recuperado; verificar que el contenido no cambia rol/permisos/transiciones y no se ejecuta. Evidencia: `tests/integration/test_prompt_injection_boundaries.py` usa clientes y repositorio dobles; comprueba contenido no confiable, allowlists, interrupciones humanas y ausencia de escrituras.
+- [x] T052 Actualizar guía PowerShell, `.env.example`, `render.yaml` y documentación del paquete con índice/namespaces, comando de ingesta, estado degradado y manejo seguro de secretos. Evidencia: README del paquete y guías actualizados; `validate-feature-docs.mjs` pasó. El dry-run devolvió `index=not_contacted`, 146 lotes preparados y `partial_failure/SOURCE_INVALID` para `repositorio` porque la SQLite local no tenía esquema; no se ejecutó ingesta real.
 
 ## Fase 13 - Aceptacion final (despues de integrar Pinecone)
 

@@ -41,8 +41,11 @@ services:
         sync: false
       - key: LANGFUSE_BASE_URL
         value: https://us.cloud.langfuse.com
+      # La clave solo se configura en el panel de Render; sync:false la excluye del repositorio.
       - key: PINECONE_API_KEY
         sync: false
+      # Índice denso convencional: AWS us-east-1, 1024 dimensiones, cosine, multilingual-e5-large.
+      # Namespaces autorizados: glosario, estandares, checklist, hu_aprobadas, lecciones y codigo.
       - key: PINECONE_INDEX_NAME
         value: historias-usuario
       - key: PINECONE_CLOUD
