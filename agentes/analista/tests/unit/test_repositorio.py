@@ -64,6 +64,12 @@ def test_pii_detector_ignores_formatted_amounts():
     assert detect_personal_data("1-2345-6789")
 
 
+def test_pii_detector_ignores_numeric_uuid_but_still_detects_phone_numbers():
+    numeric_uuid = "00000000-0000-0000-0000-123456789012"
+    assert detect_personal_data(f"Identificador técnico {numeric_uuid}") == []
+    assert detect_personal_data(f"Identificador técnico {numeric_uuid}, teléfono 123456789")
+
+
 @pytest.mark.asyncio
 async def test_change_request_creates_proposed_lesson_that_needs_approval(client):
     http, app = client

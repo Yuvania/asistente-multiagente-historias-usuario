@@ -31,9 +31,11 @@ COPY --from=opencode /usr/local/bin/node /usr/local/bin/node
 COPY --from=opencode /opt/opencode /opt/opencode
 COPY --from=interfaz /compilacion/dist ./dist
 COPY agentes ./agentes
+COPY ejemplos/polizas_demo ./ejemplos/polizas_demo
 COPY .agents ./.agents
 COPY opencode.jsonc ./opencode.jsonc
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY scripts/diagnostics/docker-fixture-smoke.py ./scripts/diagnostics/docker-fixture-smoke.py
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh && chown -R app:app /app
 
 USER app

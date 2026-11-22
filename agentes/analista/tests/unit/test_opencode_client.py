@@ -18,6 +18,14 @@ from agentes.analista.core.prompt_loader import load_prompt
 ZERO_COST = [{"input": 0, "output": 0, "cache": {"read": 0, "write": 0}}]
 
 
+def test_default_test_settings_do_not_load_real_credentials_from_dotenv():
+    settings = OpenCodeSettings()
+
+    assert settings.server_password.get_secret_value() == ""
+    assert settings.langfuse_public_key.get_secret_value() == ""
+    assert settings.langfuse_secret_key.get_secret_value() == ""
+
+
 @pytest.mark.asyncio
 async def test_expired_generation_deadline_is_reported_as_turn_timeout():
     client = OpenCodeClient(OpenCodeSettings(server_password=SecretStr("test-only")))

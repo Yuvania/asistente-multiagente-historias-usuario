@@ -280,6 +280,17 @@ def run_ingestion(
     batches, counts, preparation_errors = _prepare(loaded)
     errors.extend(preparation_errors)
     if dry_run:
+        batch_manifest = []
+        for batch in batches:
+            metadata = batch.documents[0].metadata
+            batch_manifest.append({
+                "namespace": batch.namespace,
+                "source_id": batch.source_id,
+                "source_ref": batch.source_ref,
+                "source_kind": metadata["source_kind"],
+                "approval_status": metadata.get("approval_status"),
+                "chunk_ids": [document.id for document in batch.documents],
+            })
         return {
             "status": "dry_run" if not errors else "partial_failure",
             "dry_run": True,
@@ -287,6 +298,7 @@ def run_ingestion(
             "namespaces": counts,
             "errors": errors,
             "batches": len(batches),
+            "batch_manifest": batch_manifest,
         }
 
     client = (client_factory or PineconeKnowledgeClient)()

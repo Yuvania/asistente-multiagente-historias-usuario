@@ -2,7 +2,7 @@
 
 **Spec**: [spec.md](spec.md)  
 **Plan**: [plan.md](plan.md)  
-**Estado**: T005-T029, T037-T038, T039-T050 y T055-T060 implementadas y validadas localmente en modo experimental. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
+**Estado**: T005-T029, T037-T050 y T055-T060 implementadas; T030-T032 y T053-T054 verificadas con automatizacion local y reporte reproducible. T001 sigue abierto: PR #4 fue fusionada, pero GitHub indica que no tiene reviews y la constitucion mantiene la ratificacion pendiente. T002 se contrasto contra el texto 2.0.0, pero no se puede cerrar como ratificacion final mientras T001 siga abierto. La implementacion experimental no declara aceptacion formal de la feature.
 
 > T005-T009 y T055-T060 se implementaron primero. Por instrucción posterior se implementó T010-T018 en modo experimental; también se creó el fixture T038 por requisito explícito del Asesor. La evidencia de GitHub no permite cerrar T001: PR #4 fue fusionada sin reviews y la constitución aún declara ratificación pendiente. T002 se revisó contra el texto 2.0.0, pero queda pendiente su cierre formal. Este avance técnico no representa aceptación formal.
 
@@ -99,6 +99,14 @@
 - [x] T049 Implementar fallback a búsqueda local con `status=degraded`, `backend=local` cuando Pinecone falle; asegurar que errores o resultados locales nunca se etiqueten como consulta Pinecone. Evidencia: `KnowledgeRetriever.search()` devuelve fuentes con su backend real o resultado vacío `degraded/none`; pruebas simulan fallo y disponibilidad local/ausente.
 - [x] T050 Añadir pruebas de errores de Pinecone (auth, timeout, rate limit, index incompatible), fallback local y procedencia verdadera de cada fuente. Evidencia: `test_knowledge_retrieval.py` y `test_knowledge_ingesta.py` cubren clave ausente, autenticación, timeout, rate limit, índice ausente/incompatible, fallo parcial, citas, namespaces y aislamiento.
 
+### Verificacion de T044-T050 (2026-11-22)
+
+- T044: CLI ejecutada con los JSON y archivos de código allowlisted reales, y un repositorio de HU/lecciones aprobado simulado, usando `--fuente todas --dry-run`; exit code `0`, estado `dry_run`, 148 lotes preparados y conteos no vacíos en los seis namespaces (`glosario` 37, `estandares` 130, `checklist` 20, `hu_aprobadas` 4, `lecciones` 1, `codigo` 23 documentos validados). Reportó `index=not_contacted`; no se ejecutó la ingesta real.
+- T045-T046: recuperación mockeada devolvió un resultado por namespace permitido y rol (`glosario`, `estandares`, `checklist`, `hu_aprobadas`, `lecciones`, `codigo`); las citas y el backend se derivaron de metadata validada. La suite verifica aislamiento, límites, resultados vacíos y rechazo de namespaces arbitrarios.
+- T047-T048: `consultar_codigo_demo` valida rutas bajo `ejemplos/polizas_demo/`; las pruebas de integración cubren Analista, Redactor-Revisor, Asesor Técnico y Gestor de Cambios, incluida la exclusión de referencias simuladas para el Gestor y la interrupción para decisión humana.
+- T049-T050: timeout simulado devolvió `status=degraded`, `backend=local` y fuentes con `backend=local`; los tests cubren credenciales ausentes, autenticación, timeout, rate limit, índice ausente/incompatible, fallos parciales, citas inventadas y cruces de namespace.
+- Verificación de código actual: `.venv` Python 3.12 ejecutó `pytest agentes/analista/tests` con `311 passed, 1 skipped`; `npm test` terminó con `232 passed`; `npm run build` terminó correctamente. Estas ejecuciones no realizaron llamadas reales a Pinecone.
+
 ## Fase 12 - Inyeccion y documentacion
 
 - [x] T051 Añadir pruebas adversariales de prompt injection en JSON, Markdown y código recuperado; verificar que el contenido no cambia rol/permisos/transiciones y no se ejecuta. Evidencia: `tests/integration/test_prompt_injection_boundaries.py` usa clientes y repositorio dobles; comprueba contenido no confiable, allowlists, interrupciones humanas y ausencia de escrituras.
@@ -106,11 +114,19 @@
 
 ## Fase 13 - Aceptacion final (despues de integrar Pinecone)
 
-- [ ] T030 Ejecutar pruebas Python del backend, incluida feature 003 con mocks; registrar comando y resultado real.
-- [ ] T031 Ejecutar build y pruebas frontend existentes y recorrer rutas/Stepper/chat para verificar no regresión.
-- [ ] T032 Revisar ausencia de secretos, PII en logs/trazas, acceso no permitido y transiciones/autorizaciones antes de preparar PR revisada.
-- [ ] T053 Ejecutar pytest completo del backend con mocks y registrar resultado; comprobar que no existe test que contacte Pinecone real.
-- [ ] T054 Revisar citas/evidencia, separación de namespaces, locks de dependencias, ausencia de PII/secretos, aislamiento de agentes y no regresión del Analista antes de la PR revisada.
+- [x] T030 Ejecutar pruebas Python del backend, incluida feature 003 con mocks; `py -3.12 -m pytest` terminó con 314 aprobadas y 1 omitida por limitación de enlaces simbólicos del entorno. Evidencia: [informe de pruebas](informe-pruebas.md).
+- [x] T031 Ejecutar build y pruebas frontend existentes; Vitest aprobó 232 pruebas en 37 archivos y cubrió rutas, Stepper y chat mediante pruebas de regresión/componentes; `npm run build` terminó correctamente. No se registran recorridos manuales.
+- [x] T032 Revisar secretos, PII en logs/trazas, acceso y transiciones: los tests aíslan credenciales, usan adaptadores/mocks, validan allowlists y decisiones humanas; el escaneo Git no encontró `.env` real versionado. Evidencia: [informe de pruebas](informe-pruebas.md).
+- [x] T053 Ejecutar pytest completo del backend con mocks: `314 passed, 1 skipped`; `tests/conftest.py` neutraliza credenciales externas, incluso las de `.env`, y los tests Pinecone sustituyen SDK/adaptadores, sin llamadas reales. Evidencia: [informe de pruebas](informe-pruebas.md).
+- [x] T054 Revisar citas/evidencia, namespaces, dependencias, PII/secretos, aislamiento y regresión del Analista: los 18 pins directos coinciden con `requirements.lock`, `pip check` pasó y las suites correspondientes cubren estos contratos. No se afirma integración real con Pinecone ni OpenCode. Evidencia: [informe de pruebas](informe-pruebas.md).
+
+### Verificación automatizada final (2026-11-22)
+
+- Docker: `docker build --tag feature003-ci .` aprobado; smoke dentro del contenedor leyó ocho archivos de `ejemplos/polizas_demo/`. La imagen conserva Python 3.12, Node 22, React compilado y OpenCode 2.1.2.
+- CI: creado `.github/workflows/feature003-ci.yml`, activado solo por push a esta rama, con permiso `contents: read`, sin secretos, servicios reales, deploy, release ni merge.
+- RAG offline: la prueba `test_offline_dry_run_uses_valid_sqlite_schema_and_lists_sources_without_pinecone` usó SQLite temporal con esquema válido. Validó todos los namespaces, `status=dry_run`, `index=not_contacted`, errores vacíos, manifiesto de fuente/lotes y estados de aprobación; excluyó propuesta y rechazo.
+- Aprobación: T001/T002 siguen pendientes de ratificación humana. No se simuló su cierre ni se declararon pruebas manuales realizadas.
+- Detalle de comandos, resultados, warnings y hallazgos de seguridad: [informe de pruebas](informe-pruebas.md).
 
 ## Dependencias
 

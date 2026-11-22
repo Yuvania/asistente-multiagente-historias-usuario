@@ -105,6 +105,7 @@ leccion = Table(
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _LONG_DIGITS = re.compile(r"(?<![\d.,])\d{9,}(?![\d.,])")
 _ID_PATTERN = re.compile(r"\b\d-\d{4}-\d{4}\b")
+_UUID_TEXT = re.compile(r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b", re.IGNORECASE)
 
 
 class RepositorioError(Exception):
@@ -120,9 +121,10 @@ def detect_personal_data(*texts: str) -> list[str]:
     """Avisa de patrones evidentes de datos personales; no sustituye la anonimización humana."""
     findings: list[str] = []
     joined = "\n".join(texts)
+    numeric_content = _UUID_TEXT.sub(" ", joined)
     if _EMAIL.search(joined):
         findings.append("correo electrónico")
-    if _LONG_DIGITS.search(joined) or _ID_PATTERN.search(joined):
+    if _LONG_DIGITS.search(numeric_content) or _ID_PATTERN.search(numeric_content):
         findings.append("número largo parecido a una identificación o teléfono")
     return findings
 
