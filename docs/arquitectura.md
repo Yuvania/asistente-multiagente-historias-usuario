@@ -60,6 +60,11 @@ El grafo de LangGraph no se arma con llamadas sueltas: se declara como una lista
 src/
   config/rutas.jsx                registro único de pantallas: ruta + componente + menú
   flujo/interrupciones.jsx        tipo de intervención humana → formulario y respuesta
+  components/HistoriaUsuario/crear/
+    useCrearHistoria.js           controlador del asistente: estado, efectos y acciones
+    AsistenteHistoriaContext.js   comparte el controlador con las vistas
+    pasosAsistente.js             registro de pasos: indicador de pasos + vista de cada uno
+    Paso<Nombre>Component.jsx     una vista por paso, sin estado propio del flujo
   components/<Funcionalidad>/     componentes por funcionalidad
   hooks/                          estado y lógica reutilizable
   services/                       llamadas a la API
@@ -73,6 +78,7 @@ src/
 |---|---|
 | Pantalla nueva | Su componente + una entrada en `src/config/rutas.jsx` (con `menu` si va en el menú). |
 | Agente nuevo | Carpeta `agentes/equipo/<id>/` con sus cuatro archivos, entrada en `opencode.jsonc`, su `Paso` en la tabla del flujo (`workflow_graph.py`) y su descripción en la Ayuda. Si pide una decisión humana, una entrada en `src/flujo/interrupciones.jsx`. |
+| Paso nuevo en el asistente | Su vista `Paso<Nombre>Component.jsx` en `crear/`, una entrada en `pasosAsistente.js` y su valor en `PASO`; la lógica va en `useCrearHistoria.js`. |
 | Herramienta MCP para un agente existente | Agregarla a `herramienta` (y su namespace a `fuente`) en la definición del agente. |
 | Cambiar lo que dice un agente | Su `prompt.md`, subiendo la versión editorial. |
 | Regla de negocio de un paso | El modelo Pydantic del contrato y el nodo del grafo; nunca en el prompt solamente. |

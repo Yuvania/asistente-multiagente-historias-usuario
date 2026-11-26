@@ -8,7 +8,7 @@ description: Úsala antes de cualquier cambio en este repositorio (asistente mul
 Lee `docs/arquitectura.md` antes de cambiar código. Resumen de lo que no se negocia:
 
 ## Reglas
-1. **No dupliques registros.** Pantallas → `src/config/rutas.jsx`. Intervenciones humanas → `src/flujo/interrupciones.jsx`. Agentes → `agentes/equipo/<id>/definicion.py`. No escribas rutas, opciones de menú, listas de agentes ni permisos MCP a mano en otro lugar.
+1. **No dupliques registros.** Pantallas → `src/config/rutas.jsx`. Pasos del asistente → `src/components/HistoriaUsuario/crear/pasosAsistente.js`. Intervenciones humanas → `src/flujo/interrupciones.jsx`. Agentes → `agentes/equipo/<id>/definicion.py`. Flujo → tabla `lista_paso` en `workflow_graph.py`. No escribas rutas, opciones de menú, listas de agentes ni permisos MCP a mano en otro lugar.
 2. **Una carpeta por agente** en `agentes/equipo/`, con `definicion.py`, `prompt.md`, `servidor_mcp.py` y `<id>_service.py`. Para agregar uno usa la skill `agregar-agente`.
 3. **Los agentes que usan OpenCode heredan de `AgenteOpenCodeService`** (`agentes/equipo/agente_opencode_service.py`). No copies el ciclo de OpenCode/MCP en otro servicio.
 4. **Contratos tipados.** Entradas y salidas de agentes y del grafo son modelos Pydantic en `agentes/analista/core/workflow_models.py`. Una regla de negocio se valida en el modelo o en el nodo, no solo en el prompt.

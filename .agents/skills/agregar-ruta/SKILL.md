@@ -22,6 +22,13 @@ Las rutas y el menú salen de un solo registro: `src/config/rutas.jsx`. No agreg
 3. Si la pantalla es nueva para la persona usuaria, descríbela en la Ayuda (`src/data/ayudaDocumentacion.js`).
 4. Prueba con Testing Library (mira `src/components/EnvolturaPagina/__tests__/`) y ejecuta `npx vitest run` y `npx vite build`.
 
+## Pasos del asistente para crear una historia
+El asistente está en `src/components/HistoriaUsuario/crear/` y separa controlador y vistas:
+- La lógica (estado, efectos, llamadas al flujo) va en `useCrearHistoria.js`; lo que una vista necesite se agrega al objeto que devuelve.
+- Cada paso es una vista `Paso<Nombre>Component.jsx` que lee el controlador con `useAsistenteHistoria()` y no guarda estado del flujo.
+- Para agregar un paso: su valor en `PASO` (`constantesAsistente.js`), su vista y su entrada en `LISTA_PASO` (`pasosAsistente.js`). El indicador de pasos sale de ese registro.
+- `CrearHistoriaUsuarioComponent.jsx` solo arma la página (avisos, indicador y paso activo): no agregues lógica ahí.
+
 ## Convenciones
 - Componentes terminan en `Component`; servicios en `Service`.
 - Nombres en español y en singular para variables (`listaHistoria`).
