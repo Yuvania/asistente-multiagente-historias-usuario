@@ -100,4 +100,5 @@ Las listas paso a paso están en las skills `agregar-agente` y `agregar-ruta`.
 - Nombres en español y en singular (`listaAgente`, no `agentes`).
 - Las clases de servicio terminan en `Service` (archivo y clase).
 - Ningún `catch`/`except` vacío: al menos se registra un log.
+- Confirmaciones con el modal de la aplicación (`useConfirmacion`), nunca con los cuadros nativos del navegador.
 - El backend nunca registra el contenido que genera el modelo; solo el tipo de error.

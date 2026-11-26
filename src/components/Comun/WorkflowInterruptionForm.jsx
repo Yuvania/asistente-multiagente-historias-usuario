@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AlertaComponent } from './AlertaComponent';
 import { BotonComponent } from './BotonComponent';
 import { registroInterrupcion, textoDe } from '../../flujo/interrupciones';
+import { useConfirmacion } from './ConfirmacionComponent';
 
 // Formulario genérico de intervención humana. Qué campos muestra y qué respuesta arma lo decide el
 // registro de interrupciones (src/flujo/interrupciones.jsx) según el tipo que manda el backend.
@@ -12,6 +13,7 @@ export const WorkflowInterruptionForm = ({
   const [valor, setValor] = useState(() => ({ answers: { ...borrador }, decision: '', reason: '', lessonDecisions: {} }));
   const [draftNotice, setDraftNotice] = useState('');
   const [validationError, setValidationError] = useState('');
+  const confirmar = useConfirmacion();
   if (!interrupt) return null;
   const tipo = registroInterrupcion[interrupt.kind];
   if (!tipo) {
@@ -32,7 +34,12 @@ export const WorkflowInterruptionForm = ({
       setValidationError(resultado.error);
       return;
     }
-    if (resultado.confirmar && typeof window !== 'undefined' && !window.confirm(resultado.confirmar)) return;
+    if (resultado.confirmar && !(await confirmar({
+      titulo: 'Confirmar decisión',
+      mensaje: resultado.confirmar,
+      textoConfirmar: 'Confirmar',
+      peligro: ['rechazar', 'detener'].includes(resultado.response?.decision),
+    }))) return;
     setValidationError('');
     await onResume({ kind: interrupt.kind, interrupt_id: interrupt.interrupt_id, response: resultado.response });
   };

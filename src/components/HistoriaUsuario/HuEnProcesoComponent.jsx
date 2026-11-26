@@ -4,6 +4,7 @@ import { PlayCircle, Trash2 } from 'lucide-react';
 import { BotonComponent } from '../Comun/BotonComponent';
 import { AlertaComponent } from '../Comun/AlertaComponent';
 import { deleteWorkflow, listWorkflows } from '../../services/workflowApi';
+import { useConfirmacion } from '../Comun/ConfirmacionComponent';
 
 // Qué espera cada flujo guardado, en lenguaje de la persona usuaria.
 const ROTULO_ESPERA = {
@@ -35,6 +36,7 @@ export const HuEnProcesoComponent = () => {
   const navigate = useNavigate();
   const [listaFlujo, setListaFlujo] = useState([]);
   const [error, setError] = useState('');
+  const confirmar = useConfirmacion();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -49,7 +51,14 @@ export const HuEnProcesoComponent = () => {
   }, []);
 
   const descartar = async (flujo) => {
-    if (typeof window !== 'undefined' && !window.confirm(`¿Descartar «${flujo.titulo}»? Se pierde el avance guardado.`)) return;
+    const acepta = await confirmar({
+      titulo: 'Descartar historia en proceso',
+      mensaje: `¿Descartar «${flujo.titulo}»?\nSe pierde el avance guardado y no se puede recuperar.`,
+      textoConfirmar: 'Descartar',
+      textoCancelar: 'Conservar',
+      peligro: true,
+    });
+    if (!acepta) return;
     try {
       await deleteWorkflow(flujo.workflow_id);
       setListaFlujo((actual) => actual.filter((item) => item.workflow_id !== flujo.workflow_id));

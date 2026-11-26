@@ -93,3 +93,14 @@ def test_cada_intervencion_humana_del_backend_tiene_formulario_en_la_interfaz():
     tipo_interfaz = set(re.findall(r"^  ([a-z_]+): \{$", registro, re.MULTILINE))
     assert tipo_backend == tipo_interfaz, \
         "Cada tipo de interrupción del backend necesita su entrada en src/flujo/interrupciones.jsx."
+
+
+def test_la_interfaz_no_usa_cuadros_nativos_del_navegador():
+    """Las confirmaciones y avisos usan el modal de la aplicación (useConfirmacion), no window.confirm/alert/prompt."""
+    patron = re.compile(r"window\.(confirm|alert|prompt)\s*\(")
+    infractor = [
+        ruta.relative_to(RAIZ).as_posix()
+        for ruta in (RAIZ / "src").rglob("*.js*")
+        if "__tests__" not in ruta.parts and patron.search(ruta.read_text(encoding="utf-8"))
+    ]
+    assert not infractor, f"Usa useConfirmacion (src/components/Comun/ConfirmacionComponent.jsx) en: {infractor}"

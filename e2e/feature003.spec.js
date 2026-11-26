@@ -137,8 +137,9 @@ test('pre-grooming presenta análisis y HU, recoge respuestas y solicita aprobac
   await page.getByRole('button', { name: /Aprobación del Product Owner/ }).click();
   await page.locator('#workflow-po-decision').selectOption('aprobar');
   await page.getByLabel(/Confirmo que revisé la anonimización/).check();
-  page.on('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Confirmar y continuar' }).click();
+  // La confirmación es un modal de la aplicación, no un cuadro del navegador.
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Confirmar', exact: true }).click();
   await expect.poll(() => persisted).toBe(true);
   await expect(page).toHaveURL(new RegExp(`/historias/${storyId}$`));
   expect(requestBodies.map((body) => body.kind)).toEqual(['business_answers', 'po_approval']);
@@ -180,8 +181,9 @@ test('post-grooming muestra al Gestor de Cambios y registra solo tras aceptar la
   await expect(page.getByText(recommendation.rationale)).toBeVisible();
   expect(persisted).toBe(false);
   await page.locator('#workflow-change-decision').selectOption('aplicar');
-  page.on('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Confirmar y continuar' }).click();
+  // La confirmación es un modal de la aplicación, no un cuadro del navegador.
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Confirmar', exact: true }).click();
   await expect(page.getByText('Decisi\u00f3n registrada', { exact: true })).toBeVisible();
   expect(persisted).toBe(true);
   expect(decisionRequest).toMatchObject({ kind: 'change_decision', interrupt_id: 'interrupt-change-1' });

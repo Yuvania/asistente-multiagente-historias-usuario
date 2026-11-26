@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../../App.jsx';
@@ -98,6 +98,12 @@ const poResults = {
   impact_decisions: [{ question_id: 'decision-1', pregunta: decisionImpacto, respuesta: 'Sí, el mismo plazo.' }],
 };
 const impactResults = { ...baseResults, analyst: poResults.analyst, technical_assessment: poResults.technical_assessment };
+
+// Las confirmaciones usan el modal de la aplicación (no el cuadro del navegador).
+async function aceptarConfirmacion(user) {
+  const dialogo = await screen.findByRole('alertdialog');
+  await user.click(within(dialogo).getByRole('button', { name: /^(Confirmar|Descartar)$/ }));
+}
 
 function renderAt(path = '/historias/nueva') {
   window.history.replaceState({}, '', path);
@@ -207,7 +213,6 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
         espera: null, creado_en: '2026-11-26T10:00:00+00:00', actualizado_en: '2026-11-26T11:00:00+00:00' },
     ]);
     deleteWorkflow.mockResolvedValue(null);
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderAt('/historias');
 
@@ -215,6 +220,7 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     expect(screen.getByText(/Esperando respuestas de Negocio/i)).toBeInTheDocument();
     expect(screen.queryByText('Ya terminada')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Descartar/i }));
+    await aceptarConfirmacion(user);
     await waitFor(() => expect(deleteWorkflow).toHaveBeenCalledWith(WORKFLOW_ID));
     await waitFor(() => expect(screen.queryByText('Teléfono opcional')).not.toBeInTheDocument());
   });
@@ -228,7 +234,6 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     resumeWorkflow
       .mockResolvedValueOnce({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'aprobacion_po', results: poResults, interrupt: poInterrupt })
       .mockResolvedValueOnce({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'completed', stage: 'repositorio', results: { ...poResults, po_decision: { decision: 'aprobar' }, persistence_result: { status: 'saved', story_id: WORKFLOW_ID, title: draftStory.quiero, approved_at: '2026-11-21T12:00:00Z' }, completion_reason: 'HU aprobada por el Product Owner y guardada en el Repositorio.' }, interrupt: null });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderAt();
     await fillRequirement(user);
@@ -261,6 +266,7 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     await user.click(screen.getByRole('checkbox'));
     await user.selectOptions(screen.getByLabelText('Decisión'), 'aprobar');
     await user.click(screen.getByRole('button', { name: /Confirmar y continuar/i }));
+    await aceptarConfirmacion(user);
 
     expect(resumeWorkflow).toHaveBeenNthCalledWith(1, WORKFLOW_ID, {
       kind: 'business_answers', interrupt_id: 'interrupt-business-1',
@@ -286,7 +292,6 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     const user = userEvent.setup();
     startWorkflow.mockResolvedValue({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'aprobacion_po', results: poResults, interrupt: poInterrupt });
     resumeWorkflow.mockResolvedValue({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'redactor', results: poResults, interrupt: poInterrupt });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderAt();
     await fillRequirement(user);
@@ -297,6 +302,7 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     await user.selectOptions(screen.getByLabelText('Decisión'), 'devolver_redactor');
     await user.type(screen.getByLabelText(/Motivo de devolución/i), 'Aclare el criterio');
     await user.click(screen.getByRole('button', { name: /Confirmar y continuar/i }));
+    await aceptarConfirmacion(user);
 
     await waitFor(() => expect(resumeWorkflow).toHaveBeenCalledTimes(1));
     expect(resumeWorkflow.mock.calls[0][1]).toMatchObject({

@@ -63,7 +63,6 @@ describe('Gestor de Cambios post_grooming', () => {
       ...pendingDecision, status: 'completed', stage: 'decision_humana', interrupt: null,
       results: { ...pendingDecision.results, change_decision: { decision: 'aplicar' }, change_persistence_result: { status: 'recorded', change_id: 'change-42', lesson_ids: [] }, completion_reason: 'La aclaración autorizada quedó registrada.' },
     });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderPanel();
     await user.type(await screen.findByLabelText(/Solicitud de cambio/i), 'Mostrar la hora final de vigencia');
@@ -93,7 +92,6 @@ describe('Gestor de Cambios post_grooming', () => {
     resumeWorkflow.mockResolvedValue({
       ...pendingDecision, interrupt: { interrupt_id: 'po-next', kind: 'po_approval', payload: { story: {} }, response_schema: {} },
     });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     renderPanel();
     await user.type(await screen.findByLabelText(/Solicitud de cambio/i), 'Agregar fecha alternativa');

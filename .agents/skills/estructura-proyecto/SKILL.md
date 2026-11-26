@@ -22,6 +22,7 @@ Lee `docs/arquitectura.md` antes de cambiar código. Resumen de lo que no se neg
 - Nunca un `except`/`catch` vacío o solo con comentario: al menos registra un log.
 - No registres el contenido generado por el modelo ni datos personales; solo el tipo de error.
 - Prompts: cada cambio sube la `**Versión editorial:**`.
+- Confirmaciones: nunca `window.confirm`, `alert` ni `prompt`; usa `useConfirmacion()` de `src/components/Comun/ConfirmacionComponent.jsx` (modal accesible de la aplicación).
 
 ## Antes de terminar un cambio
 - `.venv/bin/python -m pytest -q agentes` (incluye `test_estructura_proyecto.py`, las barandas).
