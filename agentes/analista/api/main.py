@@ -22,6 +22,7 @@ from agentes.analista.core.observability import Observability
 from agentes.analista.core.prompt_loader import PromptLoadError, load_prompt
 from agentes.analista.core.workflow_graph import WorkflowRuntime
 from agentes.analista.memory.repositorio import RepositorioHU
+from agentes.conocimiento.sincronizacion import SincronizadorConocimiento
 
 
 @asynccontextmanager
@@ -37,6 +38,10 @@ async def lifespan(app: FastAPI):
     app.state.prompt_snapshot = prompt
     app.state.restart_required = False
     app.state.repositorio = RepositorioHU()
+    # Repositorio del Asesor y carga del conocimiento en Pinecone, en segundo plano y sin pasos manuales.
+    app.state.sincronizador = SincronizadorConocimiento(repositorio=app.state.repositorio)
+    app.state.repositorio.al_cambiar_conocimiento = app.state.sincronizador.programar_repositorio
+    app.state.sincronizador.iniciar_en_segundo_plano()
     app.state.workflow_runtime = WorkflowRuntime(
         observability=app.state.observability,
         repository=app.state.repositorio,

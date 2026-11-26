@@ -30,10 +30,8 @@ fi
 # OpenCode debe arrancar desde la raíz del proyecto para cargar opencode.jsonc y el prompt.
 cd /app
 
-# Repositorio de código del Asesor Técnico (solo lectura), en paralelo para no retrasar el puerto
-# que Render vigila al desplegar. Mientras termina, el Asesor usa el ejemplo incluido.
-python -c "from agentes.conocimiento.repositorio_codigo import main; main()" \
-  || echo "Aviso: no se pudo preparar el repositorio del Asesor." >&2 &
+# El repositorio de código del Asesor y la carga del conocimiento en Pinecone los hace el backend
+# al arrancar, en segundo plano (agentes/conocimiento/sincronizacion.py).
 "${OPENCODE_BIN:-opencode}" serve --hostname 127.0.0.1 --port 4096 &
 PID_OPENCODE=$!
 

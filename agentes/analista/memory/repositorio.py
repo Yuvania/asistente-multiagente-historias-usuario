@@ -6,6 +6,7 @@ equipo, compartidas entre dispositivos. El agente solo lee; las escrituras llega
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -13,6 +14,7 @@ import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import (
@@ -101,6 +103,14 @@ leccion = Table(
     Index("ix_leccion_estado", "estado"),
     Index("ix_leccion_hu", "hu_id"),
 )
+# Huella de lo que ya se cargó en el índice de conocimiento (Pinecone), por fuente. Permite que la carga
+# automática solo recargue lo que cambió.
+sincronizacion_conocimiento = Table(
+    "sincronizacion_conocimiento", _metadata,
+    Column("fuente", String(40), primary_key=True),
+    Column("huella", String(64), nullable=False),
+    Column("actualizada_en", String(40), nullable=False),
+)
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _LONG_DIGITS = re.compile(r"(?<![\d.,])\d{9,}(?![\d.,])")
@@ -171,6 +181,49 @@ class RepositorioHU:
             _metadata.create_all(self.motor)
 
     # --- HU aprobadas -------------------------------------------------
+        # Se avisa al cambiar HU o lecciones aprobadas (la carga automática de Pinecone se suscribe aquí).
+        self.al_cambiar_conocimiento: Callable[[], None] | None = None
+
+    def _avisar_cambio_conocimiento(self) -> None:
+        aviso = self.al_cambiar_conocimiento
+        if aviso is None:
+            return
+        try:
+            aviso()
+        except Exception as exc:
+            logger.warning("aviso_conocimiento_fallido", extra={"event": "aviso_conocimiento_fallido", "error": type(exc).__name__})
+
+    # --- Huellas de la carga del conocimiento ---------------------------
+    def obtener_huella(self, fuente: str) -> str | None:
+        with self.motor.connect() as conexion:
+            fila = conexion.execute(
+                select(sincronizacion_conocimiento.c.huella).where(sincronizacion_conocimiento.c.fuente == fuente)
+            ).first()
+        return fila[0] if fila else None
+
+    def guardar_huella(self, fuente: str, huella: str) -> None:
+        with self.motor.begin() as conexion:
+            existe = conexion.execute(
+                select(sincronizacion_conocimiento.c.fuente).where(sincronizacion_conocimiento.c.fuente == fuente)
+            ).first()
+            valores = {"huella": huella, "actualizada_en": _now()}
+            if existe:
+                conexion.execute(update(sincronizacion_conocimiento)
+                                 .where(sincronizacion_conocimiento.c.fuente == fuente).values(**valores))
+            else:
+                conexion.execute(insert(sincronizacion_conocimiento).values(fuente=fuente, **valores))
+
+    def huella_repositorio(self) -> str:
+        """Resume las HU y lecciones aprobadas: cambia cuando se aprueba, edita o elimina alguna."""
+        with self.motor.connect() as conexion:
+            lista_hu = conexion.execute(
+                select(hu_aprobada.c.id, hu_aprobada.c.aprobada_en).order_by(hu_aprobada.c.id)).all()
+            lista_leccion = conexion.execute(
+                select(leccion.c.id, leccion.c.estado, leccion.c.decidida_en)
+                .where(leccion.c.estado == "aprobada").order_by(leccion.c.id)).all()
+        texto = json.dumps([[list(fila) for fila in lista_hu], [list(fila) for fila in lista_leccion]], default=str)
+        return hashlib.sha256(texto.encode("utf-8")).hexdigest()
+
     def guardar_hu(self, hu: dict[str, Any]) -> dict[str, Any]:
         aprobada_en = _now()
         valores = {
@@ -187,6 +240,7 @@ class RepositorioHU:
                 conexion.execute(update(hu_aprobada).where(hu_aprobada.c.id == hu["id"]).values(**valores))
             else:
                 conexion.execute(insert(hu_aprobada).values(id=hu["id"], **valores))
+        self._avisar_cambio_conocimiento()
         return {"id": hu["id"], "titulo": hu["titulo"], "aprobada_en": aprobada_en}
 
     def listar_hu(self) -> list[dict[str, Any]]:
@@ -210,6 +264,7 @@ class RepositorioHU:
             borradas = conexion.execute(delete(hu_aprobada).where(hu_aprobada.c.id == hu_id)).rowcount
         if borradas == 0:
             raise RepositorioError("La HU no está en el Repositorio de HU.", not_found=True)
+        self._avisar_cambio_conocimiento()
 
     # --- Solicitudes de cambio y lecciones -----------------------------
     def registrar_cambio(
@@ -334,6 +389,8 @@ class RepositorioHU:
             if conexion.execute(select(leccion.c.id).where(leccion.c.id == leccion_id)).first() is None:
                 raise RepositorioError("La lección no existe.", not_found=True)
             conexion.execute(update(leccion).where(leccion.c.id == leccion_id).values(estado=estado, decidida_en=_now()))
+        if estado == "aprobada":
+            self._avisar_cambio_conocimiento()
         return next(item for item in self.listar_lecciones() if item["id"] == leccion_id)
 
     # --- Historias de trabajo (compartidas entre dispositivos) -----------

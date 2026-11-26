@@ -48,7 +48,9 @@ Se cambian en el panel de Render (**Environment**); al guardar, Render reinicia 
 | `PINECONE_API_KEY` | No | Clave de Pinecone para el RAG. Sin ella (o si Pinecone falla) las herramientas usan la copia local y lo indican con `status=degraded`. Los demás `PINECONE_*` vienen en `render.yaml`. |
 | `ASESOR_REPOSITORIO_URL` | No | Repositorio de código que revisa el Asesor Técnico (https, público, **sin credenciales en la URL**). Vacío: usa `ejemplos/polizas_demo`. |
 | `ASESOR_REPOSITORIO_RAMA` | No | Rama de ese repositorio (por defecto `main`). |
-| `ANALISTA_MCP_TRANSPORTE` | No | `stdio` (predeterminado: cada servidor MCP en su propio proceso) o `memoria` (mismo protocolo MCP, mismo proceso; usa menos RAM). |
+| `ANALISTA_MCP_TRANSPORTE` | No | `memoria` (recomendado en Render: mismo protocolo MCP, mismo proceso, sin arrancar un proceso por consulta) o `stdio` (cada servidor MCP en su propio proceso; predeterminado en local). |
+| `ANALISTA_TURN_TIMEOUT_SECONDS` | No | Tiempo máximo por agente, en segundos (90 por defecto; 180 en `render.yaml`; máximo 300). |
+| `PINECONE_SINCRONIZACION_AUTOMATICA` | No | `1` (por defecto): carga automática del conocimiento en Pinecone. `0`: solo carga manual. |
 
 ## Base de datos gratuita (TiDB Cloud Starter)
 
@@ -90,11 +92,11 @@ Para usarlo en serio: en `render.yaml` cambie `plan: free` por `plan: starter`, 
 
 ## Ingesta, salud y memoria
 
-- La ingesta en Pinecone es una operación administrativa explícita (`python -m agentes.conocimiento.ingesta --fuente todas`); FastAPI no la ejecuta al iniciar. Si cambias el repositorio del Asesor, vuelve a ingerir `--fuente codigo` para que la búsqueda por significado use el código nuevo (la copia local lo usa de inmediato).
-- Al arrancar, el contenedor descarga el repositorio del Asesor (`python -m agentes.conocimiento.repositorio_codigo`); si falla, el servicio sigue con el ejemplo incluido.
+- **Carga automática de Pinecone** (con `PINECONE_API_KEY`): al arrancar, en segundo plano, el backend descarga el repositorio del Asesor, crea el índice si falta y carga solo las fuentes que cambiaron o que están vacías (guarda una huella por fuente en la tabla `sincronizacion_conocimiento`). Al aprobar, editar o eliminar una HU, o al aprobar una lección, recarga la fuente `repositorio`. Mientras dura la carga inicial, las búsquedas usan la copia local (`status=degraded`, `KNOWLEDGE_SYNC_IN_PROGRESS`). En los logs aparece `Conocimiento (Pinecone): {...}` con el resultado por fuente.
+- Si la carga falla, el servicio sigue con la copia local y se reintenta en el siguiente arranque. Se puede desactivar con `PINECONE_SINCRONIZACION_AUTOMATICA=0` y cargar a mano con `python -m agentes.conocimiento.ingesta --fuente todas --crear-indice`.
 - `/healthz` responde con una comprobación local mínima para el health check de Render. `/api/analista/health` hace diagnósticos adicionales contra OpenCode y el registro MCP del Analista; puede tardar más y requiere autenticación.
 - El entrypoint inicia OpenCode y Uvicorn con `--workers 1`, requisito para conservar las conversaciones en memoria. Mantén una sola instancia.
-- Cada consulta de un agente abre su servidor MCP como proceso aparte (`stdio`) y lo cierra al terminar; nunca hay dos abiertos a la vez en un mismo flujo (el Asesor se consulta después de cerrar el servidor del agente que pregunta). Si la memoria no alcanza, usa `ANALISTA_MCP_TRANSPORTE=memoria`.
+- Con `ANALISTA_MCP_TRANSPORTE=stdio`, cada consulta de un agente abre su servidor MCP como proceso aparte (unos 90 MB y, con 0,1 CPU, unos 10 s de arranque). Por eso en Render se usa `memoria`.
 - El plan Free actual asigna 512 MB por instancia ([planes de cómputo de Render](https://render.com/docs/compute-plans)); OpenCode y FastAPI comparten esa memoria. Esta revisión local no puede consultar las métricas del servicio Render: monitoréalas en el panel de Render durante cualquier prueba. Si hay reinicios por memoria, detén la prueba y evalúa el plan existente antes de volver a intentarlo. No añadas workers ni servicios.
 
 Para las pruebas de PowerShell y los límites de validación actuales, consulta [la guía de arranque y pruebas](docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md).

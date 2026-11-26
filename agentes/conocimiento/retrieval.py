@@ -18,6 +18,7 @@ from agentes.analista.memory.repositorio import detect_personal_data, load_memor
 
 from .client import PineconeKnowledgeClient
 from .documents import APPROVED_KINDS, validate_document_metadata
+from .estado_carga import pinecone_disponible
 from .repositorio_codigo import es_ruta_codigo
 from .sources import AuthorizedSourceLoader, SourceRecord, validate_namespace
 
@@ -175,6 +176,13 @@ class KnowledgeRetriever:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 25:
             raise ValueError("El límite de resultados no es válido.")
 
+        if not pinecone_disponible():
+            # Carga inicial en curso: el índice puede estar vacío o a medias.
+            sources = self._search_local(role, query, namespace, limit)
+            return RetrievalResult(
+                status="degraded", backend="local" if sources else "none", namespace=namespace,
+                sources=sources, error_code="KNOWLEDGE_SYNC_IN_PROGRESS",
+            )
         try:
             matches = self._search_pinecone(role, query, namespace, limit)
         except Exception as exc:
