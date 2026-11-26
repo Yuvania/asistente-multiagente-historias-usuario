@@ -79,11 +79,11 @@ def _seguimiento_hu(state: Mapping[str, Any], decision: POApprovalSubmission) ->
     """Lo que queda en la HU aprobada además de la historia: lo útil para el grooming y la implementación.
 
     Las observaciones de control de calidad del Redactor no se guardan: sirvieron para revisar la historia.
+    El impacto en otros módulos tampoco: queda cubierto por los criterios de aceptación de la historia.
     """
     analisis = state.get("analyst_response") or {}
     return {
         "beneficios": list(analisis.get("beneficios") or []),
-        "impacto_negocio": list((state.get("technical_assessment") or {}).get("impacto_negocio") or []),
         "decisiones_impacto": [
             {"pregunta": item["pregunta"], "respuesta": item["respuesta"]} for item in state.get("impact_decisions", [])
         ],

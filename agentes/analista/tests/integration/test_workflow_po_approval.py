@@ -109,7 +109,7 @@ async def test_explicit_approval_persists_structured_story_once_and_reuses_threa
                        "entonces": "veo el disponible"}],
         "aclaraciones": [],
         "seguimiento": {
-            "beneficios": [], "impacto_negocio": [], "decisiones_impacto": [], "supuestos_po": [],
+            "beneficios": [], "decisiones_impacto": [], "supuestos_po": [],
             "notas": [], "devoluciones_po": [], "nota_aprobacion": None,
             "aprobada_el": saved["seguimiento"]["aprobada_el"],
         },

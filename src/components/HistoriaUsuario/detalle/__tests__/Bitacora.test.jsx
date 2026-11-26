@@ -32,9 +32,10 @@ describe('bitácora de la HU en pantalla', () => {
     expect(onCambiarEstado).toHaveBeenCalledWith(1, 'atendido');
   });
 
-  it('el detalle muestra la sección de impacto solo si la HU lo trae', () => {
-    const ids = (historia) => construirSecciones(historia).map((seccion) => seccion.id);
-    expect(ids({ ...story, impactoNegocio: [{ area: 'Carga masiva', hoy: 'a', debe: 'b' }] })).toContain('impacto');
-    expect(ids(story)).not.toContain('impacto');
+  it('el detalle no tiene sección de impacto: el impacto va en los criterios de aceptación', () => {
+    const ids = construirSecciones({ ...story, impactoNegocio: [{ area: 'Carga masiva', hoy: 'a', debe: 'b' }] })
+      .map((seccion) => seccion.id);
+    expect(ids).not.toContain('impacto');
+    expect(ids).toContain('observaciones');
   });
 });

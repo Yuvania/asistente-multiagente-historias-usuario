@@ -50,7 +50,7 @@ export const ACCIONES_HISTORIA = [
   },
   {
     titulo: 'Ver detalle',
-    texto: 'Es solo de consulta: arriba ofrece únicamente Volver. Muestra la historia en pestañas (Historia, Criterios de aceptación, Preguntas pendientes, Impacto en otros módulos, Observaciones, Historial, Análisis y Datos de la plantilla); cada pestaña aparece solo si la HU tiene ese dato. En Observaciones, las dependencias y los pendientes técnicos se pueden marcar como atendidos. Si hay preguntas pendientes o el análisis quedó desactualizado, avisa y ofrece responderlas o volver a analizar.',
+    texto: 'Es solo de consulta: arriba ofrece únicamente Volver. Muestra la historia en pestañas (Historia, Criterios de aceptación, Preguntas pendientes, Observaciones, Historial, Análisis y Datos de la plantilla); cada pestaña aparece solo si la HU tiene ese dato. En Observaciones, las dependencias y los pendientes técnicos se pueden marcar como atendidos. Si hay preguntas pendientes o el análisis quedó desactualizado, avisa y ofrece responderlas o volver a analizar.',
   },
   {
     titulo: 'Editar',
@@ -73,7 +73,7 @@ export const ACCIONES_HISTORIA = [
   },
   {
     titulo: 'Descargar',
-    texto: 'Genera la HU en Word o PDF con la plantilla de documento (código de formato, encabezado, pie con número de página). Incluye el impacto en otros módulos después de los criterios, y las observaciones en una página final como tabla (Fecha, Tipo, Origen, Comentario, Estado).',
+    texto: 'Genera la HU en Word o PDF con la plantilla de documento (código de formato, encabezado, pie con número de página). Las observaciones salen en una página final como tabla (Fecha, Tipo, Origen, Comentario, Estado).',
   },
   {
     titulo: 'Eliminar',

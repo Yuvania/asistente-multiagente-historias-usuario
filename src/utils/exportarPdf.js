@@ -210,21 +210,6 @@ export function construirPdf(historia) {
     y += 3;
   });
 
-  // Impacto en otros módulos (lo que encontró el Asesor Técnico), después de los criterios.
-  if (contenido.impacto.length > 0) {
-    salto(25);
-    autoTable(doc, {
-      ...estiloTabla,
-      startY: y + 2,
-      head: [[barra('Impacto en otros módulos', 2, true)]],
-      body: contenido.impacto.map((item) => [
-        rotulo(item.area),
-        `Hoy: ${item.hoy}\nPara que el cambio funcione: ${item.debe}`,
-      ]),
-      columnStyles: { 0: { cellWidth: 50 } },
-    });
-  }
-
   // Como en la plantilla: al final, en página aparte; una fila por entrada de la bitácora.
   if (contenido.observaciones.length > 0) {
     doc.addPage();

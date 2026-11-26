@@ -64,16 +64,15 @@ describe('exportar PDF', () => {
     expect((await Packer.toBuffer(construirDocumento({}))).byteLength).toBeGreaterThan(1000);
   });
 
-  it('quita el «que» repetido en «Dado que» e incluye el impacto en otros módulos', async () => {
+  it('quita el «que» repetido en «Dado que» y exporta la bitácora como tabla', async () => {
     const conImpacto = {
       ...historia,
       acceptanceCriteria: [{ given: 'que estoy en la pantalla', when: 'guardo', then: 'se acepta' }],
-      impactoNegocio: [{ area: 'Carga masiva', hoy: 'Usa día/mes/año.', debe: 'Usar año-mes-día.' }],
       bitacora: [{ fecha: '2026-11-26', autor: 'Redactor-Revisor', tipo: 'dependencia', texto: 'Avisar.', estado: 'abierto' }],
     };
     const contenido = armarContenido(conImpacto);
     expect(contenido.criterios[0].partes[0]).toEqual(['Dado que', 'estoy en la pantalla']);
-    expect(contenido.impacto).toEqual(conImpacto.impactoNegocio);
+    expect(contenido.observaciones[0]).toMatchObject({ tipo: 'Dependencia', estado: 'Abierto' });
     expect(() => construirPdf(conImpacto)).not.toThrow();
     expect((await Packer.toBuffer(construirDocumento(conImpacto))).byteLength).toBeGreaterThan(1000);
   });

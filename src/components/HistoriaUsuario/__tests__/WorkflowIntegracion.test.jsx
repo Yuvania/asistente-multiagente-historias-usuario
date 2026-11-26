@@ -273,7 +273,8 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     expect(repositorioApi.saveStory).not.toHaveBeenCalled();
     await waitFor(() => expect(JSON.parse(localStorage.getItem('historias_usuario_prototipo'))[0]).toMatchObject({ id: WORKFLOW_ID, status: 'aprobada' }));
     const guardada = JSON.parse(localStorage.getItem('historias_usuario_prototipo'))[0];
-    expect(guardada.impactoNegocio).toEqual(impactoNegocio);
+    // El impacto no es una sección de la HU: queda cubierto por los criterios de aceptación.
+    expect(guardada.impactoNegocio).toBeUndefined();
     expect(guardada.bitacora.map((nota) => nota.tipo)).toEqual(['decision', 'supuesto', 'dependencia']);
     expect(guardada.bitacora[2]).toMatchObject({ autor: 'Redactor-Revisor', estado: 'abierto' });
     expect(JSON.stringify(guardada.bitacora)).not.toContain('Criterio verificable');

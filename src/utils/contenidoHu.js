@@ -42,7 +42,6 @@ export function armarContenido(historia) {
     beneficios: limpiarLista(hu.benefits),
     // Una fila por entrada de la bitácora: Fecha | Tipo | Origen | Comentario | Estado.
     observaciones: filasBitacora(hu),
-    impacto: (hu.impactoNegocio ?? []).filter((item) => item?.area),
     firmas: ROLES_FIRMA.map((rol) => [
       `${rol.rotulo}:`,
       valorOPendiente(firmante[rol.clave] || (rol.clave === 'elaborado' ? hu.createdBy : '')),

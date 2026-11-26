@@ -13,7 +13,6 @@ import { SeccionHistoriaComponent } from './detalle/SeccionHistoriaComponent';
 import { SeccionCriteriosComponent } from './detalle/SeccionCriteriosComponent';
 import { SeccionPreguntasPendientesComponent } from './detalle/SeccionPreguntasPendientesComponent';
 import { SeccionObservacionesComponent } from './detalle/SeccionObservacionesComponent';
-import { SeccionImpactoComponent } from './detalle/SeccionImpactoComponent';
 import { SeccionRevisionesComponent } from './detalle/SeccionRevisionesComponent';
 import { SeccionAnalisisComponent } from './detalle/SeccionAnalisisComponent';
 import { SeccionPlantillaComponent } from './detalle/SeccionPlantillaComponent';
@@ -58,7 +57,6 @@ export const DetalleHistoriaUsuarioComponent = () => {
         onResponder={() => navigate(`/historias/${story.id}/editar`, { state: { abrirPreguntas: true } })}
       />
     ),
-    impacto: <SeccionImpactoComponent story={story} />,
     observaciones: (
       <SeccionObservacionesComponent
         story={story}

@@ -21,12 +21,6 @@ const DEFINICION = [
     contador: (story) => story.pendingQuestions?.length ?? 0,
   },
   {
-    id: 'impacto',
-    titulo: 'Impacto en otros módulos',
-    visible: (story) => (story.impactoNegocio?.length ?? 0) > 0,
-    contador: (story) => story.impactoNegocio?.length ?? 0,
-  },
-  {
     id: 'observaciones',
     titulo: 'Observaciones y aclaraciones',
     visible: (story) => leerBitacora(story).length > 0,

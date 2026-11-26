@@ -207,28 +207,6 @@ export function construirDocumento(historia) {
     ? contenido.criterios.flatMap((criterio, indice) => bloqueCriterio(criterio, indice, contenido.criterios.length))
     : [parrafo(PENDIENTE, { cursiva: true })];
 
-  // Impacto en otros módulos (lo que encontró el Asesor Técnico), después de los criterios.
-  const impacto = contenido.impacto.length > 0
-    ? [
-      espacio(),
-      tabla([
-        filaTitulo('Impacto en otros módulos', { principal: true }),
-        ...contenido.impacto.map((item) => new TableRow({
-          children: [
-            rotulo(item.area, 25),
-            new TableCell({
-              borders: BORDES,
-              columnSpan: 3,
-              width: { size: 75, type: WidthType.PERCENTAGE },
-              margins: { top: 60, bottom: 60, left: 100, right: 100 },
-              children: [parrafo(`Hoy: ${item.hoy}`), parrafo(`Para que el cambio funcione: ${item.debe}`)],
-            }),
-          ],
-        })),
-      ]),
-    ]
-    : [];
-
   // Como en la plantilla: al final, en página aparte; una fila por entrada de la bitácora.
   const celdaTexto = (texto, ancho) => new TableCell({
     borders: BORDES,
@@ -269,7 +247,6 @@ export function construirDocumento(historia) {
         firmas, espacio(),
         new Paragraph({ spacing: { before: 200, after: 120 }, children: [new TextRun({ text: 'Criterios de Aceptación', bold: true, size: 26 })] }),
         ...criterios,
-        ...impacto,
         ...observaciones,
       ],
     }],

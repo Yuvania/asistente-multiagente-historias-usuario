@@ -110,7 +110,7 @@ async def test_la_hu_aprobada_guarda_lo_util_y_no_el_control_de_calidad():
 
     seguimiento = repository.calls[0]["seguimiento"]
     assert seguimiento["beneficios"] == ["Evitar errores al intercambiar la fecha con otros sistemas."]
-    assert seguimiento["impacto_negocio"][0]["area"] == "Carga masiva de clientes"
+    assert "impacto_negocio" not in seguimiento
     assert seguimiento["decisiones_impacto"] == [
         {"pregunta": "¿La carga masiva debe pedir año-mes-día?", "respuesta": "Sí, igual que la pantalla."},
     ]

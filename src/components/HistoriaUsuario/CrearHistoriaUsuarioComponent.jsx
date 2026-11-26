@@ -370,7 +370,6 @@ const CrearHistoriaUsuarioContenido = () => {
           ...bitacoraConNota(historiaOrigen ?? (reanalizarId ? getStoryById(reanalizarId) : null), ''),
           ...bitacoraDelFlujo(resultado, { fecha: hoy, persona, notaAprobacion }),
         ],
-        impactoNegocio: resultado.technical_assessment?.impacto_negocio ?? [],
         id,
         status: 'aprobada',
         approvedAt: persistence.approved_at ?? new Date().toISOString(),
