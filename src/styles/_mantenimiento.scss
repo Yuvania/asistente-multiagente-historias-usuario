@@ -156,33 +156,82 @@
   &__nuevo { width: 100%; justify-content: center; }
 }
 
-// Inicio de sesión.
+// Inicio de sesión: panel de marca en ciruela y formulario a la derecha (se apilan en móvil).
 .inicio-sesion {
   min-height: 100vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
+  flex-wrap: wrap;
   background: $color-bg;
+
+  &__marca-panel {
+    flex: 1 1 420px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 2.5rem;
+    padding: 3.5rem;
+    background-color: $color-nav-bg;
+    color: $color-nav-text;
+
+    @media (max-width: 640px) { padding: 2rem 1.5rem; gap: 1.5rem; }
+  }
+
+  &__logo {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+
+  &__titular {
+    max-width: 26rem;
+    color: #ffffff;
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin-bottom: 0.85rem;
+
+    @media (max-width: 640px) { font-size: 1.5rem; }
+  }
+
+  &__bajada { max-width: 26rem; font-size: 0.95rem; line-height: 1.6; }
+
+  &__cifras {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.75rem;
+    font-size: 0.8rem;
+
+    strong { display: block; color: #ffffff; font-size: 1.25rem; font-weight: 600; }
+
+    @media (max-width: 640px) { display: none; }
+  }
+
+  &__formulario-panel {
+    flex: 1 1 420px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1.5rem;
+  }
 
   &__tarjeta {
     width: 100%;
     max-width: 380px;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  &__marca {
-    display: flex;
-    align-items: center;
     gap: 0.75rem;
 
-    h1 { font-size: 1.35rem; margin: 0; }
+    h2 { font-size: 1.375rem; font-weight: 600; letter-spacing: -0.01em; }
   }
 
   &__boton { width: 100%; justify-content: center; margin-top: 0.5rem; }
 }
+
+.barra-lateral__logo--grande { width: 34px; height: 34px; border-radius: 8px; }
 
 .sr-only {
   position: absolute;
@@ -195,6 +244,3 @@
   white-space: nowrap;
   border: 0;
 }
-
-// Con Mantenimiento y la sesión en el encabezado, el cambio de tema queda solo con su ícono.
-.header__theme-toggle:not(.header__user) span { display: none; }

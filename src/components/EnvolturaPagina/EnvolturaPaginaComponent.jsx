@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Sparkles, Moon, Sun, UserRound, LogOut } from 'lucide-react';
+import { FileText, Moon, Sun, UserRound, LogOut } from 'lucide-react';
 import { useTema } from '../../hooks/useTema';
 import { useUsuarioActual } from '../../hooks/useUsuarioActual';
 import { DialogoUsuarioComponent } from '../Usuario/DialogoUsuarioComponent';
@@ -9,6 +9,10 @@ import { listaOpcionMenu } from '../../config/rutas';
 import { AsistenteAyudaComponent } from '../AsistenteAyuda/AsistenteAyudaComponent';
 import { useSesion } from '../Sesion/SesionContext';
 import { useConfirmacion } from '../Comun/ConfirmacionComponent';
+
+// Iniciales para el avatar (por ejemplo «Ana Mora» → «AM»).
+const iniciales = (texto) => String(texto ?? '').trim().split(/\s+/).slice(0, 2)
+  .map((parte) => parte[0]?.toUpperCase() ?? '').join('') || '?';
 
 export const EnvolturaPaginaComponent = () => {
   const { theme, toggleTheme } = useTema();
@@ -21,71 +25,79 @@ export const EnvolturaPaginaComponent = () => {
     if (await confirmar({ titulo: 'Cerrar sesión', mensaje: `¿Cerrar la sesión de ${usuario.nombre}?`, textoConfirmar: 'Cerrar sesión' })) salir();
   };
 
+  // Marca «Ciruela corporativa»: barra lateral en web, solo íconos en tablet y barra inferior en móvil
+  // (todo en CSS, src/styles/_layout.scss). La navegación retrocede para que el contenido mande.
   return (
     <div className="app-container">
-      <header className="header">
-        <div className="header__inner">
-          <NavLink to="/" className="header__brand" aria-label="Historias de Usuario, ir al inicio">
-            <div className="brand-icon">
-              <Sparkles size={20} />
-            </div>
-            <div className="brand-text">
-              Historias de Usuario
-            </div>
-          </NavLink>
+      <aside className="barra-lateral">
+        <NavLink to="/" className="barra-lateral__marca" aria-label="Historias de Usuario, ir al inicio">
+          <span className="barra-lateral__logo" aria-hidden="true"><FileText size={16} /></span>
+          <span className="barra-lateral__nombre">
+            Historias
+            <small>de Usuario</small>
+          </span>
+        </NavLink>
 
-          {/* Las opciones salen del registro único de pantallas (src/config/rutas.jsx). */}
-          <nav className="header__nav">
-            {listaOpcionMenu(puede).map(({ destino, etiqueta, titulo, icono: Icono, exacta }) => (
-              <NavLink
-                key={destino}
-                to={destino}
-                title={titulo}
-                end={Boolean(exacta)}
-                className={({ isActive }) => `header__nav-link ${isActive ? 'active' : ''}`}
-              >
-                <Icono size={18} />
-                <span>{etiqueta}</span>
-              </NavLink>
-            ))}
-          </nav>
+        {/* Las opciones salen del registro único de pantallas (src/config/rutas.jsx). */}
+        <nav className="barra-lateral__nav" aria-label="Menú principal">
+          {listaOpcionMenu(puede).map(({ destino, etiqueta, corta, titulo, icono: Icono, exacta }) => (
+            <NavLink
+              key={destino}
+              to={destino}
+              title={titulo}
+              end={Boolean(exacta)}
+              className={({ isActive }) => `barra-lateral__enlace ${isActive ? 'active' : ''}`}
+            >
+              <Icono size={18} aria-hidden="true" />
+              <span className="barra-lateral__etiqueta">{etiqueta}</span>
+              <span className="barra-lateral__corta" aria-hidden="true">{corta ?? etiqueta}</span>
+            </NavLink>
+          ))}
+        </nav>
 
+        <div className="barra-lateral__pie">
           {seguridad && usuario ? (
             <button
               type="button"
-              className="header__theme-toggle header__user"
+              className="barra-lateral__usuario"
               onClick={cerrarSesion}
               aria-label={`Usuario: ${usuario.nombre}. Cerrar sesión`}
               title={`${usuario.nombre} (${usuario.roles.map((rol) => rol.nombre).join(', ') || 'sin roles'}). Cerrar sesión`}
             >
-              <LogOut size={18} />
-              <span>{usuario.nombre}</span>
+              <span className="barra-lateral__avatar" aria-hidden="true">{iniciales(usuario.nombre)}</span>
+              <span className="barra-lateral__persona">
+                {usuario.nombre}
+                <small>{usuario.roles.map((rol) => rol.nombre).join(', ') || 'Sin roles'}</small>
+              </span>
+              <LogOut size={16} aria-hidden="true" className="barra-lateral__salir" />
             </button>
           ) : (
-          <button
-            type="button"
-            className="header__theme-toggle header__user"
-            onClick={() => setMostrarUsuario(true)}
-            aria-label={nombre ? `Usuario: ${nombre}. Cambiar nombre` : 'Identificarse'}
-            title="Su nombre queda registrado en las historias que cree o modifique"
-          >
-            <UserRound size={18} />
-            <span>{nombre || 'Identificarse'}</span>
-          </button>
+            <button
+              type="button"
+              className="barra-lateral__usuario"
+              onClick={() => setMostrarUsuario(true)}
+              aria-label={nombre ? `Usuario: ${nombre}. Cambiar nombre` : 'Identificarse'}
+              title="Su nombre queda registrado en las historias que cree o modifique"
+            >
+              <span className="barra-lateral__avatar" aria-hidden="true">{nombre ? iniciales(nombre) : <UserRound size={16} />}</span>
+              <span className="barra-lateral__persona">
+                {nombre || 'Identificarse'}
+                <small>{nombre ? 'Cambiar nombre' : 'Su nombre queda en las historias'}</small>
+              </span>
+            </button>
           )}
 
           <button
             type="button"
-            className="header__theme-toggle"
+            className="barra-lateral__tema"
             onClick={toggleTheme}
             aria-label={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
             title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
           >
-            {isDark ? <Sun size={18} /> : <Moon size={18} />}
-            <span>{isDark ? 'Modo claro' : 'Modo oscuro'}</span>
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </div>
-      </header>
+      </aside>
 
       {mostrarUsuario && (
         <DialogoUsuarioComponent
@@ -98,17 +110,19 @@ export const EnvolturaPaginaComponent = () => {
         />
       )}
 
-      <main className="main-content">
-        <Outlet />
-      </main>
+      <div className="app-cuerpo">
+        <main className="main-content">
+          <Outlet />
+        </main>
+
+        <footer className="footer">
+          <div className="footer__inner">
+            <div>{TEXTO_PIE}</div>
+          </div>
+        </footer>
+      </div>
 
       <AsistenteAyudaComponent />
-
-      <footer className="footer">
-        <div className="footer__inner">
-          <div>{TEXTO_PIE}</div>
-        </div>
-      </footer>
     </div>
   );
 };

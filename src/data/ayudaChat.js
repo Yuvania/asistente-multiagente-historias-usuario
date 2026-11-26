@@ -9,7 +9,7 @@ export const PREGUNTAS_AYUDA = [
     pregunta: '¿Cómo creo una historia?',
     texto: 'Para crear una historia de usuario:',
     pasos: [
-      'Entre a "Nueva Historia" en el menú superior.',
+      'Entre a "Nueva historia" en el menú superior.',
       'Complete el requerimiento: título, tipo de información, sistema, área solicitante y descripción.',
       'Pulse «Analizar Requerimiento» para que el Agente Analista lo revise.',
       'Lleve a Negocio, en una sola ronda, las preguntas del Analista y las decisiones del Asesor Técnico, y registre las respuestas.',

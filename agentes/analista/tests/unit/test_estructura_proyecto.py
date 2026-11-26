@@ -74,7 +74,7 @@ def test_la_ayuda_describe_a_cada_agente_del_equipo():
 
 def test_las_skills_para_ia_son_iguales_en_ambas_carpetas():
     """Las guías para herramientas de IA existen en .agents/skills y en .claude/skills, sin diferencias."""
-    lista_skill = ("agregar-agente", "agregar-ruta", "estructura-proyecto")
+    lista_skill = ("agregar-agente", "agregar-ruta", "estructura-proyecto", "marca-diseno")
     for skill in lista_skill:
         agentes = RAIZ / ".agents" / "skills" / skill / "SKILL.md"
         claude = RAIZ / ".claude" / "skills" / skill / "SKILL.md"
@@ -104,3 +104,47 @@ def test_la_interfaz_no_usa_cuadros_nativos_del_navegador():
         if "__tests__" not in ruta.parts and patron.search(ruta.read_text(encoding="utf-8"))
     ]
     assert not infractor, f"Usa useConfirmacion (src/components/Comun/ConfirmacionComponent.jsx) en: {infractor}"
+
+
+# --- Marca «Ciruela corporativa» (docs/marca.md) ---------------------------------------------
+_HEX = re.compile(r"#[0-9a-fA-F]{3,8}\b")
+_HEX_PERMITIDO = {"#fff", "#ffffff", "#1a1a1a"}
+
+
+def test_los_colores_de_la_marca_solo_se_definen_en_el_tema():
+    """Un color nuevo va como variable en _theme.scss (claro y oscuro), no escrito en un estilo o componente."""
+    fuera = []
+    for ruta in list((RAIZ / "src").rglob("*.scss")) + list((RAIZ / "src").rglob("*.jsx")):
+        relativa = ruta.relative_to(RAIZ).as_posix()
+        if relativa in {"src/styles/_theme.scss", "src/styles/_variables.scss"} or "__tests__" in relativa:
+            continue
+        texto = ruta.read_text(encoding="utf-8")
+        for valor in _HEX.findall(texto):
+            if valor.lower() not in _HEX_PERMITIDO:
+                fuera.append(f"{relativa}: {valor}")
+    assert fuera == [], f"Colores fuera de src/styles/_theme.scss (use var(--color-…)): {fuera}"
+
+
+def test_el_tema_claro_y_el_oscuro_definen_las_mismas_variables():
+    tema = (RAIZ / "src" / "styles" / "_theme.scss").read_text(encoding="utf-8")
+    claro, _, oscuro = tema.partition(":root[data-theme='dark']")
+    variables = lambda bloque: set(re.findall(r"(--[a-z0-9-]+)\s*:", bloque))
+    assert variables(claro) == variables(oscuro), "Cada variable de color necesita su par en modo oscuro."
+
+
+def test_la_tipografia_es_inter_e_ibm_plex_mono():
+    """Solo las dos familias de la marca, cargadas en index.html."""
+    indice = (RAIZ / "index.html").read_text(encoding="utf-8")
+    familias = set(re.findall(r"family=([A-Za-z+]+)", indice))
+    assert familias == {"Inter", "IBM+Plex+Mono"}, f"Fuentes fuera de la marca: {familias}"
+    for ruta in (RAIZ / "src").rglob("*.scss"):
+        for familia in re.findall(r"font-family:\s*['\"]([^'\"]+)['\"]", ruta.read_text(encoding="utf-8")):
+            assert familia in {"Inter", "IBM Plex Mono"}, f"{ruta.name} usa la fuente «{familia}»."
+
+
+def test_cada_opcion_del_menu_tiene_etiqueta_corta_para_movil():
+    rutas = (RAIZ / "src" / "config" / "rutas.jsx").read_text(encoding="utf-8")
+    for menu in re.findall(r"menu: \{ (etiqueta[^}]*)\}", rutas):
+        corta = re.search(r"corta: '([^']+)'", menu)
+        assert corta, f"Falta «corta» en el menú: {menu.strip()[:60]}"
+        assert len(corta.group(1)) <= 9, f"La etiqueta corta «{corta.group(1)}» supera 9 letras."

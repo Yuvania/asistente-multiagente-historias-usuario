@@ -86,7 +86,7 @@ export const ListaHistoriaUsuarioComponent = () => {
             icon={PlusCircle}
             onClick={() => navigate('/historias/nueva')}
           >
-            Nueva Historia
+            Nueva historia
           </BotonComponent>
         )}
       />
@@ -144,7 +144,7 @@ export const ListaHistoriaUsuarioComponent = () => {
               ? 'Intente modificar los filtros de búsqueda.'
               : 'Aún no se ha creado ninguna historia de usuario.'
           }
-          actionText="Crear Nueva Historia"
+          actionText="Crear la primera historia"
           onAction={() => navigate('/historias/nueva')}
         />
       ) : (

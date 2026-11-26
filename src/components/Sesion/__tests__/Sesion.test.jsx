@@ -32,14 +32,14 @@ describe('sesión por usuario', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Ana Mora. Cerrar sesión/ })).toBeInTheDocument());
     expect(sesionApi.iniciar).toHaveBeenCalledWith('ana', 'clave-segura');
     expect(localStorage.getItem(TOKEN_SESION_KEY)).toBe('tok');
-    expect(screen.getByRole('link', { name: /^Historias de Usuario$/ })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Nueva Historia/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^Historias de usuario$/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Nueva historia/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Mantenimiento/ })).not.toBeInTheDocument();
   });
 
   it('el menú y las decisiones del PO se filtran por acción', () => {
     const puede = (accion) => (Array.isArray(accion) ? accion : [accion]).some((codigo) => !codigo || PO.acciones.includes(codigo));
-    expect(listaOpcionMenu(puede).map((opcion) => opcion.etiqueta)).toEqual(['Dashboard', 'Historias de Usuario', 'Ayuda']);
+    expect(listaOpcionMenu(puede).map((opcion) => opcion.etiqueta)).toEqual(['Inicio', 'Historias de usuario', 'Ayuda']);
     expect(opcionesPermitidas(OPCION_PO, puede).map(([valor]) => valor)).toEqual([
       'aprobar', 'devolver_analista', 'devolver_redactor', 'devolver_asesor',
     ]);

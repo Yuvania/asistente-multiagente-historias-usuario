@@ -20,7 +20,7 @@ describe('chat de ayuda sin modelo', () => {
     await user.click(within(panel).getByRole('button', { name: '¿Cómo creo una historia?' }));
     const registro = within(panel).getByRole('log');
     expect(within(registro).getAllByRole('listitem').length).toBeGreaterThanOrEqual(5);
-    expect(registro).toHaveTextContent(/Nueva Historia/);
+    expect(registro).toHaveTextContent(/Nueva historia/);
   });
 
   it('explica que el código no es el identificador técnico', async () => {

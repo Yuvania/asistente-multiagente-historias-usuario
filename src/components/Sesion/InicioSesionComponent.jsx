@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Sparkles, LogIn } from 'lucide-react';
+import { FileText, LogIn } from 'lucide-react';
 import { CampoTextoComponent } from '../Comun/CampoTextoComponent';
 import { BotonComponent } from '../Comun/BotonComponent';
 import { AlertaComponent } from '../Comun/AlertaComponent';
@@ -37,35 +37,55 @@ export const InicioSesionComponent = () => {
 
   return (
     <div className="inicio-sesion">
-      <form className="card inicio-sesion__tarjeta" onSubmit={enviar} aria-label="Iniciar sesión">
-        <div className="inicio-sesion__marca">
-          <div className="brand-icon"><Sparkles size={20} /></div>
-          <h1>Historias de Usuario</h1>
+      <section className="inicio-sesion__marca-panel" aria-label="Presentación">
+        <div className="inicio-sesion__logo">
+          <span className="barra-lateral__logo barra-lateral__logo--grande" aria-hidden="true"><FileText size={18} /></span>
+          Historias de Usuario
         </div>
-        <p className="form-hint">Ingrese con su usuario. Las historias que cree, apruebe o devuelva quedan a su nombre.</p>
-        {(error || errorSesion) && <AlertaComponent type="warning" title="No se pudo ingresar">{error || errorSesion}</AlertaComponent>}
-        <CampoTextoComponent
-          label="Usuario"
-          id="sesion-usuario"
-          ref={campoRef}
-          autoComplete="username"
-          value={usuario}
-          maxLength={60}
-          onChange={(evento) => setUsuario(evento.target.value)}
-        />
-        <CampoTextoComponent
-          label="Contraseña"
-          id="sesion-clave"
-          type="password"
-          autoComplete="current-password"
-          value={clave}
-          maxLength={200}
-          onChange={(evento) => setClave(evento.target.value)}
-        />
-        <BotonComponent type="submit" variant="primary" icon={LogIn} disabled={enviando} className="inicio-sesion__boton">
-          {enviando ? 'Ingresando…' : 'Ingresar'}
-        </BotonComponent>
-      </form>
+        <div>
+          <p className="inicio-sesion__titular">Del requerimiento a la historia lista para grooming.</p>
+          <p className="inicio-sesion__bajada">
+            Un equipo de agentes analiza, pregunta y redacta. Las personas responden y deciden.
+            Cada aprobación queda registrada a nombre de quien la hizo.
+          </p>
+        </div>
+        <div className="inicio-sesion__cifras">
+          <div><strong>5 pasos</strong>del requerimiento a la aprobación</div>
+          <div><strong>1 ronda</strong>de preguntas a Negocio</div>
+          <div><strong>100 %</strong>aprobación humana</div>
+        </div>
+      </section>
+      <section className="inicio-sesion__formulario-panel" aria-label="Ingreso">
+        <form className="inicio-sesion__tarjeta" onSubmit={enviar} aria-label="Iniciar sesión">
+          <div>
+            <h2>Ingresar</h2>
+            <p className="form-hint">Use el usuario que le asignó el administrador.</p>
+          </div>
+          {(error || errorSesion) && <AlertaComponent type="warning" title="No se pudo ingresar">{error || errorSesion}</AlertaComponent>}
+          <CampoTextoComponent
+            label="Usuario"
+            id="sesion-usuario"
+            ref={campoRef}
+            autoComplete="username"
+            value={usuario}
+            maxLength={60}
+            onChange={(evento) => setUsuario(evento.target.value)}
+          />
+          <CampoTextoComponent
+            label="Contraseña"
+            id="sesion-clave"
+            type="password"
+            autoComplete="current-password"
+            value={clave}
+            maxLength={200}
+            onChange={(evento) => setClave(evento.target.value)}
+          />
+          <BotonComponent type="submit" variant="primary" icon={LogIn} disabled={enviando} className="inicio-sesion__boton">
+            {enviando ? 'Ingresando…' : 'Ingresar'}
+          </BotonComponent>
+          <p className="form-hint">Lo que cree, apruebe o devuelva queda a su nombre. Si olvidó su contraseña, pídale al administrador que la restablezca en Mantenimiento.</p>
+        </form>
+      </section>
     </div>
   );
 };

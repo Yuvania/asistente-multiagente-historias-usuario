@@ -18,18 +18,19 @@ import { MantenimientoComponent } from '../components/Mantenimiento/Mantenimient
 // ruta: relativa a la raíz ('' es el inicio). componente: lo que se muestra.
 // accion (opcional): acción (o lista; basta una) que hace falta para abrirla. menu.accion la reemplaza solo
 // para mostrar la opción en el menú.
-// menu (opcional): etiqueta, título (texto emergente), ícono, orden y si la ruta debe coincidir exacta.
+// menu (opcional): etiqueta, corta (en la barra inferior del móvil, máximo 9 letras), título (texto
+// emergente), ícono, orden y si la ruta debe coincidir exacta.
 export const listaRuta = Object.freeze([
   {
     ruta: '',
     componente: TableroComponent,
-    menu: { etiqueta: 'Dashboard', titulo: 'Ir al Dashboard', icono: LayoutDashboard, orden: 10, exacta: true },
+    menu: { etiqueta: 'Inicio', corta: 'Inicio', titulo: 'Ir al inicio', icono: LayoutDashboard, orden: 10, exacta: true },
   },
   {
     ruta: 'historias',
     componente: ListaHistoriaUsuarioComponent,
     accion: ACCION.HISTORIA_VER,
-    menu: { etiqueta: 'Historias de Usuario', titulo: 'Ver Historias de Usuario', icono: FileText, orden: 20, exacta: true },
+    menu: { etiqueta: 'Historias de usuario', corta: 'Historias', titulo: 'Ver las historias de usuario', icono: FileText, orden: 20, exacta: true },
   },
   {
     ruta: 'historias/nueva',
@@ -37,7 +38,7 @@ export const listaRuta = Object.freeze([
     // También se abre para retomar una historia en proceso: responder a negocio o decidir como Product Owner.
     accion: [ACCION.HISTORIA_CREAR, ACCION.HISTORIA_RESPONDER_NEGOCIO, ACCION.HISTORIA_APROBAR,
       ACCION.HISTORIA_DEVOLVER, ACCION.HISTORIA_RECHAZAR],
-    menu: { etiqueta: 'Nueva Historia', titulo: 'Crear Nueva Historia', icono: PlusCircle, orden: 30, accion: ACCION.HISTORIA_CREAR },
+    menu: { etiqueta: 'Nueva historia', corta: 'Nueva', titulo: 'Crear una historia nueva', icono: PlusCircle, orden: 30, accion: ACCION.HISTORIA_CREAR },
   },
   { ruta: 'historias/:id', componente: DetalleHistoriaUsuarioComponent, accion: ACCION.HISTORIA_VER },
   { ruta: 'historias/:id/editar', componente: EditarHistoriaUsuarioComponent, accion: ACCION.HISTORIA_EDITAR },
@@ -48,12 +49,12 @@ export const listaRuta = Object.freeze([
     ruta: 'mantenimiento',
     componente: MantenimientoComponent,
     accion: ACCION.MANTENIMIENTO_VER,
-    menu: { etiqueta: 'Mantenimiento', titulo: 'Usuarios, roles y acciones', icono: ShieldCheck, orden: 80 },
+    menu: { etiqueta: 'Mantenimiento', corta: 'Usuarios', titulo: 'Usuarios, roles y acciones', icono: ShieldCheck, orden: 80 },
   },
   {
     ruta: 'ayuda',
     componente: AyudaComponent,
-    menu: { etiqueta: 'Ayuda', titulo: 'Ver Ayuda', icono: HelpCircle, orden: 90 },
+    menu: { etiqueta: 'Ayuda', corta: 'Ayuda', titulo: 'Ver Ayuda', icono: HelpCircle, orden: 90 },
   },
 ]);
 

@@ -94,6 +94,7 @@ Las listas paso a paso están en las skills `agregar-agente` y `agregar-ruta`.
 - **Observabilidad:** trazas por turno y por etapa (Langfuse) y registros estructurados sin contenido del modelo ni datos personales.
 - **Seguridad:** inicio de sesión por usuario; usuarios con roles y roles con acciones (pestaña Mantenimiento), validados en cada ruta de la API; agentes sin permisos en OpenCode, herramientas MCP de solo lectura por rol, entradas tratadas como no confiables y aprobación siempre humana.
 - **Configuración por entorno:** claves y URLs por variables de entorno; despliegue en contenedor (ver `DESPLIEGUE.md`).
+- **Diseño:** marca «Ciruela corporativa» documentada en `docs/marca.md`; colores solo como variables de tema, dos familias tipográficas y una estructura que se adapta a web, tablet y móvil. Pruebas de estructura la protegen.
 - **Calidad:** pruebas de backend, frontend y extremo a extremo en la integración continua, más las pruebas de estructura.
 
 ## Convenciones

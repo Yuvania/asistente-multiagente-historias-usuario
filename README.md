@@ -9,6 +9,7 @@ Proyecto desarrollado para el curso de Inteligencia Artificial de Cenfotec. El d
 - [Funcionalidades](#funcionalidades)
 - [Flujo de creación de una historia](#flujo-de-creación-de-una-historia)
 - [Arquitectura multiagente](#arquitectura-multiagente)
+- [Diseño e identidad visual](#diseño-e-identidad-visual)
 - [Tecnologías](#tecnologías)
 - [Ejecución local](#ejecución-local)
 - [Pruebas](#pruebas)
@@ -92,6 +93,36 @@ Cada vez que un flujo espera a una persona, o falla, su último punto de control
 | `POST` | `/api/workflows/{workflow_id}/reintentar` | Reintentar el paso que falló |
 | `DELETE` | `/api/workflows/{workflow_id}` | Descartar un flujo |
 
+## Diseño e identidad visual
+
+La interfaz usa la marca **«Ciruela corporativa»**: sobria, de empresa y con identidad propia. La guía completa, con el porqué de cada regla, está en [docs/marca.md](docs/marca.md). Ninguna tarea cambia la marca: una pantalla nueva usa lo que ya existe.
+
+**Colores** (solo como variables en `src/styles/_theme.scss`, con su par para modo oscuro):
+
+| Color | Claro | Para qué se usa |
+|---|---|---|
+| Ciruela `--color-nav-bg` | `#1E1530` | Navegación: barra lateral, barra superior en móvil y botón de ayuda. |
+| Morado `--color-primary` | `#6F3FA0` | La acción principal (una por pantalla), lo activo y el foco. |
+| Naranja `--color-brand` | `#F36C21` | Solo el logotipo y lo que espera una decisión. Nunca texto ni botones. |
+| Fondo `--color-bg` | `#F6F7F9` | Fondo de página. |
+| Superficie `--color-surface` | `#FFFFFF` | Tarjetas, tablas y formularios, con borde de 1 px `#E5E7EB`. |
+| Texto | `#111827` / `#4B5563` / `#6B7280` | Principal, secundario y tenue. |
+| Estados | verde `#1F6B33`, ámbar `#9A4A0B`, rojo `#B42318` | Aprobada, espera a Negocio, rechazada: siempre con texto, no solo color. |
+
+**Tipografía:** Inter (400, 500 y 600) para toda la interfaz e IBM Plex Mono para códigos como `HU-POL-014`. Título de página de 26 px en peso 600, texto de 14 a 16 px, etiquetas de 13 px. Sin serifas ni negritas de 700. Mayúscula solo al inicio de la oración.
+
+**Fondos y formas:** página gris muy claro, contenido en superficies blancas con bordes finos, sin sombras ni degradados. Radios de 6 px en controles, 8 px en tarjetas y 12 px en ventanas modales.
+
+**Web, tablet y móvil** (en `src/styles/_layout.scss`, sin trabajo extra en cada pantalla):
+
+- **Web:** barra lateral ciruela de 232 px con el menú, la persona y el cambio de tema.
+- **Tablet:** la barra queda en íconos de 72 px, con nombre accesible y texto emergente.
+- **Móvil:** barra superior con la marca y la sesión, y el menú en una barra inferior fija con etiquetas cortas. Una columna y botones de 44 px.
+
+**Modo claro y oscuro:** la persona lo elige en la barra; todos los colores tienen su par oscuro con contraste AA.
+
+Para herramientas de IA, la skill `marca-diseno` (en `.agents/skills` y `.claude/skills`) resume estas reglas, y las pruebas de estructura fallan si aparece un color fuera de `_theme.scss` o una fuente distinta.
+
 ## Tecnologías
 
 | Capa | Tecnologías |
@@ -159,6 +190,7 @@ La aplicación completa (interfaz, backend y OpenCode) se publica como un único
 ## Documentación adicional
 
 - [Arquitectura y cómo hacer cambios](docs/arquitectura.md)
+- [Marca e identidad visual](docs/marca.md)
 - [Guía de ejecución local](docs/GUIA-LOCAL.md)
 - [Guía de pruebas y arranque en PowerShell](docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md)
 - [Evaluación del Asesor Técnico](docs/evaluacion-asesor-tecnico.md)

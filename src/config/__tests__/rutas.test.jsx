@@ -11,7 +11,7 @@ describe('registro de pantallas', () => {
 
   it('el menú sale del registro, en orden y sin órdenes repetidos', () => {
     const listaOpcion = listaOpcionMenu();
-    expect(listaOpcion.map((opcion) => opcion.etiqueta)).toEqual(['Dashboard', 'Historias de Usuario', 'Nueva Historia', 'Mantenimiento', 'Ayuda']);
+    expect(listaOpcion.map((opcion) => opcion.etiqueta)).toEqual(['Inicio', 'Historias de usuario', 'Nueva historia', 'Mantenimiento', 'Ayuda']);
     expect(new Set(listaOpcion.map((opcion) => opcion.orden)).size).toBe(listaOpcion.length);
     listaOpcion.forEach((opcion) => {
       expect(opcion.titulo).toBeTruthy();

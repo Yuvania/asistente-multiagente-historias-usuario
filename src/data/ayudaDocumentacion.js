@@ -206,6 +206,7 @@ export const CAMBIO_ARQUITECTURA = [
 ];
 
 export const PRODUCCION_ARQUITECTURA = [
+  'Diseño: una marca propia y documentada (colores, tipografía, formas y comportamiento en web, tablet y móvil, en modo claro y oscuro). Las pruebas impiden que un cambio funcional la altere.',
   'Persistencia: cada pausa del flujo se guarda en la base de datos; se puede retomar otro día o después de un reinicio del servidor.',
   'Observabilidad: trazas por turno y por etapa, y registros estructurados que no guardan lo que genera el modelo ni datos personales.',
   'Seguridad: inicio de sesión por usuario y permisos por acción (cada rol tiene sus acciones y cada usuario sus roles), validados en el servidor; agentes sin permisos propios, herramientas de solo lectura por agente, entradas tratadas como no confiables y aprobación siempre humana.',

@@ -28,49 +28,21 @@ export const TableroComponent = () => {
         description="Seguimiento de las historias del equipo, de la minuta a la aprobación."
       />
 
-      <div style={{
-        background: 'linear-gradient(135deg, #6f3fa0 0%, #5a3382 100%)',
-        color: '#ffffff',
-        borderRadius: '16px',
-        padding: '2rem',
-        marginBottom: '2rem',
-        boxShadow: '0 10px 25px -5px rgba(51, 51, 51, 0.3)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '1.5rem'
-      }}>
-        <div style={{ maxWidth: '600px' }}>
-          <h2 style={{ fontSize: '1.75rem', fontWeight: '800', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
+      {/* Bienvenida sobria: superficie, borde fino y una sola acción principal (marca Ciruela corporativa). */}
+      <section className="tablero-bienvenida" aria-labelledby="tablero-bienvenida-titulo">
+        <div>
+          <h2 id="tablero-bienvenida-titulo" className="tablero-bienvenida__titulo">
             Historias de usuario claras y aprobadas antes del desarrollo
           </h2>
-          <p style={{ color: '#ffffff', fontSize: '0.95rem' }}>
+          <p className="tablero-bienvenida__texto">
             Cree una historia a partir de una minuta o un requerimiento.
           </p>
         </div>
-        <button
-          onClick={() => navigate('/historias/nueva')}
-          style={{
-            backgroundColor: '#f36c21',
-            color: '#1a1a1a',
-            border: 'none',
-            padding: '0.85rem 1.6rem',
-            borderRadius: '10px',
-            fontSize: '0.95rem',
-            fontWeight: '700',
-            cursor: 'pointer',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.6rem',
-            boxShadow: '0 4px 14px rgba(26, 26, 26, 0.35)',
-            transition: 'transform 0.2s ease, background-color 0.2s ease'
-          }}
-        >
-          <PlusCircle size={20} />
-          Crear
+        <button type="button" className="btn btn--primary" onClick={() => navigate('/historias/nueva')}>
+          <PlusCircle size={18} />
+          Nueva historia
         </button>
-      </div>
+      </section>
 
       <div className="grid-3">
         <TarjetaComponent title="Aprobadas">
@@ -78,7 +50,7 @@ export const TableroComponent = () => {
             <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'var(--color-success-light)', color: 'var(--color-success-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <CheckCircle2 size={22} />
             </div>
-            <span style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--color-text-primary)' }}>{reviewedCount}</span>
+            <span style={{ fontSize: '1.75rem', fontWeight: '600', letterSpacing: '-0.02em', color: 'var(--color-text-primary)' }}>{reviewedCount}</span>
           </div>
         </TarjetaComponent>
 
@@ -87,7 +59,7 @@ export const TableroComponent = () => {
             <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'var(--color-secondary-light)', color: 'var(--color-secondary-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Clock size={22} />
             </div>
-            <span style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--color-text-primary)' }}>{inAnalysisCount}</span>
+            <span style={{ fontSize: '1.75rem', fontWeight: '600', letterSpacing: '-0.02em', color: 'var(--color-text-primary)' }}>{inAnalysisCount}</span>
           </div>
         </TarjetaComponent>
 
@@ -96,7 +68,7 @@ export const TableroComponent = () => {
             <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'var(--color-warning-light)', color: 'var(--color-warning-text)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <HelpCircle size={22} />
             </div>
-            <span style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--color-text-primary)' }}>{pendingCount}</span>
+            <span style={{ fontSize: '1.75rem', fontWeight: '600', letterSpacing: '-0.02em', color: 'var(--color-text-primary)' }}>{pendingCount}</span>
           </div>
         </TarjetaComponent>
       </div>
