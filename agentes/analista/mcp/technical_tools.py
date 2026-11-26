@@ -18,6 +18,7 @@ from agentes.analista.mcp.tools import (
     StandardsResult,
     ToolModel,
     crear_servidor,
+    servidor_del_agente,
 )
 from agentes.conocimiento.repositorio_codigo import origen_repositorio, prefijo_codigo
 from agentes.conocimiento.retrieval import get_knowledge_retriever
@@ -179,7 +180,8 @@ def buscar_referencias_codigo(termino: str) -> ReferenceSearchResult:
     )
 
 
-def _registrar_codigo(servidor: FastMCP) -> None:
+def registrar_herramienta_codigo(servidor: FastMCP) -> None:
+    """Herramientas propias del Asesor Técnico (código de solo lectura); la declara su definición."""
     servidor.tool(
         buscar_referencias_codigo, name="buscar_referencias_codigo", title="Buscar referencias en el código",
         description=(
@@ -204,4 +206,5 @@ def _registrar_codigo(servidor: FastMCP) -> None:
     )
 
 
-technical_mcp = crear_servidor(AgentId.TECHNICAL_ADVISOR, "asesor-tecnico-fuentes", extra=_registrar_codigo)
+# Servidor del Asesor, armado desde su definición (que declara registrar_herramienta_codigo como extra).
+technical_mcp = servidor_del_agente(AgentId.TECHNICAL_ADVISOR)

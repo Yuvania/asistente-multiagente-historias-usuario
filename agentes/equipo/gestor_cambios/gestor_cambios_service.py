@@ -7,10 +7,11 @@ Propiedades de agente:
 - Herramientas: su servidor MCP sobre RAG y la consulta al Agente Asesor Técnico.
 - Memoria: HU aprobadas e historial de causas raíz (lecciones) del Repositorio de HU.
 La decisión final es del Product Owner.
+
+El ciclo con OpenCode y MCP lo pone la clase base; aquí va lo propio: la comparación con la HU aprobada.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 from collections.abc import Mapping
 from typing import Any
@@ -18,13 +19,11 @@ from typing import Any
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from agentes.analista.core.agent_registry import AgentId, get_agent_spec
-from agentes.analista.core.ciclo_agente import ConsultorAsesor, ejecutar_ciclo
-from agentes.analista.core.ejecutor_mcp import SesionMCP
-from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClientError
-from agentes.analista.core.opencode_compat import is_supported_opencode_version
-from agentes.analista.core.prompt_loader import PromptLoadError
+from agentes.analista.core.agent_registry import AgentId
+from agentes.analista.core.ciclo_agente import ConsultorAsesor
+from agentes.analista.core.opencode_client import OpenCodeClient
 from agentes.analista.core.workflow_models import ChangeRecommendation
+from agentes.equipo.agente_opencode_service import AgenteOpenCodeService, Turno
 
 
 _PROMPT = ChatPromptTemplate.from_messages([
@@ -56,12 +55,20 @@ _TAREA = (
 
 
 def _asesor_predeterminado() -> ConsultorAsesor:
-    from agentes.analista.core.technical_advisor import TechnicalAdvisor
+    from agentes.equipo.asesor_tecnico.asesor_tecnico_service import AsesorTecnicoService
 
-    return TechnicalAdvisor().consultar
+    return AsesorTecnicoService().consultar
 
 
-class ChangeManager:
+class GestorCambiosService(AgenteOpenCodeService[ChangeRecommendation]):
+    """Compara una solicitud con la HU aprobada y recomienda; la decisión es del Product Owner."""
+
+    agente = AgentId.CHANGE_MANAGER
+    titulo_sesion = "Gestor de Cambios: comparar HU aprobada"
+    error_preparacion = ChangeManagerError
+    # La comparación se valida contra los textos originales; una salida inválida no se corrige, se rechaza.
+    corregir_salida = False
+
     def __init__(
         self,
         client_factory: Any | None = None,
@@ -69,8 +76,8 @@ class ChangeManager:
         sesion_mcp_factory: Any | None = None,
         consultor_asesor: ConsultorAsesor | None = None,
     ) -> None:
-        self._client_factory = client_factory or OpenCodeClient
-        self._sesion_mcp_factory = sesion_mcp_factory or SesionMCP
+        # OpenCodeClient se resuelve en este módulo para que las pruebas puedan reemplazarlo aquí.
+        super().__init__(client_factory or OpenCodeClient, sesion_mcp_factory=sesion_mcp_factory)
         self._consultor_asesor = consultor_asesor
 
     async def evaluate(
@@ -112,58 +119,47 @@ class ChangeManager:
             raise ChangeManagerError("La HU aprobada tiene un formato inválido.") from exc
 
         try:
-            spec = get_agent_spec(AgentId.CHANGE_MANAGER)
             parser = PydanticOutputParser(pydantic_object=ChangeRecommendation)
-        except (PromptLoadError, ValueError, TypeError) as exc:
+            system_prompt = self.prompt.text
+        except (ValueError, TypeError) as exc:
             raise ChangeManagerError("No se pudo preparar el análisis del Gestor de Cambios.") from exc
 
-        async with self._client_factory(prompt=spec.prompt, agent_id=AgentId.CHANGE_MANAGER) as client:
-            deadline = asyncio.get_running_loop().time() + client.settings.turn_timeout_seconds
-            client.set_deadline(deadline)
-            server = await client.server_info()
-            if not is_supported_opencode_version(server.get("version")):
-                raise OpenCodeClientError("OPENCODE_INCOMPATIBLE", "La versión de OpenCode no es compatible.")
-            agent = await client.verify_agent(AgentId.CHANGE_MANAGER)
-            model = await client.select_model(agent)
-            async with client.session(title="Gestor de Cambios: comparar HU aprobada", model=model) as session:
-                ciclo = await ejecutar_ciclo(
-                    agent_id=AgentId.CHANGE_MANAGER, client=client, session_id=session["id"],
-                    deadline=deadline, tarea=_TAREA,
-                    contexto=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                    consulta_base=" ".join((change_request, str(approved.get("titulo", "")))),
-                    consultor_asesor=self._consultor_asesor or _asesor_predeterminado(),
-                    sesion_mcp_factory=self._sesion_mcp_factory,
+        def armar_mensaje(turno: Turno) -> str:
+            completo = {
+                **payload,
+                "approved_knowledge_evidence": [*payload["approved_knowledge_evidence"], *turno.ciclo.observacion()],
+                "query_limitations": turno.ciclo.limitacion,
+            }
+            try:
+                rendered = _PROMPT.format_messages(
+                    system_prompt=system_prompt,
+                    payload=json.dumps(completo, ensure_ascii=False, separators=(",", ":")),
+                    format_instructions=parser.get_format_instructions(),
                 )
-                completo = {
-                    **payload,
-                    "approved_knowledge_evidence": [*payload["approved_knowledge_evidence"], *ciclo.observacion()],
-                    "query_limitations": ciclo.limitacion,
-                }
-                try:
-                    rendered = _PROMPT.format_messages(
-                        system_prompt=spec.prompt.text,
-                        payload=json.dumps(completo, ensure_ascii=False, separators=(",", ":")),
-                        format_instructions=parser.get_format_instructions(),
-                    )
-                    user_prompt = "\n".join(str(message.content) for message in rendered)
-                except (ValueError, TypeError) as exc:
-                    raise ChangeManagerError("No se pudo preparar el análisis del Gestor de Cambios.") from exc
-                admission = await client.submit_prompt(session["id"], user_prompt)
-                generated = await client.wait_for_assistant(
-                    session["id"], deadline=deadline, after=admission.get("time", {}).get("created"),
-                )
+            except (ValueError, TypeError) as exc:
+                raise ChangeManagerError("No se pudo preparar el análisis del Gestor de Cambios.") from exc
+            return "\n".join(str(message.content) for message in rendered)
 
-        try:
-            recommendation = ChangeRecommendation.model_validate(parser.parse(generated["text"]))
-            for difference in recommendation.comparison:
-                if difference.approved_excerpt not in approved_text:
-                    raise ValueError("approved excerpt is not present in the HU")
-                if difference.request_excerpt not in change_request:
-                    raise ValueError("request excerpt is not present in the request")
-            return recommendation
-        except Exception as exc:
-            # Never include raw model output or user content in exceptions/logs.
-            raise ChangeManagerError("El Gestor de Cambios no produjo una comparación válida.") from exc
+        def interpretar(generado: dict[str, Any], _turno: Turno) -> ChangeRecommendation:
+            try:
+                recommendation = ChangeRecommendation.model_validate(parser.parse(generado["text"]))
+                for difference in recommendation.comparison:
+                    if difference.approved_excerpt not in approved_text:
+                        raise ValueError("approved excerpt is not present in the HU")
+                    if difference.request_excerpt not in change_request:
+                        raise ValueError("request excerpt is not present in the request")
+                return recommendation
+            except Exception as exc:
+                # Never include raw model output or user content in exceptions/logs.
+                raise ChangeManagerError("El Gestor de Cambios no produjo una comparación válida.") from exc
+
+        return await self._ejecutar_turno(
+            tarea=_TAREA,
+            contexto=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            consulta_base=" ".join((change_request, str(approved.get("titulo", "")))),
+            armar_mensaje=armar_mensaje, interpretar=interpretar,
+            consultor_asesor=self._consultor_asesor or _asesor_predeterminado(),
+        )
 
 
 def _decode_json_field(value: Any) -> Any:

@@ -125,7 +125,8 @@ def _advisor_adapter(results, calls):
 
 @pytest.mark.asyncio
 async def test_advisor_plans_searches_repository_opens_a_file_and_cites_only_consulted_sources(monkeypatch):
-    from agentes.analista.core import ejecutor_mcp, technical_advisor
+    from agentes.analista.core import ejecutor_mcp
+    from agentes.equipo.asesor_tecnico import asesor_tecnico_service as technical_advisor
 
     calls = []
     results = {
@@ -191,7 +192,7 @@ async def test_advisor_plans_searches_repository_opens_a_file_and_cites_only_con
     monkeypatch.setattr(ejecutor_mcp, "MCPAdapter", lambda _server: _advisor_adapter(results, calls))
     monkeypatch.setattr(technical_advisor, "OpenCodeClient", _FakeAdvisorOpenCode)
 
-    assessment = await technical_advisor.TechnicalAdvisor().assess(
+    assessment = await technical_advisor.AsesorTecnicoService().assess(
         requirement="Ajustar el cálculo de prima de póliza.", story={"quiero": "calcular prima"}
     )
 
@@ -216,7 +217,8 @@ async def test_advisor_plans_searches_repository_opens_a_file_and_cites_only_con
 
 @pytest.mark.asyncio
 async def test_no_evidence_is_reported_as_uncertainty_without_claims(monkeypatch):
-    from agentes.analista.core import ejecutor_mcp, technical_advisor
+    from agentes.analista.core import ejecutor_mcp
+    from agentes.equipo.asesor_tecnico import asesor_tecnico_service as technical_advisor
 
     results = {
         "consultar_codigo_demo": {"fuentes": [], "total": 0, "origen": "simulado"},
@@ -235,7 +237,7 @@ async def test_no_evidence_is_reported_as_uncertainty_without_claims(monkeypatch
     monkeypatch.setattr(ejecutor_mcp, "MCPAdapter", lambda _server: _advisor_adapter(results, calls))
     monkeypatch.setattr(technical_advisor, "OpenCodeClient", _FakeAdvisorOpenCode)
 
-    result = await technical_advisor.TechnicalAdvisor().assess(
+    result = await technical_advisor.AsesorTecnicoService().assess(
         requirement="Consultar un módulo sin coincidencias.", story={}
     )
 
@@ -250,7 +252,8 @@ async def test_no_evidence_is_reported_as_uncertainty_without_claims(monkeypatch
 
 @pytest.mark.asyncio
 async def test_advisor_as_collaborator_runs_a_single_round(monkeypatch):
-    from agentes.analista.core import ejecutor_mcp, technical_advisor
+    from agentes.analista.core import ejecutor_mcp
+    from agentes.equipo.asesor_tecnico import asesor_tecnico_service as technical_advisor
 
     results = {
         "consultar_codigo_demo": {"fuentes": [], "total": 0, "origen": "simulado"},
@@ -267,7 +270,7 @@ async def test_advisor_as_collaborator_runs_a_single_round(monkeypatch):
     monkeypatch.setattr(ejecutor_mcp, "MCPAdapter", lambda _server: _advisor_adapter(results, []))
     monkeypatch.setattr(technical_advisor, "OpenCodeClient", _FakeAdvisorOpenCode)
 
-    evaluacion = await technical_advisor.TechnicalAdvisor().consultar("¿Afecta el pago?", "contexto del Gestor")
+    evaluacion = await technical_advisor.AsesorTecnicoService().consultar("¿Afecta el pago?", "contexto del Gestor")
 
     assert evaluacion["uncertainties"] == ["Sin evidencia."]
     assert "ronda 1 de 1" in _FakeAdvisorOpenCode.prompts[0]
@@ -276,7 +279,7 @@ async def test_advisor_as_collaborator_runs_a_single_round(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_advisor_discards_model_citations_not_returned_by_mcp(monkeypatch):
-    from agentes.analista.core import technical_advisor
+    from agentes.equipo.asesor_tecnico import asesor_tecnico_service as technical_advisor
 
     class EmptyProvider:
         async def __call__(self, _query):
@@ -319,7 +322,7 @@ async def test_advisor_discards_model_citations_not_returned_by_mcp(monkeypatch)
             }), "finish": "stop"}
 
     monkeypatch.setattr(technical_advisor, "OpenCodeClient", FakeOpenCode)
-    advisor = technical_advisor.TechnicalAdvisor(source_provider=EmptyProvider())
+    advisor = technical_advisor.AsesorTecnicoService(source_provider=EmptyProvider())
 
     assessment = await advisor.assess(requirement="consulta", story={})
 
@@ -329,7 +332,7 @@ async def test_advisor_discards_model_citations_not_returned_by_mcp(monkeypatch)
 
 
 def test_advisor_corrects_a_miscopied_id_of_a_consulted_source():
-    from agentes.analista.core.technical_advisor import TechnicalAdvisor, _TechnicalAdviceDraft
+    from agentes.equipo.asesor_tecnico.asesor_tecnico_service import AsesorTecnicoService, _TechnicalAdviceDraft
 
     catalogo = {"ejemplos/polizas_demo/cargas/carga_cliente.py": {"source_ref": "ejemplos/polizas_demo/cargas/carga_cliente.py"}}
     draft = _TechnicalAdviceDraft.model_validate({"affected_modules": [{
@@ -337,7 +340,7 @@ def test_advisor_corrects_a_miscopied_id_of_a_consulted_source():
         "evidence": "La columna TEL es obligatoria.",
     }]})
 
-    TechnicalAdvisor._validate_citations(draft, catalogo)
+    AsesorTecnicoService._validate_citations(draft, catalogo)
 
     assert draft.affected_modules[0].source_id == "ejemplos/polizas_demo/cargas/carga_cliente.py"
     assert draft.uncertainties == []
@@ -345,7 +348,7 @@ def test_advisor_corrects_a_miscopied_id_of_a_consulted_source():
 
 @pytest.mark.asyncio
 async def test_advisor_asks_once_for_a_correction_when_the_output_is_not_valid_json(monkeypatch):
-    from agentes.analista.core import technical_advisor
+    from agentes.equipo.asesor_tecnico import asesor_tecnico_service as technical_advisor
 
     class EmptyProvider:
         async def __call__(self, _query):
@@ -391,7 +394,7 @@ async def test_advisor_asks_once_for_a_correction_when_the_output_is_not_valid_j
             return {"text": next(respuesta), "finish": "stop"}
 
     monkeypatch.setattr(technical_advisor, "OpenCodeClient", FakeOpenCode)
-    advisor = technical_advisor.TechnicalAdvisor(source_provider=EmptyProvider())
+    advisor = technical_advisor.AsesorTecnicoService(source_provider=EmptyProvider())
 
     assessment = await advisor.assess(requirement="consulta", story={})
 

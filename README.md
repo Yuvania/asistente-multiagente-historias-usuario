@@ -43,6 +43,17 @@ Al aprobarse, la HU se almacena en el Repositorio de HU y se incorpora a la base
 
 La aplicación se ejecuta como un solo servicio: una interfaz en React servida por un backend en FastAPI, que orquesta a los agentes con LangGraph. Cada agente utiliza el modelo de lenguaje a través de OpenCode Server y accede a sus fuentes mediante un servidor MCP propio, respaldado por una base de conocimiento en Pinecone (RAG).
 
+### Estructura del proyecto
+
+El proyecto está organizado por capas y con registros declarativos, para que los cambios frecuentes se hagan en un solo lugar. El detalle está en [docs/arquitectura.md](docs/arquitectura.md).
+
+- **Equipo de agentes (`agentes/equipo/<agente>/`):** cada agente es una carpeta con su definición (`definicion.py`), sus instrucciones (`prompt.md`), su servidor MCP y su implementación (`<agente>_service.py`). El registro las descubre automáticamente y de ahí salen sus permisos, herramientas y servidor.
+- **Clase base (`agentes/equipo/agente_opencode_service.py`):** el ciclo común con OpenCode y MCP, incluida la corrección de salidas inválidas, se escribe una sola vez (patrón *Template Method*).
+- **Registro de pantallas (`src/config/rutas.jsx`):** de una sola lista salen las rutas y el menú.
+- **Registro de intervenciones humanas (`src/flujo/interrupciones.jsx`):** asocia cada pausa del flujo con su formulario.
+- **Pruebas de estructura:** `agentes/analista/tests/unit/test_estructura_proyecto.py` verifica que cada agente tenga todas sus piezas y que la configuración coincida con el registro.
+- **Guías para herramientas de IA:** las skills `estructura-proyecto`, `agregar-agente` y `agregar-ruta` (en `.agents/skills` y `.claude/skills`) explican cómo hacer cambios sin romper la estructura.
+
 ### Ciclo de trabajo de cada agente
 
 Todos los agentes siguen el ciclo **percibir → pensar → actuar** (`agentes/analista/core/ciclo_agente.py`):
@@ -62,7 +73,7 @@ Todos los agentes siguen el ciclo **percibir → pensar → actuar** (`agentes/a
 
 ### Principios de diseño
 
-- **Mínimo privilegio:** cada agente dispone de un servidor MCP (`agentes/analista/mcp/`) que expone únicamente sus herramientas; al conectarse se verifica que el conjunto coincida exactamente. La recuperación también se filtra por rol.
+- **Mínimo privilegio:** cada agente dispone de un servidor MCP (en su carpeta, con las herramientas de `agentes/analista/mcp/`) que expone únicamente las herramientas de su definición; al conectarse se verifica que el conjunto coincida exactamente. La recuperación también se filtra por rol.
 - **Revisión de código en solo lectura:** el Asesor Técnico analiza un repositorio independiente, indicado en `ASESOR_REPOSITORIO_URL` (por defecto, [codigo-ejemplo-polizas](https://github.com/Yuvania/codigo-ejemplo-polizas)). Al arrancar se descarga una copia superficial, se conservan solo archivos `.py` y `.md`, se elimina el historial y no se ejecuta nada. Si no está disponible, se usa la copia incluida en `ejemplos/polizas_demo`.
 - **Lenguaje de negocio para las personas usuarias:** la interfaz no muestra archivos, líneas ni código; la evidencia técnica se conserva para Desarrollo.
 - **Control humano:** ningún agente aprueba historias. Negocio responde, la persona que redacta la HU toma las decisiones de impacto y el Product Owner aprueba.
@@ -148,6 +159,7 @@ La aplicación completa (interfaz, backend y OpenCode) se publica como un único
 
 ## Documentación adicional
 
+- [Arquitectura y cómo hacer cambios](docs/arquitectura.md)
 - [Guía de ejecución local](docs/GUIA-LOCAL.md)
 - [Guía de pruebas y arranque en PowerShell](docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md)
 - [Evaluación del Asesor Técnico](docs/evaluacion-asesor-tecnico.md)

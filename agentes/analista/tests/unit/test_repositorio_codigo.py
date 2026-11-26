@@ -120,10 +120,10 @@ def test_unsafe_branch_names_are_rejected(tmp_path, rama):
 
 
 @pytest.mark.parametrize("ruta", [
-    "ejemplos/polizas_demo/../../agentes/analista/core/orchestrator.py",
+    "ejemplos/polizas_demo/../../agentes/analista/core/workflow_graph.py",
     "/ejemplos/polizas_demo/modelos.py",
     "ejemplos/polizas_demo/modelos.txt",
-    "agentes/analista/core/orchestrator.py",
+    "agentes/analista/core/workflow_graph.py",
     "C:\\ejemplos\\polizas_demo\\modelos.py",
 ])
 def test_code_references_outside_the_repository_are_not_citable(ruta):

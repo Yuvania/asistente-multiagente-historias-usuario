@@ -16,13 +16,13 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from agentes.analista.core.agent_registry import AgentId
-from agentes.analista.core.change_manager import ChangeManager
+from agentes.equipo.gestor_cambios.gestor_cambios_service import GestorCambiosService
 from agentes.analista.core.conversation_store import ConversationStore, StoreError
 from agentes.analista.core.models import AgentTurnResponse, SendMessageRequest, QuestionState
 from agentes.analista.core.observability import Observability
 from agentes.analista.core.prompt_loader import load_prompt
-from agentes.analista.core.redactor_revisor import RedactorRevisor
-from agentes.analista.core.technical_advisor import TechnicalAdvisor
+from agentes.equipo.redactor_revisor.redactor_revisor_service import RedactorRevisorService
+from agentes.equipo.asesor_tecnico.asesor_tecnico_service import AsesorTecnicoService
 from agentes.analista.core.workflow_models import (
     BusinessAnswerSubmission,
     ChangeDecision,
@@ -174,9 +174,9 @@ def build_workflow_graph(
     knowledge_retriever: Any | None = None,
 ):
     """Compile pre/post-grooming orchestration with injectable agents and repository."""
-    writer = RedactorRevisor()
-    technical_advisor = TechnicalAdvisor()
-    manager = ChangeManager()
+    writer = RedactorRevisorService()
+    technical_advisor = AsesorTecnicoService()
+    manager = GestorCambiosService()
     repository_instance = repository
 
     if knowledge_retriever is not None:
@@ -1083,7 +1083,7 @@ class WorkflowRuntime:
         return conversation_id
 
     async def _run_analyst(self, state: WorkflowState) -> AgentTurnResponse:
-        from agentes.analista.core.orchestrator import run_turn
+        from agentes.equipo.analista.analista_service import run_turn
 
         workflow_id = UUID(state["workflow_id"])
         conversation_id = await self._analyst_conversation(workflow_id, state)

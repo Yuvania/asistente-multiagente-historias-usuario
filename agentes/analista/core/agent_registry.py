@@ -1,4 +1,9 @@
-"""Registry for role prompts and backend-owned, read-only MCP permissions."""
+"""Registro de agentes: se arma solo a partir de las carpetas de ``agentes/equipo``.
+
+Nada de este archivo se edita para agregar un agente. Cada agente declara en su ``definicion.py`` su prompt,
+herramientas MCP, namespaces de conocimiento, rondas y si puede consultar al Asesor; aquí solo se derivan
+las tablas que usa el backend y las validaciones de permisos (mínimo privilegio).
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,16 +12,12 @@ from pathlib import Path
 from typing import Final
 
 from agentes.analista.core.prompt_loader import PromptSnapshot, load_prompt
+from agentes.equipo import DefinicionAgente, listar_definicion, obtener_definicion
 
 
-PROMPTS_DIR: Final = Path(__file__).resolve().parents[1] / "prompts"
-
-
-class AgentId(StrEnum):
-    ANALYST = "analista"
-    WRITER_REVIEWER = "redactor_revisor"
-    TECHNICAL_ADVISOR = "asesor_tecnico"
-    CHANGE_MANAGER = "gestor_cambios"
+# Identificadores de los agentes, generados desde las definiciones (AgentId.ANALYST == "analista").
+AgentId = StrEnum("AgentId", [(definicion.constante, definicion.id) for definicion in listar_definicion()])
+AgentId.__doc__ = "Identificador de cada agente del equipo; se genera desde agentes/equipo/<id>/definicion.py."
 
 
 class KnowledgeNamespace(StrEnum):
@@ -43,60 +44,25 @@ class AgentSpec:
         return load_prompt(self.prompt_path)
 
 
+def definicion_de(agent_id: AgentId | str) -> DefinicionAgente:
+    return obtener_definicion(str(agent_id))
+
+
+_LISTA_DEFINICION: Final = listar_definicion()
+
 AGENT_SPECS: Final[dict[AgentId, AgentSpec]] = {
-    AgentId.ANALYST: AgentSpec(
-        AgentId.ANALYST, PROMPTS_DIR / "sistema.md",
-        "Análisis de vacíos de requerimientos; conserva el contrato actual del Analista.",
-    ),
-    AgentId.WRITER_REVIEWER: AgentSpec(
-        AgentId.WRITER_REVIEWER, PROMPTS_DIR / "redactor_revisor.md",
-        "Redacción y revisión acotada de historias de usuario; nunca aprueba.",
-    ),
-    AgentId.TECHNICAL_ADVISOR: AgentSpec(
-        AgentId.TECHNICAL_ADVISOR, PROMPTS_DIR / "asesor_tecnico.md",
-        "Análisis técnico basado en evidencia recuperada de fuentes permitidas.",
-    ),
-    AgentId.CHANGE_MANAGER: AgentSpec(
-        AgentId.CHANGE_MANAGER, PROMPTS_DIR / "gestor_cambios.md",
-        "Clasificación y recomendación de cambios; nunca toma la decisión humana.",
-    ),
+    AgentId(definicion.id): AgentSpec(AgentId(definicion.id), definicion.ruta_prompt, definicion.descripcion)
+    for definicion in _LISTA_DEFINICION
 }
 
-# Tool permissions are backend-owned and scoped to each role-specific MCP server.
-# Cada agente solo ve en su servidor MCP las herramientas de esta lista (mínimo privilegio).
+# Cada agente solo ve en su servidor MCP las herramientas de su definición (mínimo privilegio).
 MCP_TOOL_ALLOWLIST: Final[dict[AgentId, frozenset[str]]] = {
-    AgentId.ANALYST: frozenset({
-        "consultar_glosario", "buscar_hu_similares",
-        "consultar_estandares", "aplicar_checklist_vacios",
-    }),
-    AgentId.WRITER_REVIEWER: frozenset({
-        "consultar_estandares", "aplicar_checklist_vacios", "buscar_hu_similares",
-    }),
-    AgentId.TECHNICAL_ADVISOR: frozenset({
-        "consultar_estandares", "consultar_codigo_demo", "buscar_referencias_codigo",
-        "leer_archivo_codigo", "buscar_hu_similares",
-    }),
-    AgentId.CHANGE_MANAGER: frozenset({
-        "buscar_hu_similares", "consultar_lecciones", "aplicar_checklist_vacios",
-    }),
+    AgentId(definicion.id): definicion.herramienta for definicion in _LISTA_DEFINICION
 }
 
 AGENT_NAMESPACE_ALLOWLIST: Final[dict[AgentId, frozenset[KnowledgeNamespace]]] = {
-    AgentId.ANALYST: frozenset({
-        KnowledgeNamespace.GLOSSARY, KnowledgeNamespace.STANDARDS,
-        KnowledgeNamespace.CHECKLIST, KnowledgeNamespace.APPROVED_STORIES,
-        KnowledgeNamespace.LESSONS,
-    }),
-    AgentId.WRITER_REVIEWER: frozenset({
-        KnowledgeNamespace.STANDARDS, KnowledgeNamespace.CHECKLIST,
-        KnowledgeNamespace.APPROVED_STORIES,
-    }),
-    AgentId.TECHNICAL_ADVISOR: frozenset({
-        KnowledgeNamespace.STANDARDS, KnowledgeNamespace.CODE, KnowledgeNamespace.APPROVED_STORIES,
-    }),
-    AgentId.CHANGE_MANAGER: frozenset({
-        KnowledgeNamespace.APPROVED_STORIES, KnowledgeNamespace.LESSONS, KnowledgeNamespace.CHECKLIST,
-    }),
+    AgentId(definicion.id): frozenset(KnowledgeNamespace(namespace) for namespace in definicion.namespace)
+    for definicion in _LISTA_DEFINICION
 }
 
 _TOOL_NAMESPACE: Final[dict[str, KnowledgeNamespace]] = {
@@ -111,15 +77,13 @@ _TOOL_NAMESPACE: Final[dict[str, KnowledgeNamespace]] = {
 }
 
 # Roles que pueden pedir criterio técnico al Asesor durante su propio ciclo.
-# En la creación de una HU el Asesor ya actúa en el grafo, después del Analista y antes del Redactor.
-ASESOR_CONSULTABLE_POR: Final[frozenset[AgentId]] = frozenset({AgentId.CHANGE_MANAGER})
+ASESOR_CONSULTABLE_POR: Final[frozenset[AgentId]] = frozenset(
+    AgentId(definicion.id) for definicion in _LISTA_DEFINICION if definicion.puede_consultar_asesor
+)
 
 # Rondas máximas de consulta por agente (límite de pasos por solicitud).
 MAXIMO_RONDA_HERRAMIENTA: Final[dict[AgentId, int]] = {
-    AgentId.ANALYST: 1,
-    AgentId.WRITER_REVIEWER: 1,
-    AgentId.TECHNICAL_ADVISOR: 3,
-    AgentId.CHANGE_MANAGER: 1,
+    AgentId(definicion.id): definicion.maximo_ronda for definicion in _LISTA_DEFINICION
 }
 
 

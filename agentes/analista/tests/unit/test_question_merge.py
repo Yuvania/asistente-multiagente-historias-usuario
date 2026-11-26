@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from agentes.analista.core import orchestrator
+from agentes.equipo.analista import analista_service as orchestrator
 from agentes.analista.core.models import Question, QuestionCategory, QuestionState
 from agentes.analista.core.output_parser import AgentOutput, AgentQuestionOutput
 

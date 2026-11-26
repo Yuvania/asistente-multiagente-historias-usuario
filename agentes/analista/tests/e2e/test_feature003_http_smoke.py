@@ -185,10 +185,10 @@ def _resume(client: httpx.Client, snapshot: dict, decision: dict) -> httpx.Respo
 
 def test_feature003_http_smoke_full_pre_post_grooming_sqlite(tmp_path, monkeypatch):
     """Exercise real workflow agents and HTTP; only OpenCode/Pinecone/TiDB boundaries are isolated."""
-    import agentes.analista.core.change_manager as change_manager
-    import agentes.analista.core.orchestrator as orchestrator
-    import agentes.analista.core.redactor_revisor as redactor_revisor
-    import agentes.analista.core.technical_advisor as technical_advisor
+    import agentes.equipo.gestor_cambios.gestor_cambios_service as change_manager
+    import agentes.equipo.analista.analista_service as orchestrator
+    import agentes.equipo.redactor_revisor.redactor_revisor_service as redactor_revisor
+    import agentes.equipo.asesor_tecnico.asesor_tecnico_service as technical_advisor
 
     SyntheticOpenCode.calls = []
     SyntheticOpenCode.fail_first_analyst_call = True

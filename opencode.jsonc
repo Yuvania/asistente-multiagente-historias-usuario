@@ -4,7 +4,7 @@
     "analista": {
       "description": "Análisis de vacíos de requerimientos; conserva el contrato actual del Analista.",
       "mode": "primary",
-      "system": "{file:./agentes/analista/prompts/sistema.md}",
+      "system": "{file:./agentes/equipo/analista/prompt.md}",
       "permissions": [
         { "action": "*", "resource": "*", "effect": "deny" }
       ]
@@ -12,7 +12,7 @@
     "redactor_revisor": {
       "description": "Redacta y revisa HU en dos rondas como máximo; nunca aprueba.",
       "mode": "subagent",
-      "system": "{file:./agentes/analista/prompts/redactor_revisor.md}",
+      "system": "{file:./agentes/equipo/redactor_revisor/prompt.md}",
       "permissions": [
         { "action": "*", "resource": "*", "effect": "deny" }
       ]
@@ -20,7 +20,7 @@
     "asesor_tecnico": {
       "description": "Evalúa implicaciones técnicas con evidencia recuperada y permitida.",
       "mode": "subagent",
-      "system": "{file:./agentes/analista/prompts/asesor_tecnico.md}",
+      "system": "{file:./agentes/equipo/asesor_tecnico/prompt.md}",
       "permissions": [
         { "action": "*", "resource": "*", "effect": "deny" }
       ]
@@ -28,7 +28,7 @@
     "gestor_cambios": {
       "description": "Clasifica solicitudes frente a HU aprobadas; recomienda y no decide.",
       "mode": "subagent",
-      "system": "{file:./agentes/analista/prompts/gestor_cambios.md}",
+      "system": "{file:./agentes/equipo/gestor_cambios/prompt.md}",
       "permissions": [
         { "action": "*", "resource": "*", "effect": "deny" }
       ]

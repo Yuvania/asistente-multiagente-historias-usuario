@@ -11,12 +11,12 @@ from fastapi import APIRouter, Body, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from agentes.analista.api.errors import WorkflowApiError
-from agentes.analista.core.change_manager import ChangeManagerError
+from agentes.equipo.gestor_cambios.gestor_cambios_service import ChangeManagerError
 from agentes.analista.core.models import AgentTurnResponse, ErrorCode
 from agentes.analista.core.opencode_client import OpenCodeClientError
-from agentes.analista.core.orchestrator import OrchestrationError
-from agentes.analista.core.redactor_revisor import WriterOutputError
-from agentes.analista.core.technical_advisor import TechnicalAdvisorError, TechnicalAdvisorOutputError
+from agentes.equipo.analista.analista_service import OrchestrationError
+from agentes.equipo.redactor_revisor.redactor_revisor_service import WriterOutputError
+from agentes.equipo.asesor_tecnico.asesor_tecnico_service import TechnicalAdvisorError, TechnicalAdvisorOutputError
 from agentes.analista.core.workflow_graph import (
     WorkflowDependencyError,
     WorkflowNotFoundError,

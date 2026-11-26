@@ -19,17 +19,12 @@ from typing import Any
 
 from langchain.mcp import MCPAdapter
 
-from agentes.analista.core.agent_registry import AgentId, allowed_mcp_tools, authorize_mcp_tool, tool_namespace
+from agentes.analista.core.agent_registry import (
+    AgentId, allowed_mcp_tools, authorize_mcp_tool, definicion_de, tool_namespace,
+)
 
 logger = logging.getLogger(__name__)
 
-MCP_DIR = Path(__file__).resolve().parents[1] / "mcp"
-SERVIDOR_MCP: dict[AgentId, Path] = {
-    AgentId.ANALYST: MCP_DIR / "server.py",
-    AgentId.WRITER_REVIEWER: MCP_DIR / "redactor_server.py",
-    AgentId.TECHNICAL_ADVISOR: MCP_DIR / "technical_server.py",
-    AgentId.CHANGE_MANAGER: MCP_DIR / "gestor_server.py",
-}
 TIEMPO_HERRAMIENTA_SEGUNDO = 8.0
 LIMITE_RESULTADO = 5
 
@@ -37,20 +32,15 @@ LIMITE_RESULTADO = 5
 def servidor_del_rol(agent_id: AgentId) -> Path | Any:
     """stdio (proceso aparte, predeterminado) o memoria (mismo proceso; pruebas y diagnóstico).
 
+    El servidor de cada agente está en su carpeta (``agentes/equipo/<id>/servidor_mcp.py``).
     ``ANALISTA_MCP_TRANSPORTE=memoria`` conecta el cliente MCP con el servidor dentro del
     mismo proceso: el protocolo MCP es el mismo, solo cambia el transporte.
     """
     if os.environ.get("ANALISTA_MCP_TRANSPORTE", "stdio").strip().casefold() != "memoria":
-        return SERVIDOR_MCP[agent_id]
-    if agent_id == AgentId.ANALYST:
-        from agentes.analista.mcp.tools import mcp as servidor
-    elif agent_id == AgentId.WRITER_REVIEWER:
-        from agentes.analista.mcp.redactor_server import redactor_mcp as servidor
-    elif agent_id == AgentId.TECHNICAL_ADVISOR:
-        from agentes.analista.mcp.technical_tools import technical_mcp as servidor
-    else:
-        from agentes.analista.mcp.gestor_server import gestor_mcp as servidor
-    return servidor
+        return definicion_de(agent_id).ruta_servidor_mcp
+    from agentes.analista.mcp.tools import servidor_del_agente
+
+    return servidor_del_agente(agent_id)
 
 
 class MCPNoDisponibleError(RuntimeError):

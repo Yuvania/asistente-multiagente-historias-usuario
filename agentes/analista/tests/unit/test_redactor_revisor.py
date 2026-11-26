@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from agentes.analista.core import redactor_revisor
+from agentes.equipo.redactor_revisor import redactor_revisor_service as redactor_revisor
 from agentes.analista.core.agent_registry import AgentId
 from agentes.analista.core.workflow_models import (
     BusinessAnswerSubmission,
@@ -101,7 +101,7 @@ async def test_redactor_uses_simulated_opencode_and_langchain_pydantic_parsers(m
             return {"text": outputs.pop(0), "finish": "stop"}
 
     monkeypatch.setattr(redactor_revisor, "OpenCodeClient", FakeOpenCodeClient)
-    service = redactor_revisor.RedactorRevisor()
+    service = redactor_revisor.RedactorRevisorService()
     draft = await service.draft(
         requirement="Consultar saldos de cuentas activas.",
         analyst_response={"analisis": {"conocida": ["Cuenta activa"]}},

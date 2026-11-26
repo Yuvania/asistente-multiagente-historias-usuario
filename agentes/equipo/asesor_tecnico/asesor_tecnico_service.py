@@ -6,10 +6,11 @@ Propiedades de agente:
 - Herramientas: su servidor MCP (búsqueda RAG en el código, lectura de archivos, estándares, HU similares).
 - Memoria: contexto de la HU consultada y Repositorio de HU (buscar_hu_similares).
 Solo puede citar fuentes que consultó en este mismo turno.
+
+El ciclo con OpenCode y MCP lo pone la clase base; aquí va lo propio: las fuentes citables y su validación.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
@@ -20,12 +21,9 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, ConfigDict, Field
 
-from agentes.analista.core.agent_registry import AgentId, get_agent_spec
-from agentes.analista.core.ciclo_agente import ResultadoCiclo, ejecutar_ciclo, pedir_reparacion
-from agentes.analista.core.ejecutor_mcp import SesionMCP
-from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClientError
-from agentes.analista.core.opencode_compat import is_supported_opencode_version
-from agentes.analista.core.prompt_loader import PromptLoadError
+from agentes.analista.core.agent_registry import AgentId
+from agentes.analista.core.ciclo_agente import ResultadoCiclo, ejecutar_ciclo
+from agentes.analista.core.opencode_client import OpenCodeClient
 from agentes.analista.core.workflow_models import (
     ImpactoNegocio,
     EvidenceReference,
@@ -33,6 +31,7 @@ from agentes.analista.core.workflow_models import (
     TechnicalAssessment,
 )
 from agentes.conocimiento.repositorio_codigo import origen_repositorio
+from agentes.equipo.agente_opencode_service import AgenteOpenCodeService, SalidaAgenteInvalidaError, Turno
 
 logger = logging.getLogger(__name__)
 STANDARD_SOURCE_PATH = "agentes/analista/fuentes/estandares.json"
@@ -94,7 +93,7 @@ class TechnicalAdvisorError(RuntimeError):
     """A safe error raised when authorized evidence cannot be retrieved."""
 
 
-class TechnicalAdvisorOutputError(RuntimeError):
+class TechnicalAdvisorOutputError(SalidaAgenteInvalidaError):
     """OpenCode returned invalid data or cited a source not consulted this turn."""
 
 
@@ -156,8 +155,12 @@ def fuentes_desde_ciclo(ciclo: ResultadoCiclo) -> tuple[list[dict[str, Any]], li
     return list(codigo.values()), list(estandar.values()), memoria
 
 
-class TechnicalAdvisor:
-    """Consult allowed local evidence, then ask the independent advisor agent."""
+class AsesorTecnicoService(AgenteOpenCodeService[TechnicalAssessment]):
+    """Consulta la evidencia permitida (código y estándares) y pide la evaluación al agente del Asesor."""
+
+    agente = AgentId.TECHNICAL_ADVISOR
+    titulo_sesion = "Asesor Técnico: análisis con evidencia"
+    error_preparacion = TechnicalAdvisorOutputError
 
     def __init__(
         self,
@@ -167,9 +170,9 @@ class TechnicalAdvisor:
         sesion_mcp_factory: Any | None = None,
     ) -> None:
         # source_provider: costura de pruebas que entrega fuentes ya recuperadas (sin ciclo MCP).
+        # OpenCodeClient se resuelve en este módulo para que las pruebas puedan reemplazarlo aquí.
+        super().__init__(client_factory or OpenCodeClient, sesion_mcp_factory=sesion_mcp_factory)
         self._source_provider = source_provider
-        self._client_factory = client_factory or OpenCodeClient
-        self._sesion_mcp_factory = sesion_mcp_factory or SesionMCP
 
     async def consultar(self, pregunta: str, contexto: str) -> dict[str, Any]:
         """Colaboración: otro agente (Analista o Gestor) pide criterio técnico puntual (una ronda)."""
@@ -180,80 +183,57 @@ class TechnicalAdvisor:
         self, *, requirement: str, story: Mapping[str, Any], maximo_ronda: int | None = None,
     ) -> TechnicalAssessment:
         query = " ".join(part for part in (requirement.strip(), json.dumps(dict(story), ensure_ascii=False)) if part)
+        fuente_previa: tuple[list[dict[str, Any]], list[dict[str, Any]]] | None = None
         if self._source_provider is not None:
-            code_sources, standards_sources = await self._source_provider(query)
-            self._catalog([*code_sources, *standards_sources])  # valida antes de abrir OpenCode
-            return await self._evaluate(requirement, story, code_sources, standards_sources, [], None)
-        return await self._evaluate(requirement, story, None, None, None, maximo_ronda, query=query)
-
-    async def _evaluate(
-        self,
-        requirement: str,
-        story: Mapping[str, Any],
-        code_sources: list[dict[str, Any]] | None,
-        standards_sources: list[dict[str, Any]] | None,
-        memory: list[dict[str, Any]] | None,
-        maximo_ronda: int | None,
-        *,
-        query: str = "",
-    ) -> TechnicalAssessment:
+            fuente_previa = await self._source_provider(query)
+            self._catalog([*fuente_previa[0], *fuente_previa[1]])  # valida antes de abrir OpenCode
         try:
             parser = PydanticOutputParser(pydantic_object=_TechnicalAdviceDraft)
-            prompt_snapshot = get_agent_spec(AgentId.TECHNICAL_ADVISOR).prompt
-        except (PromptLoadError, ValueError, TypeError) as exc:
+        except (ValueError, TypeError) as exc:
             raise TechnicalAdvisorOutputError("No se pudo preparar la evaluación técnica estructurada.") from exc
+        contexto = json.dumps({
+            "requerimiento": requirement, "historia": dict(story), "repositorio_de_codigo": origen_repositorio(),
+        }, ensure_ascii=False)
+        evidencia: dict[str, Any] = {}
 
-        async with self._client_factory(
-            prompt=prompt_snapshot,
-            agent_id=AgentId.TECHNICAL_ADVISOR,
-        ) as client:
-            deadline = asyncio.get_running_loop().time() + client.settings.turn_timeout_seconds
-            client.set_deadline(deadline)
-            server = await client.server_info()
-            if not is_supported_opencode_version(server.get("version")):
-                raise OpenCodeClientError("OPENCODE_INCOMPATIBLE", "La versión de OpenCode no es compatible.")
-            agent = await client.verify_agent(AgentId.TECHNICAL_ADVISOR)
-            model = await client.select_model(agent)
-            async with client.session(title="Asesor Técnico: análisis con evidencia", model=model) as session:
-                if code_sources is None:
-                    contexto = json.dumps({
-                        "requerimiento": requirement, "historia": dict(story),
-                        "repositorio_de_codigo": origen_repositorio(),
-                    }, ensure_ascii=False)
-                    try:
-                        ciclo = await ejecutar_ciclo(
-                            agent_id=AgentId.TECHNICAL_ADVISOR, client=client, session_id=session["id"],
-                            deadline=deadline, tarea=_TAREA, contexto=contexto, consulta_base=query,
-                            maximo_ronda=maximo_ronda, sesion_mcp_factory=self._sesion_mcp_factory,
-                        )
-                    except Exception as exc:
-                        logger.warning("asesor_mcp_fallido", extra={"event": "asesor_mcp_fallido", "error": type(exc).__name__})
-                        raise TechnicalAdvisorError("No fue posible recuperar las fuentes técnicas permitidas.") from exc
-                    code_sources, standards_sources, memory = fuentes_desde_ciclo(ciclo)
-                source_catalog = self._catalog([*code_sources, *(standards_sources or [])])
-                try:
-                    prompt = _PROMPT.format_messages(
-                        requirement=requirement,
-                        story=json.dumps(dict(story), ensure_ascii=False, separators=(",", ":")),
-                        sources=json.dumps([*code_sources, *(standards_sources or [])], ensure_ascii=False, separators=(",", ":")),
-                        memory=json.dumps(memory or [], ensure_ascii=False, separators=(",", ":")),
-                        format_instructions=parser.get_format_instructions(),
-                    )
-                    user_prompt = "\n".join(str(message.content) for message in prompt)
-                except (ValueError, TypeError) as exc:
-                    raise TechnicalAdvisorOutputError("No se pudo preparar la evaluación técnica estructurada.") from exc
-                admission = await client.submit_prompt(session["id"], user_prompt)
-                generated = await client.wait_for_assistant(
-                    session["id"], deadline=deadline, after=admission.get("time", {}).get("created")
+        async def consulta_propia(turno: Turno) -> ResultadoCiclo | None:
+            if fuente_previa is not None:
+                evidencia.update(codigo=fuente_previa[0], estandar=fuente_previa[1], memoria=[])
+                return None
+            try:
+                ciclo = await ejecutar_ciclo(
+                    agent_id=self.agente, client=turno.client, session_id=turno.session_id,
+                    deadline=turno.deadline, tarea=_TAREA, contexto=contexto, consulta_base=query,
+                    maximo_ronda=maximo_ronda, sesion_mcp_factory=self._sesion_mcp_factory,
                 )
-                try:
-                    return self._build(generated, parser, source_catalog)
-                except TechnicalAdvisorOutputError as exc:
-                    logger.warning("Asesor Técnico: salida inválida (%s); se pide una corrección.", exc)
-                    reparado = await pedir_reparacion(client, session["id"], str(exc), deadline)
-                    if reparado is None:
-                        raise
-        return self._build(reparado, parser, source_catalog)
+            except Exception as exc:
+                logger.warning("asesor_mcp_fallido", extra={"event": "asesor_mcp_fallido", "error": type(exc).__name__})
+                raise TechnicalAdvisorError("No fue posible recuperar las fuentes técnicas permitidas.") from exc
+            codigo, estandar, memoria = fuentes_desde_ciclo(ciclo)
+            evidencia.update(codigo=codigo, estandar=estandar, memoria=memoria)
+            return ciclo
+
+        def armar_mensaje(_turno: Turno) -> str:
+            fuente = [*evidencia["codigo"], *(evidencia["estandar"] or [])]
+            evidencia["catalogo"] = self._catalog(fuente)
+            try:
+                prompt = _PROMPT.format_messages(
+                    requirement=requirement,
+                    story=json.dumps(dict(story), ensure_ascii=False, separators=(",", ":")),
+                    sources=json.dumps(fuente, ensure_ascii=False, separators=(",", ":")),
+                    memory=json.dumps(evidencia["memoria"] or [], ensure_ascii=False, separators=(",", ":")),
+                    format_instructions=parser.get_format_instructions(),
+                )
+            except (ValueError, TypeError) as exc:
+                raise TechnicalAdvisorOutputError("No se pudo preparar la evaluación técnica estructurada.") from exc
+            return "\n".join(str(message.content) for message in prompt)
+
+        return await self._ejecutar_turno(
+            tarea=_TAREA, contexto=contexto, consulta_base=query,
+            armar_mensaje=armar_mensaje,
+            interpretar=lambda generado, _turno: self._build(generado, parser, evidencia["catalogo"]),
+            consulta_propia=consulta_propia,
+        )
 
     @staticmethod
     def _catalog(sources: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

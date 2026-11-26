@@ -1,0 +1,90 @@
+# Arquitectura del proyecto
+
+Este documento explica cómo está organizado el sistema y cómo se hace cada tipo de cambio sin romper la estructura. Lo leen las personas y también las herramientas de IA que trabajan en el repositorio (ver las skills en `.agents/skills` y `.claude/skills`).
+
+## Principios
+
+1. **Lo que cambia seguido se declara; el código genérico lo lee.** Agentes, pantallas e intervenciones humanas se agregan con una declaración en un registro, no editando código repartido en varios archivos.
+2. **Una carpeta por agente.** Todo lo de un agente (definición, prompt, servidor MCP e implementación) vive junto.
+3. **Capas con responsabilidades separadas.** Interfaz, orquestación, agentes, herramientas y datos no se mezclan.
+4. **Contratos tipados.** Toda entrada y salida entre capas y agentes es un modelo Pydantic (backend) o un objeto validado (frontend). Un agente no puede devolver algo que no cumpla su contrato.
+5. **Barandas automáticas.** Las pruebas de `agentes/analista/tests/unit/test_estructura_proyecto.py` verifican que la estructura se cumpla. Si fallan, se completa lo que falta; no se relajan.
+6. **Mínimo privilegio.** Cada agente solo ve sus herramientas MCP y sus namespaces de conocimiento; ningún agente aprueba historias.
+
+## Capas
+
+```
+Interfaz (React)            src/
+  └─ registro de pantallas  src/config/rutas.jsx
+  └─ intervenciones humanas src/flujo/interrupciones.jsx
+        │ HTTP (FastAPI)
+API                          agentes/analista/api/
+        │
+Orquestación (LangGraph)     agentes/analista/core/workflow_graph.py
+        │
+Equipo de agentes            agentes/equipo/<agente>/
+  └─ clase base              agentes/equipo/agente_opencode_service.py
+        │ MCP (solo lectura)
+Herramientas                 agentes/analista/mcp/
+        │
+Conocimiento y datos         agentes/conocimiento/ (RAG, Pinecone)
+                             agentes/analista/memory/ (base de datos)
+```
+
+## Backend: el equipo de agentes
+
+```
+agentes/equipo/
+  contrato.py                     DefinicionAgente: la declaración de un agente
+  __init__.py                     descubre las carpetas del equipo (no se edita)
+  agente_opencode_service.py      clase base con el ciclo OpenCode + MCP + corrección (Template Method)
+  <agente>/
+    definicion.py                 DEFINICION = DefinicionAgente(...)
+    prompt.md                     instrucciones del agente, con «**Versión editorial:** X.Y.Z»
+    servidor_mcp.py               igual en todas las carpetas; no se edita
+    <agente>_service.py           implementación: clase <Nombre>Service
+```
+
+De la definición salen solos: el identificador `AgentId`, las herramientas MCP permitidas, los namespaces y tipos de fuente que puede leer, las rondas de consulta, si puede consultar al Asesor, su servidor MCP y la verificación de `opencode.jsonc`.
+
+La clase base `AgenteOpenCodeService` hace el ciclo común: abre OpenCode, verifica versión y agente, planifica y consulta por MCP, envía el mensaje final, interpreta la salida y pide una corrección si no cumple el contrato. Cada servicio solo aporta su tarea, su contexto, cómo armar el mensaje y cómo interpretar la salida.
+
+## Frontend
+
+```
+src/
+  config/rutas.jsx                registro único de pantallas: ruta + componente + menú
+  flujo/interrupciones.jsx        tipo de intervención humana → formulario y respuesta
+  components/<Funcionalidad>/     componentes por funcionalidad
+  hooks/                          estado y lógica reutilizable
+  services/                       llamadas a la API
+  utils/                          lógica pura (sin React), probada por separado
+  data/                           textos de la Ayuda
+```
+
+## Cómo se hace cada cambio
+
+| Cambio | Qué se toca |
+|---|---|
+| Pantalla nueva | Su componente + una entrada en `src/config/rutas.jsx` (con `menu` si va en el menú). |
+| Agente nuevo | Carpeta `agentes/equipo/<id>/` con sus cuatro archivos, entrada en `opencode.jsonc`, su paso en `workflow_graph.py` y su descripción en la Ayuda. Si pide una decisión humana, una entrada en `src/flujo/interrupciones.jsx`. |
+| Herramienta MCP para un agente existente | Agregarla a `herramienta` (y su namespace a `fuente`) en la definición del agente. |
+| Cambiar lo que dice un agente | Su `prompt.md`, subiendo la versión editorial. |
+| Regla de negocio de un paso | El modelo Pydantic del contrato y el nodo del grafo; nunca en el prompt solamente. |
+
+Las listas paso a paso están en las skills `agregar-agente` y `agregar-ruta`.
+
+## Pensado para producción
+
+- **Persistencia y reanudación:** cada pausa del flujo guarda un punto de control en la base de datos; se puede retomar otro día o tras un reinicio del servidor.
+- **Observabilidad:** trazas por turno y por etapa (Langfuse) y registros estructurados sin contenido del modelo ni datos personales.
+- **Seguridad:** agentes sin permisos en OpenCode, herramientas MCP de solo lectura por rol, entradas tratadas como no confiables y aprobación siempre humana.
+- **Configuración por entorno:** claves y URLs por variables de entorno; despliegue en contenedor (ver `DESPLIEGUE.md`).
+- **Calidad:** pruebas de backend, frontend y extremo a extremo en la integración continua, más las pruebas de estructura.
+
+## Convenciones
+
+- Nombres en español y en singular (`listaAgente`, no `agentes`).
+- Las clases de servicio terminan en `Service` (archivo y clase).
+- Ningún `catch`/`except` vacío: al menos se registra un log.
+- El backend nunca registra el contenido que genera el modelo; solo el tipo de error.

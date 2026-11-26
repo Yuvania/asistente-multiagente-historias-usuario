@@ -114,7 +114,7 @@ def _fake_opencode(expected_agent, queue, prompts):
 async def test_redactor_plans_and_gets_its_evidence_only_through_its_mcp_server(monkeypatch):
     import json
 
-    from agentes.analista.core import redactor_revisor
+    from agentes.equipo.redactor_revisor import redactor_revisor_service as redactor_revisor
 
     prompts, queue = [], [
         json.dumps({"razonamiento": "Estándares y HU parecidas.", "consultas": [
@@ -176,7 +176,7 @@ _RECOMMENDATION = {
 async def test_change_manager_reads_only_approved_namespaces_through_its_mcp_server(monkeypatch):
     import json
 
-    from agentes.analista.core import change_manager
+    from agentes.equipo.gestor_cambios import gestor_cambios_service as change_manager
 
     prompts, queue = [], [
         json.dumps({"razonamiento": "Busco cambios parecidos y lecciones.", "consultas": [
@@ -207,7 +207,7 @@ async def test_change_manager_reads_only_approved_namespaces_through_its_mcp_ser
 async def test_change_manager_decides_to_consult_the_technical_advisor(monkeypatch):
     import json
 
-    from agentes.analista.core import change_manager
+    from agentes.equipo.gestor_cambios import gestor_cambios_service as change_manager
 
     consulted = []
 
@@ -221,7 +221,7 @@ async def test_change_manager_decides_to_consult_the_technical_advisor(monkeypat
         json.dumps(_RECOMMENDATION),
     ]
     monkeypatch.setattr(change_manager, "OpenCodeClient", _fake_opencode(AgentId.CHANGE_MANAGER, queue, prompts))
-    manager = change_manager.ChangeManager(consultor_asesor=advisor)
+    manager = change_manager.GestorCambiosService(consultor_asesor=advisor)
 
     recommendation = await manager.evaluate(
         approved_story_id=APPROVED_ID, change_request="Consultar movimientos del mes",

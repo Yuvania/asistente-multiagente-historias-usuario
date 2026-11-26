@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, FileText, PlusCircle, HelpCircle, Sparkles, Moon, Sun, UserRound } from 'lucide-react';
+import { Sparkles, Moon, Sun, UserRound } from 'lucide-react';
 import { useTema } from '../../hooks/useTema';
 import { useUsuarioActual } from '../../hooks/useUsuarioActual';
 import { DialogoUsuarioComponent } from '../Usuario/DialogoUsuarioComponent';
 import { TEXTO_PIE } from '../../config/entorno';
+import { listaOpcionMenu } from '../../config/rutas';
 import { AsistenteAyudaComponent } from '../AsistenteAyuda/AsistenteAyudaComponent';
 
 export const EnvolturaPaginaComponent = () => {
@@ -26,54 +27,20 @@ export const EnvolturaPaginaComponent = () => {
             </div>
           </NavLink>
 
+          {/* Las opciones salen del registro único de pantallas (src/config/rutas.jsx). */}
           <nav className="header__nav">
-            <NavLink
-              to="/"
-              title="Ir al Dashboard"
-              end
-              className={({ isActive }) =>
-                `header__nav-link ${isActive ? 'active' : ''}`
-              }
-            >
-              <LayoutDashboard size={18} />
-              <span>Dashboard</span>
-            </NavLink>
-
-            <NavLink
-              to="/historias"
-              title="Ver Historias de Usuario"
-              end
-              className={({ isActive }) =>
-                `header__nav-link ${isActive ? 'active' : ''}`
-              }
-            >
-              <FileText size={18} />
-              <span>Historias de Usuario</span>
-            </NavLink>
-
-            <NavLink
-              to="/historias/nueva"
-              title="Crear Nueva Historia"
-              className={({ isActive }) =>
-                `header__nav-link ${isActive ? 'active' : ''}`
-              }
-            >
-              <PlusCircle size={18} />
-              <span>Nueva Historia</span>
-            </NavLink>
-
-
-
-            <NavLink
-              to="/ayuda"
-              title="Ver Ayuda"
-              className={({ isActive }) =>
-                `header__nav-link ${isActive ? 'active' : ''}`
-              }
-            >
-              <HelpCircle size={18} />
-              <span>Ayuda</span>
-            </NavLink>
+            {listaOpcionMenu().map(({ destino, etiqueta, titulo, icono: Icono, exacta }) => (
+              <NavLink
+                key={destino}
+                to={destino}
+                title={titulo}
+                end={Boolean(exacta)}
+                className={({ isActive }) => `header__nav-link ${isActive ? 'active' : ''}`}
+              >
+                <Icono size={18} />
+                <span>{etiqueta}</span>
+              </NavLink>
+            ))}
           </nav>
 
           <button

@@ -5,6 +5,7 @@ import { TarjetaItemsAyudaComponent } from './TarjetaItemsAyudaComponent';
 import { AgenteAyudaComponent } from './AgenteAyudaComponent';
 import { EjemploHuAyudaComponent } from './EjemploHuAyudaComponent';
 import { EquipoAyudaComponent } from './EquipoAyudaComponent';
+import { ArquitecturaAyudaComponent } from './ArquitecturaAyudaComponent';
 import {
   ACCIONES_HISTORIA, NAVEGACION_ASISTENTE, PASOS_ASISTENTE, PENDIENTES, TECNOLOGIAS,
 } from '../../data/ayudaDocumentacion';
@@ -44,6 +45,7 @@ const SECCIONES = [
     titulo: 'Tecnologías',
     contenido: <TarjetaItemsAyudaComponent title="Con qué está hecha la aplicación" items={TECNOLOGIAS} />,
   },
+  { id: 'arquitectura', titulo: 'Arquitectura', contenido: <ArquitecturaAyudaComponent /> },
   {
     id: 'pendientes',
     titulo: 'Por definir',

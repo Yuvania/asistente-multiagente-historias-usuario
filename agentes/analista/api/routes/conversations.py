@@ -19,7 +19,7 @@ from agentes.analista.core.models import (
     SendMessageRequest,
 )
 from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClientError
-from agentes.analista.core.orchestrator import OrchestrationError, run_turn
+from agentes.equipo.analista.analista_service import OrchestrationError, run_turn
 from agentes.analista.core.prompt_loader import PromptLoadError, load_prompt
 
 

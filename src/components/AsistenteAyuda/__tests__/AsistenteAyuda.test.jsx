@@ -73,10 +73,16 @@ describe('página de Ayuda', () => {
     expect(screen.getByRole('img', { name: /historia de usuario generada/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /Tecnologías/ }));
-    expect(screen.getByText(/FastAPI/)).toBeInTheDocument();
+    expect(within(screen.getByRole('tabpanel')).getByText(/FastAPI/)).toBeInTheDocument();
     ['Orquestación de agentes', 'Herramientas (MCP)', 'Conocimiento (RAG)', 'Repositorio de código', 'Trazabilidad'].forEach((titulo) => {
       expect(screen.getByRole('heading', { name: titulo })).toBeInTheDocument();
     });
+
+    await user.click(screen.getByRole('tab', { name: /Arquitectura/ }));
+    ['Cómo está construido', 'Capas del sistema', 'Cómo se hace un cambio', 'Pensado para producción', 'Preparado para programar con IA'].forEach((titulo) => {
+      expect(within(screen.getByRole('tabpanel')).getByText(titulo)).toBeInTheDocument();
+    });
+    expect(screen.getByRole('heading', { name: 'Agregar un agente' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /Por definir/ }));
     expect(screen.getByRole('heading', { name: 'Roles, acciones y permisos' })).toBeInTheDocument();

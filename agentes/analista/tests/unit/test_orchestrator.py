@@ -7,7 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-from agentes.analista.core import ejecutor_mcp, orchestrator
+from agentes.analista.core import ejecutor_mcp
+from agentes.equipo.analista import analista_service as orchestrator
 from agentes.analista.core.agent_registry import AgentId, allowed_mcp_tools
 from agentes.analista.core.ciclo_agente import PasoCiclo, ResultadoCiclo
 from agentes.analista.core.ejecutor_mcp import ResultadoHerramienta

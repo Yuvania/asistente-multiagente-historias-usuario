@@ -89,6 +89,12 @@ export const PREGUNTAS_AYUDA = [
     texto:
       'En la base de datos del sistema, por lo que las ve todo el equipo desde cualquier navegador. El navegador solo guarda una copia temporal para mostrarlas más rápido.',
   },
+  {
+    id: 'arquitectura',
+    pregunta: '¿Cómo está construido el sistema?',
+    texto:
+      'Por capas (interfaz, API, orquestación, agentes, herramientas y datos) y con registros: cada agente es una carpeta con su definición, y las pantallas salen de un registro único. Así, agregar un agente o una pantalla se hace en un solo lugar. El detalle está en Ayuda → Arquitectura.',
+  },
 ];
 
 // Preguntas que se ofrecen como botones al abrir el chat.

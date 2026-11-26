@@ -8,7 +8,7 @@ from uuid import uuid4
 import pytest
 
 from agentes.analista.core.agent_registry import AgentId
-from agentes.analista.core.technical_advisor import TechnicalAdvisor
+from agentes.equipo.asesor_tecnico.asesor_tecnico_service import AsesorTecnicoService
 from agentes.analista.core.workflow_graph import WorkflowRuntime
 from agentes.analista.core.workflow_models import (
     FlowMode,
@@ -95,7 +95,7 @@ async def test_workflow_runs_advisor_before_the_story_and_surfaces_only_mocked_e
         async def wait_for_assistant(self, *_args, **_kwargs):
             return {"text": json.dumps(generated, ensure_ascii=False), "finish": "stop"}
 
-    technical_advisor = TechnicalAdvisor(source_provider=source_provider, client_factory=FakeOpenCode)
+    technical_advisor = AsesorTecnicoService(source_provider=source_provider, client_factory=FakeOpenCode)
 
     async def analyst(_state):
         return AgentTurnResponse(

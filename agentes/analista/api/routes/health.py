@@ -20,18 +20,10 @@ from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClient
 from agentes.analista.core.opencode_compat import is_supported_opencode_version
 from agentes.analista.core.prompt_loader import PromptLoadError, load_prompt
 from agentes.analista.core.agent_registry import AgentId, allowed_mcp_tools
-from agentes.analista.mcp.gestor_server import gestor_mcp
-from agentes.analista.mcp.redactor_server import redactor_mcp
-from agentes.analista.mcp.technical_tools import technical_mcp
-from agentes.analista.mcp.tools import mcp as servidor_mcp
+from agentes.analista.mcp.tools import servidor_del_agente
 
-# Un servidor MCP por agente; cada uno debe exponer exactamente sus herramientas permitidas.
-SERVIDOR_POR_ROL = {
-    AgentId.ANALYST: servidor_mcp,
-    AgentId.WRITER_REVIEWER: redactor_mcp,
-    AgentId.TECHNICAL_ADVISOR: technical_mcp,
-    AgentId.CHANGE_MANAGER: gestor_mcp,
-}
+# Un servidor MCP por agente (salen del registro); cada uno debe exponer exactamente sus herramientas permitidas.
+SERVIDOR_POR_ROL = {agent_id: servidor_del_agente(agent_id) for agent_id in AgentId}
 
 
 logger = logging.getLogger(__name__)

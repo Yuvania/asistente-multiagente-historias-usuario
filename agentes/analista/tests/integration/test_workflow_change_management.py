@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from agentes.analista.core.agent_registry import AgentId
-from agentes.analista.core.change_manager import ChangeManager, ChangeManagerError
+from agentes.equipo.gestor_cambios.gestor_cambios_service import GestorCambiosService, ChangeManagerError
 from agentes.analista.core.workflow_graph import WorkflowNotInterruptedError, WorkflowRuntime
 from agentes.analista.core.workflow_models import (
     ChangeDecision,
@@ -140,7 +140,7 @@ async def test_change_manager_reads_approved_story_and_uses_dedicated_external_p
             return {"text": outputs.pop(0)}
 
     repository = RepositoryDouble()
-    result = await ChangeManager(client_factory=FakeOpenCodeClient).evaluate(
+    result = await GestorCambiosService(client_factory=FakeOpenCodeClient).evaluate(
         approved_story_id=APPROVED_ID, change_request=REQUEST, repository=repository,
     )
     assert result.recommendation.value == "aclaracion"
@@ -159,7 +159,7 @@ async def test_change_manager_refuses_missing_approved_story_before_calling_open
             pytest.fail("OpenCode must not receive an unapproved or missing HU")
 
     with pytest.raises(ChangeManagerError, match="HU aprobada"):
-        await ChangeManager(client_factory=NeverCall).evaluate(
+        await GestorCambiosService(client_factory=NeverCall).evaluate(
             approved_story_id=APPROVED_ID, change_request=REQUEST,
             repository=RepositoryDouble(missing=True),
         )
@@ -205,7 +205,7 @@ async def test_change_manager_rejects_comparison_excerpts_not_present_in_source_
             return {"text": output}
 
     with pytest.raises(ChangeManagerError, match="comparación válida"):
-        await ChangeManager(client_factory=FakeOpenCodeClient).evaluate(
+        await GestorCambiosService(client_factory=FakeOpenCodeClient).evaluate(
             approved_story_id=APPROVED_ID, change_request=REQUEST, repository=RepositoryDouble(),
         )
 

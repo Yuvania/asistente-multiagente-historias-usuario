@@ -346,9 +346,9 @@ async def run_turn(
         executions: list[ToolExecution] = []
         limitations: list[str] = []
         plan: list[dict[str, Any]] = []
-        from agentes.analista.core.technical_advisor import TechnicalAdvisor
+        from agentes.equipo.asesor_tecnico.asesor_tecnico_service import AsesorTecnicoService
 
-        asesor = TechnicalAdvisor()
+        asesor = AsesorTecnicoService()
 
         async def consultar_asesor(pregunta: str, contexto: str) -> dict[str, Any]:
             disponible = deadline - asyncio.get_running_loop().time() - RESERVA_RESPUESTA_SEGUNDO

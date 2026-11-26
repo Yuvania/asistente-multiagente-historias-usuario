@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[4]
 async def test_technical_server_exposes_only_read_only_allowed_sources():
     parameters = StdioServerParameters(
         command=sys.executable,
-        args=["-m", "agentes.analista.mcp.technical_server"],
+        args=["-m", "agentes.equipo.asesor_tecnico.servidor_mcp"],
         cwd=str(ROOT),
         env={**os.environ, "PYTHONPATH": str(ROOT)},
     )
@@ -85,8 +85,8 @@ async def test_technical_server_exposes_only_read_only_allowed_sources():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("module", "expected"), [
-    ("agentes.analista.mcp.redactor_server", {"consultar_estandares", "aplicar_checklist_vacios", "buscar_hu_similares"}),
-    ("agentes.analista.mcp.gestor_server", {"buscar_hu_similares", "consultar_lecciones", "aplicar_checklist_vacios"}),
+    ("agentes.equipo.redactor_revisor.servidor_mcp", {"consultar_estandares", "aplicar_checklist_vacios", "buscar_hu_similares"}),
+    ("agentes.equipo.gestor_cambios.servidor_mcp", {"buscar_hu_similares", "consultar_lecciones", "aplicar_checklist_vacios"}),
 ])
 async def test_each_role_server_exposes_only_its_allowlisted_tools(module, expected):
     parameters = StdioServerParameters(

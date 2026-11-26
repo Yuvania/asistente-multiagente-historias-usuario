@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from agentes.analista.core.conversation_store import StoreError
 from agentes.analista.core.models import ErrorCode, ErrorDetail, ErrorResponse, ValidationIssue
-from agentes.analista.core.orchestrator import OrchestrationError
+from agentes.equipo.analista.analista_service import OrchestrationError
 from agentes.analista.memory.repositorio import RepositorioError
 
 logger = logging.getLogger(__name__)

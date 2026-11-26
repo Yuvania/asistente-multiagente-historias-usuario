@@ -14,6 +14,7 @@ from langchain_core.documents import Document
 from pydantic import BaseModel, ConfigDict, Field
 
 from agentes.analista.core.agent_registry import AGENT_NAMESPACE_ALLOWLIST, AgentId
+from agentes.equipo import listar_definicion
 from agentes.analista.memory.repositorio import detect_personal_data, load_memory_entries
 
 from .client import PineconeKnowledgeClient
@@ -53,29 +54,9 @@ class RetrievalResult(BaseModel):
 LocalSourceProvider = Callable[[], Iterable[SourceRecord | Document]]
 PineconeClientFactory = Callable[[], PineconeKnowledgeClient]
 
+# Tipos de fuente que cada agente puede leer por namespace: salen de su definición (agentes/equipo/<id>).
 _ROLE_ALLOWED_KINDS: dict[AgentId, dict[str, frozenset[str]]] = {
-    AgentId.ANALYST: {
-        "glosario": frozenset({"simulated_fixture"}),
-        "estandares": frozenset({"simulated_fixture"}),
-        "checklist": frozenset({"simulated_fixture"}),
-        "hu_aprobadas": frozenset({"simulated_reference", "approved_history"}),
-        "lecciones": frozenset({"approved_lesson"}),
-    },
-    AgentId.WRITER_REVIEWER: {
-        "estandares": frozenset({"simulated_fixture"}),
-        "checklist": frozenset({"simulated_fixture"}),
-        "hu_aprobadas": frozenset({"simulated_reference", "approved_history"}),
-    },
-    AgentId.TECHNICAL_ADVISOR: {
-        "estandares": frozenset({"simulated_fixture"}),
-        "codigo": frozenset({"simulated_code"}),
-        "hu_aprobadas": frozenset({"simulated_reference", "approved_history"}),
-    },
-    AgentId.CHANGE_MANAGER: {
-        "hu_aprobadas": frozenset({"approved_history"}),
-        "lecciones": frozenset({"approved_lesson"}),
-        "checklist": frozenset({"simulated_fixture"}),
-    },
+    AgentId(definicion.id): dict(definicion.fuente) for definicion in listar_definicion()
 }
 
 _STOPWORDS = frozenset(

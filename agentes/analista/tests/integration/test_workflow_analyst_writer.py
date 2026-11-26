@@ -4,7 +4,8 @@ from uuid import uuid4
 
 import pytest
 
-from agentes.analista.core import orchestrator, redactor_revisor
+from agentes.equipo.analista import analista_service as orchestrator
+from agentes.equipo.redactor_revisor import redactor_revisor_service as redactor_revisor
 from agentes.analista.core.agent_registry import AgentId
 from agentes.analista.core.models import (
     AgentTurnResponse,
@@ -190,7 +191,7 @@ async def test_writer_review_loop_allows_two_corrections_then_stops_for_po(monke
             return {"text": simulated_outputs.pop(0), "finish": "stop"}
 
     monkeypatch.setattr(redactor_revisor, "OpenCodeClient", SimulatedOpenCode)
-    writer = redactor_revisor.RedactorRevisor()
+    writer = redactor_revisor.RedactorRevisorService()
 
     async def analyst(_state):
         return _analyst_response(ready=True)

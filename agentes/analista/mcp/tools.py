@@ -7,6 +7,7 @@ permisos le asigna: un agente no puede ver ni invocar herramientas ajenas.
 """
 from __future__ import annotations
 
+import importlib
 import json
 import logging
 from collections.abc import Callable
@@ -325,8 +326,30 @@ def crear_servidor(agent_id: AgentId, nombre: str, *, extra: Callable[[FastMCP],
     return servidor
 
 
-# Servidor del Analista (compatibilidad: ``server.py`` y las pruebas importan ``mcp``).
-mcp = crear_servidor(AgentId.ANALYST, "analista-fuentes")
+_SERVIDOR_CREADO: dict[str, FastMCP] = {}
+
+
+def servidor_del_agente(agent_id: AgentId | str) -> FastMCP:
+    """Servidor MCP de cualquier agente, armado desde su definición (herramientas y extras propios).
+
+    Un agente nuevo no necesita código de servidor: basta con declarar sus herramientas en su definición.
+    """
+    from agentes.equipo import obtener_definicion
+
+    definicion = obtener_definicion(str(agent_id))
+    if definicion.id not in _SERVIDOR_CREADO:
+        extra = None
+        if definicion.herramienta_extra:
+            modulo, funcion = definicion.herramienta_extra.split(":")
+            extra = getattr(importlib.import_module(modulo), funcion)
+        _SERVIDOR_CREADO[definicion.id] = crear_servidor(
+            AgentId(definicion.id), f"{definicion.id.replace('_', '-')}-fuentes", extra=extra,
+        )
+    return _SERVIDOR_CREADO[definicion.id]
+
+
+# Servidor del Analista (las pruebas importan ``mcp``).
+mcp = servidor_del_agente(AgentId.ANALYST)
 
 
 def consultar_glosario(consulta: str, limite: int = 5) -> GlossaryResult:

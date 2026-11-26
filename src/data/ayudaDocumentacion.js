@@ -188,4 +188,45 @@ export const PENDIENTES = [
 ];
 
 // Orden alfabético por nombre.
+// Arquitectura: cómo está organizado el sistema y por qué, aunque sea un prototipo, está pensado para crecer.
+export const PRINCIPIO_ARQUITECTURA = [
+  { titulo: 'Lo que cambia seguido se declara', texto: 'Agentes, pantallas e intervenciones humanas se agregan con una declaración en un registro. El código genérico lee ese registro: agregar algo no obliga a tocar varios archivos.' },
+  { titulo: 'Una carpeta por agente', texto: 'Todo lo de un agente vive junto: su definición (herramientas y permisos), sus instrucciones, su servidor de herramientas y su implementación.' },
+  { titulo: 'Capas separadas', texto: 'La interfaz, la orquestación del flujo, los agentes, las herramientas y los datos tienen responsabilidades distintas y se comunican por contratos.' },
+  { titulo: 'Contratos tipados', texto: 'Cada entrada y salida entre agentes y capas tiene un formato validado. Si un agente responde algo que no cumple su contrato, se le pide corregirlo y, si no puede, el flujo se detiene sin dar por buena la respuesta.' },
+  { titulo: 'Barandas automáticas', texto: 'Pruebas de estructura verifican que cada agente tenga todas sus piezas y que la configuración coincida con el registro. Si alguien olvida algo, la prueba lo dice antes de llegar a producción.' },
+];
+
+export const CAPA_ARQUITECTURA = [
+  { titulo: 'Interfaz (React)', texto: 'Pantallas por funcionalidad. Las rutas y el menú salen de un registro único; los formularios de intervención humana, de otro registro según lo que pida el flujo.' },
+  { titulo: 'API (FastAPI)', texto: 'Recibe las solicitudes, valida los datos y expone el estado del flujo sin detalles internos.' },
+  { titulo: 'Orquestación (LangGraph)', texto: 'El grafo con los pasos del flujo, las pausas para las decisiones de las personas y los puntos de control para retomar.' },
+  { titulo: 'Equipo de agentes', texto: 'Una carpeta por agente y una clase base con el ciclo común: planificar, consultar herramientas, responder y corregir si hace falta. Cada agente solo aporta lo propio.' },
+  { titulo: 'Herramientas (MCP) y conocimiento (RAG)', texto: 'Herramientas de solo lectura por agente, sobre el conocimiento en Pinecone y el repositorio de código.' },
+  { titulo: 'Datos', texto: 'Base de datos con las HU, el Repositorio de HU aprobadas, las lecciones y los flujos en proceso.' },
+];
+
+export const CAMBIO_ARQUITECTURA = [
+  { titulo: 'Agregar una pantalla', texto: 'Se crea su componente y se agrega una entrada en el registro de pantallas. Si va en el menú, la entrada lo indica. No se tocan las rutas ni el menú a mano.' },
+  { titulo: 'Agregar un agente', texto: 'Se crea su carpeta con su definición, instrucciones, servidor de herramientas e implementación sobre la clase base; se registra en OpenCode y se agrega su paso al flujo. Sus permisos, herramientas y servidor salen solos de la definición.' },
+  { titulo: 'Darle una herramienta a un agente', texto: 'Se agrega a la lista de herramientas de su definición. Ningún otro agente la recibe.' },
+  { titulo: 'Agregar una decisión humana', texto: 'El agente pausa el flujo con un tipo de intervención y la interfaz muestra el formulario que el registro de intervenciones asocia a ese tipo.' },
+  { titulo: 'Cambiar lo que dice un agente', texto: 'Se edita su archivo de instrucciones y se sube su versión, que queda registrada en cada respuesta.' },
+];
+
+export const PRODUCCION_ARQUITECTURA = [
+  'Persistencia: cada pausa del flujo se guarda en la base de datos; se puede retomar otro día o después de un reinicio del servidor.',
+  'Observabilidad: trazas por turno y por etapa, y registros estructurados que no guardan lo que genera el modelo ni datos personales.',
+  'Seguridad: agentes sin permisos propios, herramientas de solo lectura por agente, entradas tratadas como no confiables y aprobación siempre humana.',
+  'Configuración por entorno y despliegue en contenedor: las claves y direcciones no están en el código.',
+  'Calidad: pruebas de backend, frontend y de extremo a extremo en la integración continua, más las pruebas de estructura.',
+];
+
+export const IA_ARQUITECTURA = [
+  'El proyecto incluye guías (skills) para las herramientas de programación con IA: «estructura-proyecto», «agregar-agente» y «agregar-ruta», en .agents/skills y .claude/skills.',
+  'Como todas las carpetas de agente tienen la misma forma, una herramienta de IA puede crear un agente nuevo copiando el patrón sin leer todo el proyecto.',
+  'Las pruebas de estructura funcionan como barandas: si una persona o una IA rompe la estructura, la prueba lo señala con un mensaje que dice qué falta.',
+  'La guía completa está en docs/arquitectura.md.',
+];
+
 export const EQUIPO = ['Allam Fernandez', 'Gilberth Monge', 'Yuvania Castillo'];

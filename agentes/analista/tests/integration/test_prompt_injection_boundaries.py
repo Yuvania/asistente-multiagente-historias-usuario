@@ -23,7 +23,7 @@ from agentes.analista.core.models import (
     QuestionCategory,
     QuestionState,
 )
-from agentes.analista.core.technical_advisor import TechnicalAdvisor
+from agentes.equipo.asesor_tecnico.asesor_tecnico_service import AsesorTecnicoService
 from agentes.analista.core.workflow_graph import WorkflowRuntime
 from agentes.analista.core.workflow_models import (
     FlowMode,
@@ -201,7 +201,7 @@ async def test_retrieved_payload_stays_in_untrusted_user_evidence_and_agent_role
     capture = {}
     CapturingOpenCodeClient.calls = capture
 
-    advisor = TechnicalAdvisor(
+    advisor = AsesorTecnicoService(
         source_provider=lambda _query: _return_sources(code_sources, standards_sources),
         client_factory=CapturingOpenCodeClient,
     )
