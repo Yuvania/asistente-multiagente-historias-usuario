@@ -98,7 +98,7 @@ export const PREGUNTAS_AYUDA = [
     id: 'pendientes',
     pregunta: '¿Dónde veo lo que tengo por aprobar?',
     texto:
-      'En Pendientes, en el menú: el número indica cuántas cosas esperan su decisión o tiene avisos sin leer. El Product Owner ve las historias por aprobar (y recibe un mensaje en Teams); quien creó una historia ve si fue aprobada, devuelta con su motivo o rechazada.',
+      'En Pendientes, en el menú: el número indica cuántas cosas esperan su decisión o tiene avisos sin leer. El Product Owner ve las historias por aprobar; quien creó una historia ve si fue aprobada, devuelta con su motivo o rechazada.',
   },
   {
     id: 'mantenimiento',

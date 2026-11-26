@@ -156,7 +156,7 @@ export const PENDIENTES = [
   },
   {
     titulo: 'Avisos fuera de la aplicación',
-    texto: 'Ya existen Pendientes en la aplicación y el mensaje por Teams al Product Owner. Falta elegir un aprobador específico cuando haya varios Product Owner y, si se quiere, sumar el aviso por correo.',
+    texto: 'Ya existen Pendientes en la aplicación. El mensaje por Teams al Product Owner está preparado y se activa con la variable TEAMS_WEBHOOK_URL cuando el equipo lo decida. Falta elegir un aprobador específico cuando haya varios Product Owner y, si se quiere, sumar el aviso por correo.',
   },
   {
     titulo: 'Detalle técnico para Desarrollo',

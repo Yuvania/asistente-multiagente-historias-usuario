@@ -58,6 +58,8 @@ Se cambian en el panel de Render (**Environment**); al guardar, Render reinicia 
 
 ## Aviso por Teams al Product Owner
 
+Está preparado pero apagado: sin `TEAMS_WEBHOOK_URL` no se envía nada. Para activarlo más adelante:
+
 Cuando una historia queda lista para aprobar, la aplicación envía una tarjeta a Teams con el título, quién la creó y el enlace para decidir.
 
 1. En Teams, abra la app **Workflows** y cree un flujo con la plantilla «Post to a chat when a webhook request is received» (o a un canal).

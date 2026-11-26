@@ -26,7 +26,7 @@ Proyecto desarrollado para el curso de Inteligencia Artificial de Cenfotec. El d
 - **Gestión de cambios:** las solicitudes de cambio sobre una HU aprobada se clasifican como aclaración o cambio de alcance, con propuesta de lecciones aprendidas.
 - **Acciones sobre una HU:** consulta, edición, solicitud de cambio, descarga en Word o PDF con plantilla configurable y eliminación.
 - **Roles, acciones y Mantenimiento:** inicio de sesión por usuario; cada rol tiene sus acciones (por ejemplo, solo el Product Owner aprueba) y se administran en la pestaña Mantenimiento.
-- **Pendientes y avisos:** el Product Owner ve lo que espera su aprobación (y recibe un mensaje en Teams); quien creó la historia ve si fue aprobada, devuelta con su motivo o rechazada.
+- **Pendientes y avisos:** el Product Owner ve lo que espera su aprobación; quien creó la historia ve si fue aprobada, devuelta con su motivo o rechazada. El aviso por Teams está preparado pero apagado hasta configurarlo (ver DESPLIEGUE.md).
 - **Ayuda integrada** con el flujo, los agentes, las tecnologías y los temas pendientes de definición.
 
 ## Flujo de creación de una historia
