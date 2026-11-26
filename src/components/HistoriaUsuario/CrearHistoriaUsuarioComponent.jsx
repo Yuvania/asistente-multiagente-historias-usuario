@@ -909,6 +909,9 @@ const CrearHistoriaUsuarioContenido = () => {
                 ) : agentReady ? (
                   <AlertaComponent type="success" title="No quedan vacíos relevantes">
                     El agente considera aclarado el requerimiento. Puede generar el borrador de la Historia de Usuario.
+                    {(agentResponse?.supuesto_validar_po?.length ?? 0) > 0 && (
+                      <> Quedan {agentResponse.supuesto_validar_po.length} supuestos que validará el Product Owner al aprobar.</>
+                    )}
                   </AlertaComponent>
                 ) : (
                   <AlertaComponent type="warning" title={`Quedan ${pendingCount} preguntas pendientes`}>

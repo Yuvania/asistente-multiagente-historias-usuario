@@ -205,6 +205,8 @@ class AgentTurnResponse(ContractModel):
     duracion_ms: int = Field(ge=0)
     prompt_version: str = Field(min_length=1, max_length=40)
     plan_agente: list[PasoPlan] = Field(default_factory=list, max_length=3)
+    # Vacíos que no se le vuelven a preguntar a Negocio: el PO los valida al aprobar la HU.
+    supuesto_validar_po: list[str] = Field(default_factory=list, max_length=50)
 
     @field_validator("respuesta_markdown")
     @classmethod

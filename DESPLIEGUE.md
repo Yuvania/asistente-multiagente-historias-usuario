@@ -51,6 +51,7 @@ Se cambian en el panel de Render (**Environment**); al guardar, Render reinicia 
 | `ANALISTA_MCP_TRANSPORTE` | No | `memoria` (recomendado en Render: mismo protocolo MCP, mismo proceso, sin arrancar un proceso por consulta) o `stdio` (cada servidor MCP en su propio proceso; predeterminado en local). |
 | `ANALISTA_TURN_TIMEOUT_SECONDS` | No | Tiempo máximo por agente, en segundos (90 por defecto; 180 en `render.yaml`; máximo 300). |
 | `PINECONE_SINCRONIZACION_AUTOMATICA` | No | `1` (por defecto): carga automática del conocimiento en Pinecone. `0`: solo carga manual. |
+| `ANALISTA_UMBRAL_SIMILITUD_VACIO` | No | Similitud (0 a 1, `0.9` por defecto) a partir de la cual un vacío se considera el mismo tema que una pregunta ya respondida: no se le vuelve a preguntar a Negocio y pasa como supuesto a validar por el PO. |
 
 ## Base de datos gratuita (TiDB Cloud Starter)
 

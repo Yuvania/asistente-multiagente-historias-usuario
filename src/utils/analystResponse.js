@@ -64,8 +64,16 @@ export function isValidAnalystResponse(value) {
   const isObject = value && typeof value === 'object';
   const withBenefits = isObject && Object.hasOwn(value, 'beneficios');
   const withPlan = isObject && Object.hasOwn(value, 'plan_agente');
-  const keys = [...RESPONSE_KEYS, ...(withBenefits ? ['beneficios'] : []), ...(withPlan ? ['plan_agente'] : [])];
+  // `supuesto_validar_po` es opcional: vacíos que no se repreguntan a Negocio y que valida el PO.
+  const withSupuesto = isObject && Object.hasOwn(value, 'supuesto_validar_po');
+  const keys = [
+    ...RESPONSE_KEYS,
+    ...(withBenefits ? ['beneficios'] : []),
+    ...(withPlan ? ['plan_agente'] : []),
+    ...(withSupuesto ? ['supuesto_validar_po'] : []),
+  ];
   if (!hasExactKeys(value, keys)) return false;
+  if (withSupuesto && !textList(value.supuesto_validar_po, 50, 1000)) return false;
   if (withBenefits && !textList(value.beneficios, 5, 300)) return false;
   if (withPlan && (!Array.isArray(value.plan_agente) || value.plan_agente.length > 3 || !value.plan_agente.every(validPlanStep))) return false;
   if (![value.conversation_id, value.request_id, value.turn_id].every((id) => typeof id === 'string' && UUID4.test(id))) return false;

@@ -102,7 +102,7 @@ async def test_pending_business_question_interrupts_resumes_and_calls_existing_r
     assert analyst_messages[0] == "Consultar saldos de cuentas activas"
     # El Analista recibe la pregunta con su respuesta, y el backend la marca como respondida.
     assert "Respuesta: 14 días" in analyst_messages[1]
-    assert "Pregunta: ¿Cuál es el plazo de entrega?" in analyst_messages[1]
+    assert "Pregunta (id: q-deadline): ¿Cuál es el plazo de entrega?" in analyst_messages[1]
     assert answered_ids == [set(), {"q-deadline"}]
     assert len(draft_calls) == 1
     assert finished.current_stage == WorkflowStage.PO_APPROVAL

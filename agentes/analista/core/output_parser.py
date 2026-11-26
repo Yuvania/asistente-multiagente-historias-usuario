@@ -22,6 +22,15 @@ class AgentQuestionOutput(BaseModel):
         return value.strip()
 
 
+class VinculoVacio(BaseModel):
+    """Enlace explícito entre un punto del análisis y la pregunta de Negocio que lo resolvió."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    punto: str = Field(min_length=1, max_length=1000)
+    question_id: str = Field(min_length=1, max_length=80)
+
+
 class AgentOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -30,6 +39,7 @@ class AgentOutput(BaseModel):
     preguntas: list[AgentQuestionOutput] = Field(max_length=50)
     listo_para_redactor: bool
     beneficios: list[str] = Field(default_factory=list, max_length=5)
+    vinculos: list[VinculoVacio] = Field(default_factory=list, max_length=50)
 
     @field_validator("beneficios")
     @classmethod

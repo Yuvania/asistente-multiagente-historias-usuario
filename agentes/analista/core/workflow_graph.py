@@ -478,6 +478,7 @@ def build_workflow_graph(
             "story": state.get("draft_story"),
             "review_observations": state.get("review_observations", []),
             "technical_assessment": state.get("technical_assessment"),
+            "supuesto_validar_po": (state.get("analyst_response") or {}).get("supuesto_validar_po", []),
             "decisions": [item.value for item in POApprovalDecision],
             "return_requires_reason": True,
         })
@@ -805,9 +806,14 @@ class WorkflowRuntime:
         if answers:
             # Se envía la pregunta junto con su respuesta: el modelo no debe adivinar a qué id corresponde.
             message = "Respuestas de Negocio a las preguntas pendientes (ya quedan respondidas):\n" + "\n".join(
-                f"- Pregunta: {item.get('question', item['question_id'])}\n  Respuesta: {item['answer']}"
+                f"- Pregunta (id: {item['question_id']}): {item.get('question', item['question_id'])}\n"
+                f"  Respuesta: {item['answer']}"
                 for item in answers
-            ) + "\nActualiza el análisis con estas respuestas. No vuelvas a preguntar lo que ya está respondido."
+            ) + (
+                "\nActualiza el análisis con estas respuestas. No vuelvas a preguntar lo que ya está respondido. "
+                "Si un punto de faltante, supuesta o ambigua quedó resuelto por una respuesta, muévelo a conocida "
+                "o enlázalo en `vinculos` con el id de esa pregunta."
+            )
         else:
             message = state["requirement_input"] or ""
         if state.get("po_feedback"):

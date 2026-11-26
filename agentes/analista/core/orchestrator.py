@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 from datetime import datetime
 from collections.abc import Collection
 from typing import Any
@@ -41,7 +42,8 @@ from agentes.analista.core.models import (
     TurnStatus,
 )
 from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeSettings
-from agentes.analista.core.output_parser import AgentOutput, format_instructions, parse_agent_output
+from agentes.analista.core.output_parser import AgentOutput, VinculoVacio, format_instructions, parse_agent_output
+from agentes.conocimiento.similitud import similitud_maxima
 from agentes.analista.core.prompt_loader import load_prompt
 from agentes.analista.core.conversation_store import ConversationStore, StoreError
 from agentes.analista.core.observability import Observability
@@ -127,35 +129,90 @@ _PLANTILLA_VACIO: dict[str, tuple[QuestionCategory, str]] = {
     "supuesta": (QuestionCategory.BUSINESS_RULES, "Se está suponiendo lo siguiente: «{}». ¿Es correcto?"),
     "ambigua": (QuestionCategory.EXPECTED_BEHAVIOR, "Esto no está claro: «{}». ¿Cómo debe entenderse?"),
 }
+_ETIQUETA_SUPUESTO_PO = {"faltante": "Falta definir", "supuesta": "Se supone", "ambigua": "No está claro"}
+PREFIJO_PREGUNTA_VACIO = "vacio-"
+# Rondas de preguntas automáticas por conversación. Sin similitud no se distingue un tema repetido de uno
+# nuevo, así que solo se permite una: cada tema se le pregunta a Negocio una sola vez.
+MAXIMO_RONDA_VACIO_CON_SIMILITUD = 2
+MAXIMO_RONDA_VACIO_SIN_SIMILITUD = 1
+UMBRAL_SIMILITUD_VACIO = float(os.environ.get("ANALISTA_UMBRAL_SIMILITUD_VACIO", "0.9"))
 
 
-def _preguntas_de_vacio(
-    analisis: Analysis, questions: list[Question], question_key: Any, turn_id: Any,
-) -> tuple[Analysis, list[Question]]:
-    """Convierte vacíos sin pregunta en preguntas; los ya respondidos pasan a «conocida»."""
-    respondida = {question_key(item.pregunta) for item in questions if item.estado == QuestionState.ANSWERED}
-    existente = {question_key(item.pregunta) for item in questions}
+def _similitud_vacio(lista_punto: list[str], lista_referencia: list[str]) -> list[float] | None:
+    """Costura de pruebas: similitud por significado (una llamada a Pinecone por turno)."""
+    return similitud_maxima(lista_punto, lista_referencia)
+
+
+def _tema_pregunta(question: Question) -> str:
+    """El tema de la pregunta: en las automáticas, el punto entre «»; en las demás, la pregunta completa."""
+    if question.question_id.startswith(PREFIJO_PREGUNTA_VACIO) and "«" in question.pregunta and "»" in question.pregunta:
+        return question.pregunta.split("«", 1)[1].rsplit("»", 1)[0]
+    return question.pregunta
+
+
+def _resolver_vacio(
+    analisis: Analysis,
+    questions: list[Question],
+    question_key: Any,
+    turn_id: Any,
+    vinculos: list[VinculoVacio],
+) -> tuple[Analysis, list[Question], list[str]]:
+    """Decide qué pasa con cada vacío: confirmado, pregunta nueva o supuesto a validar con el PO.
+
+    1. Confirmado: el Analista lo enlazó a una pregunta respondida (por ID) o es el mismo texto de una
+       pregunta automática respondida. Pasa a «conocida».
+    2. Si quedan preguntas pendientes, el vacío sigue abierto: Negocio aún no responde.
+    3. Si se parece por significado a algo ya respondido, no se vuelve a preguntar: va al PO.
+    4. Si aún hay rondas automáticas disponibles, se convierte en pregunta para Negocio.
+    5. Si no, va al PO. Así el ciclo siempre termina.
+    """
+    respondida_por_id = {item.question_id: item for item in questions if item.estado == QuestionState.ANSWERED}
+    respondida_por_texto = {question_key(item.pregunta) for item in respondida_por_id.values()}
+    vinculo_valido = {question_key(item.punto) for item in vinculos if item.question_id in respondida_por_id}
+    hay_pendiente = any(item.estado == QuestionState.PENDING for item in questions)
     conocida = list(analisis.conocida)
-    restante: dict[str, list[str]] = {}
-    generada: list[Question] = []
-    for campo, (categoria, plantilla) in _PLANTILLA_VACIO.items():
-        restante[campo] = []
+    restante: dict[str, list[str]] = {campo: [] for campo in _PLANTILLA_VACIO}
+    candidato: list[tuple[str, str]] = []
+    for campo, (_, plantilla) in _PLANTILLA_VACIO.items():
         for item in getattr(analisis, campo):
-            texto = plantilla.format(item.strip())[:500]
-            clave = question_key(texto)
-            if clave in respondida:
-                conocida.append(f"{item.strip()[:970]} (confirmado por Negocio)")
+            texto = item.strip()
+            if question_key(texto) in vinculo_valido or question_key(plantilla.format(texto)) in respondida_por_texto:
+                conocida.append(f"{texto[:970]} (confirmado por Negocio)")
+            elif hay_pendiente:
+                restante[campo].append(item)
+            else:
+                candidato.append((campo, texto))
+
+    generada: list[Question] = []
+    supuesto_po: list[str] = []
+    if candidato:
+        referencia = [_tema_pregunta(item) for item in respondida_por_id.values()]
+        similitud = _similitud_vacio([texto for _, texto in candidato], referencia)
+        ronda_previa = len({
+            item.created_turn_id for item in questions if item.question_id.startswith(PREFIJO_PREGUNTA_VACIO)
+        })
+        maximo = MAXIMO_RONDA_VACIO_SIN_SIMILITUD if similitud is None else MAXIMO_RONDA_VACIO_CON_SIMILITUD
+        existente = {question_key(item.pregunta) for item in questions}
+        for indice, (campo, texto) in enumerate(candidato):
+            categoria, plantilla = _PLANTILLA_VACIO[campo]
+            parecido = similitud is not None and similitud[indice] >= UMBRAL_SIMILITUD_VACIO
+            if parecido or ronda_previa >= maximo:
+                supuesto_po.append(f"{_ETIQUETA_SUPUESTO_PO[campo]}: {texto}"[:1000])
                 continue
-            restante[campo].append(item)
-            if clave in existente:
+            restante[campo].append(texto)
+            pregunta = plantilla.format(texto)[:500]
+            if question_key(pregunta) in existente:
                 continue
-            existente.add(clave)
+            existente.add(question_key(pregunta))
             generada.append(Question(
-                question_id=str(uuid4()), categoria=categoria, pregunta=texto,
+                question_id=f"{PREFIJO_PREGUNTA_VACIO}{uuid4()}", categoria=categoria, pregunta=pregunta,
                 estado=QuestionState.PENDING, created_turn_id=turn_id, updated_turn_id=None,
             ))
+        if supuesto_po:
+            logger.info("Vacíos enviados al PO como supuestos a validar: %d (similitud %s).",
+                        len(supuesto_po), "no disponible" if similitud is None else "disponible")
     nuevo = analisis.model_copy(update={"conocida": conocida[:100], **restante})
-    return nuevo, generada
+    return nuevo, generada, supuesto_po[:50]
 
 
 def _to_response(
@@ -224,12 +281,11 @@ def _to_response(
         for item in tool_executions if item.status == ToolStatus.OK
     ]
     # The readiness gate is derived from validated facts, never trusted to the model.
-    analisis = output.analisis
-    if not any(item.estado == QuestionState.PENDING for item in questions):
-        # El modelo dejó vacíos sin preguntar: cada vacío se convierte en pregunta para Negocio. Si esa misma
-        # pregunta ya fue respondida, el punto queda confirmado y pasa a «conocida». Así el ciclo siempre avanza.
-        analisis, generadas = _preguntas_de_vacio(analisis, questions, question_key, turn_id)
-        questions.extend(generadas[:50 - len(questions)])
+    # Los vacíos que el modelo dejó sin preguntar se resuelven aquí; el ciclo siempre avanza o termina.
+    analisis, generadas, supuesto_po = _resolver_vacio(
+        output.analisis, questions, question_key, turn_id, output.vinculos,
+    )
+    questions.extend(generadas[:50 - len(questions)])
     ready = not (analisis.faltante or analisis.supuesta or analisis.ambigua)
     ready = ready and not any(item.estado == QuestionState.PENDING for item in questions)
     return AgentTurnResponse(
@@ -242,6 +298,7 @@ def _to_response(
         preguntas=questions,
         fuentes_consultadas=sources[:4],
         listo_para_redactor=ready,
+        supuesto_validar_po=supuesto_po,
         beneficios=output.beneficios,
         limitaciones=limitations[:10],
         duracion_ms=duration_ms,
@@ -381,7 +438,9 @@ async def run_turn(
             raise OrchestrationError(ErrorCode.TURN_TIMEOUT, "Se agotó el tiempo del turno.", retryable=True)
 
         duration_ms = max(0, int((timeout_seconds - max(0, deadline - asyncio.get_running_loop().time())) * 1000))
-        response = _to_response(
+        # Puede consultar Pinecone (similitud): se ejecuta fuera del event loop.
+        response = await asyncio.to_thread(
+            _to_response,
             output,
             conversation_id=conversation_id,
             request_id=request.request_id,

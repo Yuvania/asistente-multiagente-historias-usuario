@@ -104,6 +104,7 @@ def _analyst_response(state, *, pending: bool) -> AgentTurnResponse:
         ] if needs_question else [],
         fuentes_consultadas=[],
         listo_para_redactor=not needs_question,
+        supuesto_validar_po=["Se supone: el plazo se cuenta en días naturales"] if has_answer else [],
         limitaciones=[],
         duracion_ms=1,
         prompt_version="1.0.0",
@@ -230,6 +231,9 @@ def test_api_starts_pre_and_post_and_returns_status_results_and_real_interrupt_i
         assert resumed.status_code == 200
         assert resumed.json()["stage"] == "aprobacion_po"
         assert resumed.json()["interrupt"]["kind"] == "po_approval"
+        assert resumed.json()["interrupt"]["payload"]["supuesto_validar_po"] == [
+            "Se supone: el plazo se cuenta en días naturales",
+        ]
         assert mcp.calls == 1
         assert repository.saved_stories == []
 

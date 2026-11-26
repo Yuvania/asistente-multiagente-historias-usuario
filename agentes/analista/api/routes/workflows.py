@@ -97,6 +97,7 @@ class WorkflowInterruptPayload(BaseModel):
     story: DraftStory | None = None
     review_observations: list[str] | None = None
     technical_assessment: TechnicalAssessment | None = None
+    supuesto_validar_po: list[str] | None = None
     change_recommendation: ChangeRecommendation | None = None
     decisions: list[str] | None = None
     return_requires_reason: bool | None = None

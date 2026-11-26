@@ -64,7 +64,13 @@ const poInterrupt = {
   }, response_schema: { type: 'object' },
 };
 const poResults = {
-  ...baseResults, analyst: { ...baseResults.analyst, listo_para_redactor: true, preguntas: [] }, story: draftStory,
+  ...baseResults,
+  analyst: {
+    ...baseResults.analyst, listo_para_redactor: true, preguntas: [],
+    analisis: { ...baseResults.analyst.analisis, faltante: [] },
+    supuesto_validar_po: ['Se supone: el plazo se cuenta en días naturales'],
+  },
+  story: draftStory,
   review_observations: ['Criterio verificable'], technical_assessment: poInterrupt.payload.technical_assessment,
 };
 
@@ -134,6 +140,8 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
 
     expect(await screen.findByLabelText(/^Quiero/i)).toHaveValue('consultar la vigencia');
     expect(screen.getByText(/Criterio verificable/)).toBeInTheDocument();
+    expect(screen.getByText(/Supuestos a validar por el Product Owner/i)).toBeInTheDocument();
+    expect(screen.getByText(/el plazo se cuenta en días naturales/i)).toBeInTheDocument();
     expect(screen.getByText(/archivos ficticios/i)).toBeInTheDocument();
     expect(screen.getByText(/RAG\/Pinecone aún no está integrada/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Aprobación del Product Owner/i }));

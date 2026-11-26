@@ -13,6 +13,7 @@ export const WorkflowResultsPanel = ({ results, showStory = false }) => {
   const assessment = results.technical_assessment;
   const observations = results.review_observations ?? story?.observations ?? [];
   const hasAssessment = Boolean(assessment);
+  const listaSupuesto = results.analyst?.supuesto_validar_po ?? [];
 
   return (
     <section className="workflow-results" aria-label="Resultados del workflow">
@@ -33,6 +34,16 @@ export const WorkflowResultsPanel = ({ results, showStory = false }) => {
           {observations.length
             ? <ul>{observations.map((observation, index) => <li key={`${observation}-${index}`}>{observation}</li>)}</ul>
             : <p>Sin observaciones pendientes.</p>}
+        </div>
+      )}
+
+      {listaSupuesto.length > 0 && (
+        <div className="workflow-results__card">
+          <h3>Supuestos a validar por el Product Owner</h3>
+          <p className="workflow-results__notice">
+            Negocio no confirmó estos puntos y no se le volvieron a preguntar. Valídelos antes de aprobar o devuelva la HU al Analista.
+          </p>
+          <ul>{listaSupuesto.map((supuesto, index) => <li key={`${supuesto}-${index}`}>{supuesto}</li>)}</ul>
         </div>
       )}
 

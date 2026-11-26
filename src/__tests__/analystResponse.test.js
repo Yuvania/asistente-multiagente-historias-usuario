@@ -43,6 +43,13 @@ describe('analyst response validation', () => {
     expect(isValidAnalystResponse({ ...validResponse, plan_agente: [paso, paso, paso, paso] })).toBe(false);
   });
 
+  it('accepts optional assumptions for the Product Owner and rejects invalid ones', () => {
+    expect(isValidAnalystResponse({ ...validResponse, supuesto_validar_po: [] })).toBe(true);
+    expect(isValidAnalystResponse({ ...validResponse, supuesto_validar_po: ['Se supone: días naturales'] })).toBe(true);
+    expect(isValidAnalystResponse({ ...validResponse, supuesto_validar_po: [' '] })).toBe(false);
+    expect(isValidAnalystResponse({ ...validResponse, supuesto_validar_po: 'texto' })).toBe(false);
+  });
+
   it('rejects incomplete payloads and never returns partial content', () => {
     expect(isValidAnalystResponse({ ...validResponse, analisis: { conocida: [] } })).toBe(false);
     let raised;
