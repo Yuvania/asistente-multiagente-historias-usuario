@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import re
 from collections.abc import AsyncIterator, Mapping
@@ -28,6 +29,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 # Backwards-compatible name for callers that inspect the client allowlist.
 SUPPORTED_VERSIONS = SUPPORTED_OPENCODE_VERSIONS
 DENY_ALL = [{"action": "*", "resource": "*", "effect": "deny"}]
+
+
+logger = logging.getLogger(__name__)
 
 
 class OpenCodeSettings(BaseSettings):
@@ -96,6 +100,10 @@ def _read_env_value(name: str, default: str) -> str:
     except (OSError, UnicodeError):
         pass
     return default
+
+
+# Esperas (s) entre consultas mientras OpenCode termina de cargar los agentes del proyecto.
+AGENT_LOAD_RETRY_DELAYS: tuple[float, ...] = (0.25, 0.5, 1.0, 1.5, 2.0)
 
 
 class OpenCodeClientError(RuntimeError):
@@ -229,9 +237,20 @@ class OpenCodeClient:
 
     async def verify_agent(self, agent_id: AgentId | str | None = None) -> dict[str, Any]:
         selected_agent = self._selected_agent(agent_id)
-        envelope = await self._request("GET", "/api/agent", params=self._location_params())
-        agents = envelope.get("data") if isinstance(envelope, dict) else None
-        agent = next((item for item in agents or [] if item.get("id") == selected_agent), None)
+        agent: Any = None
+        # OpenCode carga la configuración del proyecto de forma diferida: la primera consulta a un
+        # location recién abierto (al arrancar o al despertar el servicio) puede llegar vacía o solo
+        # con los agentes integrados. Se reintenta unas veces, sin pasar el tiempo del turno.
+        for intento, espera in enumerate((*AGENT_LOAD_RETRY_DELAYS, None), start=1):
+            envelope = await self._request("GET", "/api/agent", params=self._location_params())
+            agents = envelope.get("data") if isinstance(envelope, dict) else None
+            agent = next((item for item in agents or [] if item.get("id") == selected_agent), None)
+            if isinstance(agent, dict) or espera is None:
+                break
+            if self._deadline is not None and asyncio.get_running_loop().time() + espera >= self._deadline:
+                break
+            logger.info("opencode_agent_not_loaded_yet", extra={"event": "opencode_agent_not_loaded_yet", "agent": selected_agent, "attempt": intento})
+            await asyncio.sleep(espera)
         if not isinstance(agent, dict):
             raise OpenCodeClientError("OPENCODE_INCOMPATIBLE", "El agente seleccionado no está cargado en el location esperado.")
         permissions = agent.get("permission", agent.get("permissions", []))
