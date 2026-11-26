@@ -3,6 +3,7 @@
 import { FIRMANTE_VACIO, TIPOS_SOLICITUD, limpiarLista, normalizarCodigoHu, numeroSugerido } from '../../../utils/plantillaHu';
 import { MAX_AGENT_MESSAGE_CODEPOINTS, buildAnswersMessage, buildRequirementMessage, codepointLength, describeSources, latestAssistantResponse, latestFailedMessage, mapAnalysis, mergeQuestions, questionsToSend, requirementSignature } from '../../../utils/wizardAgent';
 import { SIN_IDENTIFICAR, leerNombreUsuario } from '../../../utils/usuarioActual';
+import { avisarCambioPendientes } from '../../../hooks/usePendientes';
 import { WorkflowApiError, getWorkflow, resumeWorkflow, retryWorkflow, saveWorkflowDraft, startWorkflow } from '../../../services/workflowApi';
 import { addStory, deleteStory, generateStoryId, getStoredStories, getStoryById, guardarHistoria, updateStory } from '../../../utils/storage';
 import { aplicarRevision } from '../../../utils/revisiones';
@@ -273,6 +274,7 @@ export function useCrearHistoria() {
       return;
     }
     setWorkflowSnapshot(snapshot);
+    avisarCambioPendientes();
     const persistence = snapshot.results?.persistence_result;
     if (body.kind === 'po_approval' && body.response?.decision === 'aprobar' && persistence?.status === 'saved') {
       const id = persistence.story_id;

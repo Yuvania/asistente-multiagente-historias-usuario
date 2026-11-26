@@ -135,6 +135,22 @@ workflow_guardado = Table(
     Index("ix_workflow_guardado_estado", "estado"),
 )
 
+# Avisos para una persona: su historia fue aprobada, devuelta o rechazada. Lo que espera decisión no se guarda
+# aquí: sale de los flujos guardados (workflow_guardado.espera), así nunca queda desactualizado.
+aviso = Table(
+    "aviso", _metadata,
+    Column("id", _GUID, primary_key=True),
+    Column("usuario_id", String(60), nullable=False),  # destinatario (id del usuario de la sesión)
+    Column("tipo", String(20), nullable=False),  # aprobada | devuelta | rechazada
+    Column("workflow_id", _GUID),
+    Column("titulo", String(200), nullable=False),
+    Column("detalle", _Largo),
+    Column("autor", String(120)),
+    Column("creado_en", String(40), nullable=False),
+    Column("leido_en", String(40)),
+    Index("ix_aviso_usuario", "usuario_id"),
+)
+
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _LONG_DIGITS = re.compile(r"(?<![\d.,])\d{9,}(?![\d.,])")
 _ID_PATTERN = re.compile(r"\b\d-\d{4}-\d{4}\b")
@@ -330,6 +346,27 @@ class RepositorioHU:
         ).order_by(workflow_guardado.c.actualizado_en.desc())
         with self.motor.connect() as conexion:
             return [dict(fila._mapping) for fila in conexion.execute(consulta)]
+
+    # --- Avisos ---------------------------------------------------------
+    def registrar_aviso(self, *, usuario_id: str, tipo: str, titulo: str, workflow_id: str | None = None,
+                        detalle: str | None = None, autor: str | None = None) -> None:
+        with self.motor.begin() as conexion:
+            conexion.execute(insert(aviso).values(
+                id=nuevo_guid(), usuario_id=usuario_id[:60], tipo=tipo[:20], workflow_id=workflow_id,
+                titulo=(titulo or "Sin título")[:200], detalle=(detalle or None), autor=(autor or None) and autor[:120],
+                creado_en=_now()))
+
+    def listar_aviso(self, usuario_id: str, limite: int = 30) -> list[dict[str, Any]]:
+        """Avisos sin leer de la persona, del más reciente al más antiguo."""
+        consulta = (select(aviso).where(aviso.c.usuario_id == usuario_id, aviso.c.leido_en.is_(None))
+                    .order_by(aviso.c.creado_en.desc()).limit(limite))
+        with self.motor.connect() as conexion:
+            return [dict(fila._mapping) for fila in conexion.execute(consulta)]
+
+    def marcar_aviso_leido(self, aviso_id: str, usuario_id: str) -> None:
+        with self.motor.begin() as conexion:
+            conexion.execute(update(aviso).where(aviso.c.id == aviso_id, aviso.c.usuario_id == usuario_id)
+                             .values(leido_en=_now()))
 
     def guardar_borrador_workflow(self, workflow_id: str, borrador: dict[str, str]) -> None:
         with self.motor.begin() as conexion:

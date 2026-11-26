@@ -95,6 +95,12 @@ export const PREGUNTAS_AYUDA = [
       'Por capas (interfaz, API, orquestación, agentes, herramientas y datos) y con registros: cada agente es una carpeta con su definición, y las pantallas salen de un registro único. Así, agregar un agente o una pantalla se hace en un solo lugar. El detalle está en Ayuda → Arquitectura.',
   },
   {
+    id: 'pendientes',
+    pregunta: '¿Dónde veo lo que tengo por aprobar?',
+    texto:
+      'En Pendientes, en el menú: el número indica cuántas cosas esperan su decisión o tiene avisos sin leer. El Product Owner ve las historias por aprobar (y recibe un mensaje en Teams); quien creó una historia ve si fue aprobada, devuelta con su motivo o rechazada.',
+  },
+  {
     id: 'mantenimiento',
     pregunta: '¿Cómo doy permisos a una persona?',
     texto:

@@ -15,6 +15,8 @@ from agentes.analista.api.routes.health import router as health_router
 from agentes.analista.api.routes.historias import router as historias_router
 from agentes.analista.api.routes.repositorio import router as repositorio_router
 from agentes.analista.api.routes.seguridad import router as seguridad_router
+from agentes.analista.api.routes.pendientes import router as pendientes_router
+from agentes.notificaciones.teams_service import TeamsService
 from agentes.analista.api.routes.workflows import router as workflows_router
 from agentes.analista.core.conversation_store import ConversationStore
 from agentes.analista.core.logging_config import configure_logging
@@ -42,6 +44,8 @@ async def lifespan(app: FastAPI):
     app.state.prompt_snapshot = prompt
     app.state.restart_required = False
     app.state.repositorio = RepositorioHU()
+    # Aviso por Teams al Product Owner (con TEAMS_WEBHOOK_URL; sin ella no envía nada).
+    app.state.teams = TeamsService()
     # Seguridad por usuario: activa cuando el servicio tiene ACCESO_USUARIO y ACCESO_CLAVE (el administrador
     # inicial). Sin ellas (desarrollo local) se atiende como usuario local con todas las acciones.
     credenciales = credenciales_desde_entorno()
@@ -90,6 +94,7 @@ app.include_router(conversations_router, prefix="/api/analista", tags=["conversa
 app.include_router(repositorio_router, prefix="/api/analista", tags=["repositorio"])
 app.include_router(historias_router, prefix="/api/analista", tags=["historias"])
 app.include_router(seguridad_router, prefix="/api/analista", tags=["seguridad"])
+app.include_router(pendientes_router, prefix="/api/analista", tags=["pendientes"])
 app.include_router(workflows_router, prefix="/api/workflows", tags=["workflows"])
 
 # Publicación en un hosting: la interfaz la sirve el mismo servicio. La API pide sesión por usuario

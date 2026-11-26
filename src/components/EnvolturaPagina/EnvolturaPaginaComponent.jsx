@@ -9,6 +9,7 @@ import { listaOpcionMenu } from '../../config/rutas';
 import { AsistenteAyudaComponent } from '../AsistenteAyuda/AsistenteAyudaComponent';
 import { useSesion } from '../Sesion/SesionContext';
 import { useConfirmacion } from '../Comun/ConfirmacionComponent';
+import { usePendientes } from '../../hooks/usePendientes';
 
 // Iniciales para el avatar (por ejemplo «Ana Mora» → «AM»).
 const iniciales = (texto) => String(texto ?? '').trim().split(/\s+/).slice(0, 2)
@@ -21,6 +22,9 @@ export const EnvolturaPaginaComponent = () => {
   const [mostrarUsuario, setMostrarUsuario] = useState(false);
   const { seguridad, usuario, puede, salir } = useSesion();
   const confirmar = useConfirmacion();
+  // Número junto a «Pendientes»: lo que espera la decisión de la persona y sus avisos sin leer.
+  const { total: totalPendiente } = usePendientes();
+  const contador = { pendientes: totalPendiente };
   const cerrarSesion = async () => {
     if (await confirmar({ titulo: 'Cerrar sesión', mensaje: `¿Cerrar la sesión de ${usuario.nombre}?`, textoConfirmar: 'Cerrar sesión' })) salir();
   };
@@ -40,7 +44,7 @@ export const EnvolturaPaginaComponent = () => {
 
         {/* Las opciones salen del registro único de pantallas (src/config/rutas.jsx). */}
         <nav className="barra-lateral__nav" aria-label="Menú principal">
-          {listaOpcionMenu(puede).map(({ destino, etiqueta, corta, titulo, icono: Icono, exacta }) => (
+          {listaOpcionMenu(puede).map(({ destino, etiqueta, corta, titulo, icono: Icono, exacta, contador: claveContador }) => (
             <NavLink
               key={destino}
               to={destino}
@@ -51,6 +55,11 @@ export const EnvolturaPaginaComponent = () => {
               <Icono size={18} aria-hidden="true" />
               <span className="barra-lateral__etiqueta">{etiqueta}</span>
               <span className="barra-lateral__corta" aria-hidden="true">{corta ?? etiqueta}</span>
+              {contador[claveContador] > 0 && (
+                <span className="barra-lateral__contador" aria-label={`${contador[claveContador]} pendientes`}>
+                  {contador[claveContador] > 99 ? '99+' : contador[claveContador]}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

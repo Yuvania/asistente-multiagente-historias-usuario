@@ -155,8 +155,8 @@ export const PENDIENTES = [
     texto: 'Ya hay inicio de sesión por usuario, roles y acciones (pestaña Mantenimiento). Falta registrar quién asignó o quitó cada rol o acción y cuándo, para auditoría.',
   },
   {
-    titulo: 'Aviso por correo al Product Owner',
-    texto: 'Se propone enviar un correo al Product Owner cuando una HU queda lista para aprobar. En Render se haría con un servicio de correo por API (por ejemplo Resend o Brevo), porque el plan gratuito bloquea el envío directo.',
+    titulo: 'Avisos fuera de la aplicación',
+    texto: 'Ya existen Pendientes en la aplicación y el mensaje por Teams al Product Owner. Falta elegir un aprobador específico cuando haya varios Product Owner y, si se quiere, sumar el aviso por correo.',
   },
   {
     titulo: 'Detalle técnico para Desarrollo',

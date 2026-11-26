@@ -2,7 +2,7 @@
 // Agregar una pantalla = agregar una entrada. Si debe verse en el menú, se le pone «menu».
 // Si solo deben verla quienes tengan una acción, se le pone «accion» (src/config/acciones.js).
 // Ver docs/arquitectura.md y la skill «agregar-ruta».
-import { LayoutDashboard, FileText, PlusCircle, HelpCircle, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, PlusCircle, HelpCircle, ShieldCheck, Bell } from 'lucide-react';
 import { ACCION } from './acciones';
 import { TableroComponent } from '../components/Dashboard/TableroComponent';
 import { ListaHistoriaUsuarioComponent } from '../components/HistoriaUsuario/ListaHistoriaUsuarioComponent';
@@ -14,17 +14,23 @@ import { ListaHabilidadComponent } from '../components/Habilidad/ListaHabilidadC
 import { AyudaComponent } from '../components/Ayuda/AyudaComponent';
 import { ListaLeccionComponent } from '../components/Leccion/ListaLeccionComponent';
 import { MantenimientoComponent } from '../components/Mantenimiento/MantenimientoComponent';
+import { PendientesComponent } from '../components/Pendientes/PendientesComponent';
 
 // ruta: relativa a la raíz ('' es el inicio). componente: lo que se muestra.
 // accion (opcional): acción (o lista; basta una) que hace falta para abrirla. menu.accion la reemplaza solo
 // para mostrar la opción en el menú.
 // menu (opcional): etiqueta, corta (en la barra inferior del móvil, máximo 9 letras), título (texto
-// emergente), ícono, orden y si la ruta debe coincidir exacta.
+// emergente), ícono, orden, si la ruta debe coincidir exacta y contador (el número que se muestra al lado).
 export const listaRuta = Object.freeze([
   {
     ruta: '',
     componente: TableroComponent,
     menu: { etiqueta: 'Inicio', corta: 'Inicio', titulo: 'Ir al inicio', icono: LayoutDashboard, orden: 10, exacta: true },
+  },
+  {
+    ruta: 'pendientes',
+    componente: PendientesComponent,
+    menu: { etiqueta: 'Pendientes', corta: 'Avisos', titulo: 'Lo que espera su decisión y sus avisos', icono: Bell, orden: 15, contador: 'pendientes' },
   },
   {
     ruta: 'historias',

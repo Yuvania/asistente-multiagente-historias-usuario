@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from agentes.analista.api.errors import WorkflowApiError
 from agentes.analista.api.sesion import exigir_accion, requiere_accion, requiere_sesion, seguridad_activa, usuario_actual
 from agentes.seguridad.catalogo import ACCION
+from agentes.notificaciones.teams_service import TeamsService
 from agentes.equipo.gestor_cambios.gestor_cambios_service import ChangeManagerError
 from agentes.analista.core.models import AgentTurnResponse, ErrorCode
 from agentes.analista.core.opencode_client import OpenCodeClientError
@@ -419,6 +420,43 @@ def _exigir_permiso_respuesta(body: Any, usuario: dict[str, Any]) -> None:
         exigir_accion(usuario, _ACCION_DECISION_PO[body.response.decision])
 
 
+_TIPO_AVISO_PO = {
+    POApprovalDecision.APPROVE: "aprobada",
+    POApprovalDecision.RETURN_TO_ANALYST: "devuelta",
+    POApprovalDecision.RETURN_TO_WRITER: "devuelta",
+    POApprovalDecision.RETURN_TO_ADVISOR: "devuelta",
+    POApprovalDecision.REJECT: "rechazada",
+    POApprovalDecision.STOP: "rechazada",
+}
+_ESPERA_PO = "product_owner_approval"
+
+
+def _espera_actual(runtime: WorkflowRuntime, workflow_id: UUID) -> str | None:
+    pendiente = runtime.pending_interrupt(workflow_id)
+    return pendiente["payload"].get("kind") if pendiente else None
+
+
+def _avisar(request: Request, runtime: WorkflowRuntime, workflow_id: UUID, *, espera_previa: str | None,
+            usuario: dict[str, Any], decision_po: Any = None) -> None:
+    """Avisos después de avanzar el flujo. Un fallo aquí se registra y nunca afecta la respuesta."""
+    try:
+        meta = runtime.metadatos(workflow_id)
+        titulo = meta.get("titulo") or "Sin título"
+        # Al PO: mensaje de Teams cuando la historia queda lista para aprobar (no se repite si ya esperaba).
+        if _espera_actual(runtime, workflow_id) == _ESPERA_PO and espera_previa != _ESPERA_PO:
+            teams = getattr(request.app.state, "teams", None) or TeamsService()
+            teams.avisar_por_aprobar(str(workflow_id), titulo, meta.get("creado_por"))
+        # A quien creó la historia: aprobada, devuelta (con el motivo) o rechazada.
+        creador = meta.get("creado_por_usuario")
+        repositorio = getattr(request.app.state, "repositorio", None)
+        if decision_po is not None and creador and repositorio is not None and creador != usuario["id"]:
+            repositorio.registrar_aviso(
+                usuario_id=creador, tipo=_TIPO_AVISO_PO[decision_po.decision], titulo=titulo,
+                workflow_id=str(workflow_id), detalle=decision_po.reason, autor=usuario["nombre"] or None)
+    except Exception as exc:
+        logger.warning("aviso_fallido", extra={"event": "aviso_fallido", "error": type(exc).__name__})
+
+
 def _expected_interrupt_kind(snapshot: WorkflowSnapshot) -> str | None:
     if snapshot.current_stage == WorkflowStage.BUSINESS_WAIT:
         return "business_answers"
@@ -483,9 +521,11 @@ async def create_workflow(
         body = body.model_copy(update={"creado_por": usuario["nombre"], "creado_por_usuario": usuario["id"]})
     runtime = _runtime(request)
     try:
-        return _serialize(runtime, await runtime.execute(body))
+        snapshot = await runtime.execute(body)
     except Exception as exc:
         raise _translate_runtime_error(exc) from exc
+    _avisar(request, runtime, snapshot.workflow_id, espera_previa=None, usuario=usuario)
+    return _serialize(runtime, snapshot)
 
 
 @router.get("/{workflow_id}", response_model=WorkflowApiResponse, dependencies=[requiere_accion(ACCION.HISTORIA_VER)])
@@ -518,6 +558,8 @@ async def resume_workflow(
             if kind != expected_kind or kind != body.kind or active["interrupt_id"] != body.interrupt_id:
                 raise WorkflowNotInterruptedError("La respuesta no corresponde a la interrupción pendiente.")
             updated = await runtime.resume(workflow_id, body.response)
-            return _serialize(runtime, updated)
         except Exception as exc:
             raise _translate_runtime_error(exc) from exc
+        _avisar(request, runtime, workflow_id, espera_previa=internal_kind, usuario=usuario,
+                decision_po=body.response if body.kind == "po_approval" else None)
+        return _serialize(runtime, updated)

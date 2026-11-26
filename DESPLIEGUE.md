@@ -22,6 +22,8 @@ El Blueprint mantiene un único Web Service Docker. La imagen incluye React comp
 |---|---|
 | `OPENCODE_API_KEY` | Clave del plan OpenCode Go (la misma que usas en local, pero crea una **nueva** para el servidor). |
 | `ACCESO_USUARIO` / `ACCESO_CLAVE` | Usuario y contraseña del **administrador inicial**. Con ellas se activa el inicio de sesión por usuario: en una base nueva se crean los roles iniciales y este administrador, que luego crea a los demás usuarios en Mantenimiento. Usa una clave larga. |
+| `TEAMS_WEBHOOK_URL` (opcional) | URL del flujo de Teams que recibe el aviso «Historia lista para su aprobación». Sin ella no se envía nada a Teams (los Pendientes de la aplicación funcionan igual). Ver «Aviso por Teams al Product Owner». |
+| `APP_URL` (opcional) | Dirección pública de la aplicación para el enlace del aviso. En Render se usa `RENDER_EXTERNAL_URL` si falta. |
 | `SESION_SECRETO` (opcional) | Secreto para firmar las sesiones. Si falta se deriva de `ACCESO_CLAVE`; si se cambia, todos deben volver a ingresar. |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Opcionales. Déjalas vacías si no usas Langfuse en el servidor. |
 
@@ -53,6 +55,16 @@ Se cambian en el panel de Render (**Environment**); al guardar, Render reinicia 
 | `ANALISTA_TURN_TIMEOUT_SECONDS` | No | Tiempo máximo por agente, en segundos (90 por defecto; 180 en `render.yaml`; máximo 300). |
 | `PINECONE_SINCRONIZACION_AUTOMATICA` | No | `1` (por defecto): carga automática del conocimiento en Pinecone. `0`: solo carga manual. |
 | `ANALISTA_UMBRAL_SIMILITUD_VACIO` | No | Similitud (0 a 1, `0.9` por defecto) a partir de la cual un vacío se considera el mismo tema que una pregunta ya respondida: no se le vuelve a preguntar a Negocio y pasa como supuesto a validar por el PO. |
+
+## Aviso por Teams al Product Owner
+
+Cuando una historia queda lista para aprobar, la aplicación envía una tarjeta a Teams con el título, quién la creó y el enlace para decidir.
+
+1. En Teams, abra la app **Workflows** y cree un flujo con la plantilla «Post to a chat when a webhook request is received» (o a un canal).
+2. Elija el chat con el Product Owner (o el canal del equipo) y guarde. Copie la URL que muestra el flujo.
+3. En Render, agregue la variable `TEAMS_WEBHOOK_URL` con esa URL. No se versiona: contiene la firma del flujo.
+
+Los flujos de Teams no muestran botones en la tarjeta, por eso el enlace también va como texto.
 
 ## Base de datos gratuita (TiDB Cloud Starter)
 

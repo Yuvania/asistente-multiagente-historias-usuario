@@ -5,10 +5,12 @@ import { EVENTO_SINCRONIZADO, getStoredStories } from '../../utils/storage';
 import { PlusCircle, CheckCircle2, Clock, HelpCircle } from 'lucide-react';
 import { TarjetaComponent } from '../Comun/TarjetaComponent';
 import { UltimasHistoriasComponent } from './UltimasHistoriasComponent';
+import { usePendientes } from '../../hooks/usePendientes';
 
 export const TableroComponent = () => {
   const navigate = useNavigate();
   const [stories, setStories] = useState([]);
+  const { por_decidir: porDecidir } = usePendientes();
 
   useEffect(() => {
     const refrescar = () => setStories(getStoredStories());
@@ -27,6 +29,17 @@ export const TableroComponent = () => {
         title="Panel de Historias de Usuario"
         description="Seguimiento de las historias del equipo, de la minuta a la aprobación."
       />
+
+      {porDecidir.length > 0 && (
+        <section className="tablero-pendiente" aria-label="Espera su decisión">
+          <span className="pendientes__punto" aria-hidden="true" />
+          <p>
+            <strong>{porDecidir.length === 1 ? '1 historia espera su decisión' : `${porDecidir.length} historias esperan su decisión`}</strong>
+            {porDecidir.length === 1 ? ` · ${porDecidir[0].titulo}` : ''}
+          </p>
+          <button type="button" className="btn btn--secondary btn--sm" onClick={() => navigate('/pendientes')}>Ver pendientes</button>
+        </section>
+      )}
 
       {/* Bienvenida sobria: superficie, borde fino y una sola acción principal (marca Ciruela corporativa). */}
       <section className="tablero-bienvenida" aria-labelledby="tablero-bienvenida-titulo">

@@ -86,7 +86,7 @@ describe('página de Ayuda', () => {
 
     await user.click(screen.getByRole('tab', { name: /Por definir/ }));
     expect(screen.getByRole('heading', { name: 'Bitácora de seguridad' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Aviso por correo al Product Owner' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Avisos fuera de la aplicación' })).toBeInTheDocument();
     expect(screen.queryByText(/Falta construir el Agente Redactor-Revisor/)).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Usuarios e inicio de sesión' })).not.toBeInTheDocument();
 
