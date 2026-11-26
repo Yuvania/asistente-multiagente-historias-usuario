@@ -210,22 +210,36 @@ export function construirPdf(historia) {
     y += 3;
   });
 
-  // Como en la plantilla: al final, en página aparte y solo con el texto de cada nota.
+  // Impacto en otros módulos (lo que encontró el Asesor Técnico), después de los criterios.
+  if (contenido.impacto.length > 0) {
+    salto(25);
+    autoTable(doc, {
+      ...estiloTabla,
+      startY: y + 2,
+      head: [[barra('Impacto en otros módulos', 2, true)]],
+      body: contenido.impacto.map((item) => [
+        rotulo(item.area),
+        `Hoy: ${item.hoy}\nPara que el cambio funcione: ${item.debe}`,
+      ]),
+      columnStyles: { 0: { cellWidth: 50 } },
+    });
+  }
+
+  // Como en la plantilla: al final, en página aparte; una fila por entrada de la bitácora.
   if (contenido.observaciones.length > 0) {
     doc.addPage();
-    y = MARGEN_SUPERIOR;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11);
     doc.setTextColor(30);
-    doc.text('Observaciones adicionales', MARGEN, y);
-    y += 8;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    contenido.observaciones.forEach((texto) => {
-      const envuelto = doc.splitTextToSize(texto, ANCHO_TEXTO);
-      salto(envuelto.length * INTERLINEA + 4);
-      doc.text(envuelto, MARGEN, y);
-      y += envuelto.length * INTERLINEA + 4;
+    doc.text('Observaciones adicionales', MARGEN, MARGEN_SUPERIOR);
+    autoTable(doc, {
+      ...estiloTabla,
+      startY: MARGEN_SUPERIOR + 4,
+      head: [['Fecha', 'Tipo', 'Origen', 'Comentario', 'Estado'].map((content) => (
+        { content, styles: { fillColor: DURAZNO, textColor: 30, fontStyle: 'bold' } }
+      ))],
+      body: contenido.observaciones.map((fila) => [fila.fecha, fila.tipo, fila.origen, fila.comentario, fila.estado]),
+      columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 28 }, 2: { cellWidth: 30 }, 4: { cellWidth: 20 } },
     });
   }
 

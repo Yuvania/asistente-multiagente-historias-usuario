@@ -87,7 +87,9 @@ const poResults = {
     supuesto_validar_po: ['Se supone: el plazo se cuenta en días naturales'],
   },
   story: draftStory,
-  review_observations: ['Criterio verificable'],
+  review_observations: ['Ronda anterior ya atendida', 'Criterio verificable'],
+  ultima_revision: ['Criterio verificable'],
+  notas_hu: [{ tipo: 'dependencia', texto: 'Servicio al Cliente avisará el nuevo plazo.' }],
   technical_assessment: { ...poInterrupt.payload.technical_assessment, impacto_negocio: impactoNegocio, decision_pendiente: [decisionImpacto] },
   impact_decisions: [{ question_id: 'decision-1', pregunta: decisionImpacto, respuesta: 'Sí, el mismo plazo.' }],
 };
@@ -240,6 +242,10 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
 
     expect(await screen.findByLabelText(/^Quiero/i)).toHaveValue('consultar la vigencia');
     expect(screen.getByText(/Criterio verificable/)).toBeInTheDocument();
+    // Solo la última revisión; lo que quedará en la HU se muestra aparte.
+    expect(screen.queryByText(/Ronda anterior ya atendida/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Quedará registrado en la HU/)).toBeInTheDocument();
+    expect(screen.getByText(/Servicio al Cliente avisará el nuevo plazo\./)).toBeInTheDocument();
     expect(screen.getByText(/Supuestos a validar por el Product Owner/i)).toBeInTheDocument();
     expect(screen.getByText(/el plazo se cuenta en días naturales/i)).toBeInTheDocument();
     expect(screen.getByText(/Revisada por el Redactor-Revisor/i)).toBeInTheDocument();
@@ -266,6 +272,11 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(repositorioApi.saveStory).not.toHaveBeenCalled();
     await waitFor(() => expect(JSON.parse(localStorage.getItem('historias_usuario_prototipo'))[0]).toMatchObject({ id: WORKFLOW_ID, status: 'aprobada' }));
+    const guardada = JSON.parse(localStorage.getItem('historias_usuario_prototipo'))[0];
+    expect(guardada.impactoNegocio).toEqual(impactoNegocio);
+    expect(guardada.bitacora.map((nota) => nota.tipo)).toEqual(['decision', 'supuesto', 'dependencia']);
+    expect(guardada.bitacora[2]).toMatchObject({ autor: 'Redactor-Revisor', estado: 'abierto' });
+    expect(JSON.stringify(guardada.bitacora)).not.toContain('Criterio verificable');
   });
 
   it('returns to the Redactor with a reason and does not send duplicate resumes', async () => {

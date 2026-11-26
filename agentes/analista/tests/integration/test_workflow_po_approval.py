@@ -108,6 +108,11 @@ async def test_explicit_approval_persists_structured_story_once_and_reuses_threa
         "criterios": [{"dado": "una cuenta activa", "cuando": "consulto el saldo",
                        "entonces": "veo el disponible"}],
         "aclaraciones": [],
+        "seguimiento": {
+            "beneficios": [], "impacto_negocio": [], "decisiones_impacto": [], "supuestos_po": [],
+            "notas": [], "devoluciones_po": [], "nota_aprobacion": None,
+            "aprobada_el": saved["seguimiento"]["aprobada_el"],
+        },
     }
     assert runtime._threads[paused.workflow_id] == thread_id
     with pytest.raises(WorkflowNotInterruptedError):

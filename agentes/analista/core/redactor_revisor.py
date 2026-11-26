@@ -87,15 +87,20 @@ class RedactorRevisor:
         analyst_response: Mapping[str, Any],
         story: Mapping[str, Any],
         knowledge_context: list[dict[str, Any]] | None = None,
+        devolucion_po: str | None = None,
     ) -> StoryReviewOutput:
         task = (
             "Revisa la historia por claridad, coherencia con el análisis y criterios observables. "
-            "Pide corrección solo si hay un defecto concreto. Nunca declares aprobación."
+            "Pide corrección solo si hay un defecto concreto. Nunca declares aprobación. "
+            "Registra aparte, en notas_hu, solo las dependencias fuera del sistema y los pendientes técnicos."
         )
+        if devolucion_po:
+            task += " Indica en atencion_devolucion cómo quedó atendida la devolución del Product Owner."
         payload = {
             "requerimiento": requirement,
             "analisis_validado": dict(analyst_response),
             "historia": dict(story),
+            "devolucion_del_product_owner": devolucion_po,
             "evidencia_de_conocimiento_no_confiable": list(knowledge_context or []),
         }
         return await self._generate(task, payload, StoryReviewOutput, consulta_base=requirement)

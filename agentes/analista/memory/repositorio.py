@@ -18,7 +18,7 @@ from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import (
-    Column, ForeignKey, Index, Integer, MetaData, String, Table, Text, delete, insert, select, update,
+    Column, ForeignKey, Index, Integer, MetaData, String, Table, Text, delete, insert, select, text, update,
 )
 from sqlalchemy.dialects import mysql
 from sqlalchemy import inspect
@@ -76,6 +76,8 @@ hu_aprobada = Table(
     Column("historia", _Largo, nullable=False),
     Column("criterios", _Largo, nullable=False),
     Column("aclaraciones", _Largo, nullable=False),
+    # Impacto, decisiones, dependencias, pendientes técnicos, devoluciones del PO y beneficios (JSON).
+    Column("seguimiento", _Largo),
     Column("aprobada_en", String(40), nullable=False),
 )
 solicitud_cambio = Table(
@@ -181,6 +183,27 @@ def _verificar_esquema(motor) -> None:
             )
 
 
+# Columnas agregadas después de crear la tabla: create_all no altera tablas existentes.
+_COLUMNA_NUEVA = {"hu_aprobada": ("seguimiento",)}
+
+
+def _agregar_columnas_nuevas(motor) -> None:
+    inspector = inspect(motor)
+    for nombre_tabla, lista_columna in _COLUMNA_NUEVA.items():
+        if not inspector.has_table(nombre_tabla):
+            continue
+        existentes = {columna["name"] for columna in inspector.get_columns(nombre_tabla)}
+        tabla = _metadata.tables[nombre_tabla]
+        for nombre_columna in lista_columna:
+            if nombre_columna in existentes:
+                continue
+            tipo = tabla.c[nombre_columna].type.compile(dialect=motor.dialect)
+            with motor.begin() as conexion:
+                conexion.execute(text(f"ALTER TABLE {nombre_tabla} ADD COLUMN {nombre_columna} {tipo}"))
+            logger.info("columna_agregada", extra={"event": "columna_agregada", "tabla": nombre_tabla,
+                                                    "columna": nombre_columna})
+
+
 def _siguiente_codigo_leccion(conexion) -> str:
     """Código legible consecutivo de la lección (LEC-001, LEC-002, ...)."""
     mayor = 0
@@ -199,6 +222,7 @@ class RepositorioHU:
         _verificar_esquema(self.motor)
         if crear_esquema:
             _metadata.create_all(self.motor)
+            _agregar_columnas_nuevas(self.motor)
 
     # --- HU aprobadas -------------------------------------------------
         # Se avisa al cambiar HU o lecciones aprobadas (la carga automática de Pinecone se suscribe aquí).
@@ -252,6 +276,7 @@ class RepositorioHU:
             "historia": json.dumps(hu["historia"], ensure_ascii=False),
             "criterios": json.dumps(hu["criterios"], ensure_ascii=False),
             "aclaraciones": json.dumps(hu["aclaraciones"], ensure_ascii=False),
+            "seguimiento": json.dumps(hu.get("seguimiento") or {}, ensure_ascii=False),
             "aprobada_en": aprobada_en,
         }
         with self.motor.begin() as conexion:

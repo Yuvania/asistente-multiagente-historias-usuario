@@ -21,7 +21,7 @@ import { descargarPdf } from '../../utils/exportarPdf';
 import { FIRMANTE_VACIO, TIPOS_SOLICITUD, limpiarLista, normalizarCodigoHu, numeroSugerido } from '../../utils/plantillaHu';
 import { criteriosGenericos, criteriosParaEditar, limpiarCriterios, validarCriterios } from '../../utils/criterios';
 import { aplicarRevision, etiquetaRevision, numeroRevision } from '../../utils/revisiones';
-import { bitacoraConNota } from '../../utils/bitacora';
+import { bitacoraConNota, bitacoraDelFlujo } from '../../utils/bitacora';
 import { SIN_IDENTIFICAR, leerNombreUsuario } from '../../utils/usuarioActual';
 import { OPCION_AREA_SOLICITANTE, OPCION_SISTEMA, armarOpcion } from '../../data/catalogos';
 import { EditorCriteriosComponent } from './EditorCriteriosComponent';
@@ -226,11 +226,20 @@ const CrearHistoriaUsuarioContenido = () => {
     if (story) {
       setUserStory({ asA: story.como, iWant: story.quiero, soThat: story.para });
       setAcceptanceCriteria((story.criterios ?? []).map((criterion) => ({
-        given: criterion.dado,
+        // La etiqueta ya dice «Dado que»: no se repite el «que» del texto.
+        given: String(criterion.dado ?? '').replace(/^\s*que\s+/i, ''),
         when: criterion.cuando,
         then: criterion.entonces,
       })));
-      setObservations((snapshot?.results?.review_observations ?? story.observations ?? []).join('\n'));
+    }
+    // Los beneficios que propuso el Analista se cargan si la persona aún no escribió los suyos.
+    const beneficioFlujo = limpiarLista(snapshot?.results?.analyst?.beneficios ?? []);
+    if (story && beneficioFlujo.length > 0) {
+      setPlantilla((previo) => {
+        if (previo.benefits.some((beneficio) => beneficio.trim())) return previo;
+        setBeneficiosPropuestos(true);
+        return { ...previo, benefits: beneficioFlujo };
+      });
     }
     const paso = pasoDelFlujo(snapshot);
     if (paso) setActiveStep(paso);
@@ -331,9 +340,15 @@ const CrearHistoriaUsuarioContenido = () => {
     }
   };
 
-  const resumeWorkflowInterrupt = async (body) => {
-    if (!workflowResponse?.workflow_id || !body?.interrupt_id) return;
+  const resumeWorkflowInterrupt = async (pedido) => {
+    if (!workflowResponse?.workflow_id || !pedido?.interrupt_id) return;
     const workflowId = workflowResponse.workflow_id;
+    const resultadoPrevio = workflowResponse.results;
+    // La nota del PO al aprobar viaja con la aprobación y queda en la bitácora de la HU.
+    const notaAprobacion = observations.trim().slice(0, 1000);
+    const body = pedido.kind === 'po_approval' && pedido.response?.decision === 'aprobar' && notaAprobacion
+      ? { ...pedido, response: { ...pedido.response, reason: notaAprobacion } }
+      : pedido;
     const snapshot = await runWorkflowRequest((signal) => resumeWorkflow(workflowId, body, { signal }));
     if (!snapshot) {
       await actualizarTrasError(workflowId);
@@ -345,8 +360,17 @@ const CrearHistoriaUsuarioContenido = () => {
       const id = persistence.story_id;
       const previa = getStoryById(id);
       const hoy = new Date().toISOString().slice(0, 10);
+      const persona = leerNombreUsuario() || SIN_IDENTIFICAR;
+      const resultado = { ...resultadoPrevio, ...snapshot.results };
       const approved = {
         ...baseStoryData(),
+        // Bitácora: decisiones, supuestos, dependencias, pendientes técnicos, devoluciones y la nota del PO.
+        // Las observaciones de control de calidad del Redactor-Revisor no se guardan en la HU.
+        bitacora: [
+          ...bitacoraConNota(historiaOrigen ?? (reanalizarId ? getStoryById(reanalizarId) : null), ''),
+          ...bitacoraDelFlujo(resultado, { fecha: hoy, persona, notaAprobacion }),
+        ],
+        impactoNegocio: resultado.technical_assessment?.impacto_negocio ?? [],
         id,
         status: 'aprobada',
         approvedAt: persistence.approved_at ?? new Date().toISOString(),
@@ -651,8 +675,9 @@ const CrearHistoriaUsuarioContenido = () => {
     || userStory.iWant !== workflowStory.quiero
     || userStory.soThat !== workflowStory.para
     || JSON.stringify(acceptanceCriteria.map(({ given, when, then }) => ({ dado: given, cuando: when, entonces: then })))
-      !== JSON.stringify(workflowStory.criterios)
-    || observations !== (workflowResponse.results?.review_observations ?? workflowStory.observations ?? []).join('\n')
+      !== JSON.stringify(workflowStory.criterios.map((criterio) => ({
+        ...criterio, dado: String(criterio.dado ?? '').replace(/^\s*que\s+/i, ''),
+      })))
   ));
 
   const baseStoryData = () => ({
@@ -1261,10 +1286,13 @@ const CrearHistoriaUsuarioContenido = () => {
                 </div>
 
                 <AreaTextoComponent
-                  label="Observaciones adicionales"
+                  label={workflowResponse ? 'Nota para la bitácora (opcional)' : 'Observaciones adicionales'}
                   id="observations"
                   rows={3}
-                  placeholder="Ingrese notas o consideraciones técnicas para la fase de implementación..."
+                  placeholder={workflowResponse
+                    ? 'Se guarda en la HU como una nota al aprobar. Las decisiones, dependencias y pendientes técnicos se registran solos.'
+                    : 'Ingrese notas o consideraciones técnicas para la fase de implementación...'}
+                  maxLength={workflowResponse ? 1000 : undefined}
                   value={observations}
                   onChange={(e) => setObservations(e.target.value)}
                 />

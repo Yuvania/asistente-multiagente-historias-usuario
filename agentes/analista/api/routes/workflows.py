@@ -28,11 +28,13 @@ from agentes.analista.core.workflow_models import (
     ChangeDecisionSubmission,
     ChangePersistenceResult,
     ChangeRecommendation,
+    DevolucionPO,
     DraftStory,
     FlowMode,
     ImpactDecisionAnswer,
     ImpactDecisionSubmission,
     ImpactoNegocio,
+    NotaHu,
     PersistenceResult,
     POApprovalSubmission,
     TechnicalAssessment,
@@ -89,6 +91,9 @@ class WorkflowResults(BaseModel):
     analyst: AgentTurnResponse | None = None
     story: DraftStory | None = None
     review_observations: list[str] = Field(default_factory=list)
+    ultima_revision: list[str] = Field(default_factory=list)
+    notas_hu: list[NotaHu] = Field(default_factory=list)
+    devoluciones_po: list[DevolucionPO] = Field(default_factory=list)
     technical_assessment: TechnicalAssessment | None = None
     impact_decisions: list[ImpactDecisionAnswer] = Field(default_factory=list)
     po_decision: POApprovalSubmission | None = None
@@ -109,6 +114,9 @@ class WorkflowInterruptPayload(BaseModel):
     max_total_chars: int | None = None
     story: DraftStory | None = None
     review_observations: list[str] | None = None
+    ultima_revision: list[str] | None = None
+    notas_hu: list[NotaHu] | None = None
+    devoluciones_po: list[DevolucionPO] | None = None
     impacto_negocio: list[ImpactoNegocio] | None = None
     decisiones_impacto: list[ImpactDecisionAnswer] | None = None
     supuesto_validar_po: list[str] | None = None
@@ -255,6 +263,9 @@ def _serialize(runtime: WorkflowRuntime, snapshot: WorkflowSnapshot) -> Workflow
             analyst=snapshot.analyst_response,
             story=snapshot.draft_story,
             review_observations=snapshot.review_observations,
+            ultima_revision=snapshot.ultima_revision,
+            notas_hu=snapshot.notas_hu,
+            devoluciones_po=snapshot.devoluciones_po,
             technical_assessment=snapshot.technical_assessment,
             impact_decisions=snapshot.impact_decisions,
             po_decision=snapshot.po_decision,

@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { AlertaComponent } from '../Comun/AlertaComponent';
 import { BotonComponent } from '../Comun/BotonComponent';
-import { EVENTO_SINCRONIZADO, getStoryById } from '../../utils/storage';
+import { EVENTO_SINCRONIZADO, getStoryById, updateStory } from '../../utils/storage';
+import { bitacoraConEstado } from '../../utils/bitacora';
 import { construirReanalisis } from '../../utils/plantillaHu';
 import { EncabezadoHistoriaComponent } from './detalle/EncabezadoHistoriaComponent';
 import { AvisosHistoriaComponent } from './detalle/AvisosHistoriaComponent';
@@ -12,6 +13,7 @@ import { SeccionHistoriaComponent } from './detalle/SeccionHistoriaComponent';
 import { SeccionCriteriosComponent } from './detalle/SeccionCriteriosComponent';
 import { SeccionPreguntasPendientesComponent } from './detalle/SeccionPreguntasPendientesComponent';
 import { SeccionObservacionesComponent } from './detalle/SeccionObservacionesComponent';
+import { SeccionImpactoComponent } from './detalle/SeccionImpactoComponent';
 import { SeccionRevisionesComponent } from './detalle/SeccionRevisionesComponent';
 import { SeccionAnalisisComponent } from './detalle/SeccionAnalisisComponent';
 import { SeccionPlantillaComponent } from './detalle/SeccionPlantillaComponent';
@@ -56,7 +58,16 @@ export const DetalleHistoriaUsuarioComponent = () => {
         onResponder={() => navigate(`/historias/${story.id}/editar`, { state: { abrirPreguntas: true } })}
       />
     ),
-    observaciones: <SeccionObservacionesComponent story={story} />,
+    impacto: <SeccionImpactoComponent story={story} />,
+    observaciones: (
+      <SeccionObservacionesComponent
+        story={story}
+        onCambiarEstado={(indice, estado) => {
+          const actualizada = updateStory(story.id, { bitacora: bitacoraConEstado(story, indice, estado) });
+          if (actualizada) setStory(actualizada);
+        }}
+      />
+    ),
     revisiones: <SeccionRevisionesComponent story={story} />,
     analisis: story.analysis && <SeccionAnalisisComponent story={story} />,
     plantilla: <SeccionPlantillaComponent story={story} />,

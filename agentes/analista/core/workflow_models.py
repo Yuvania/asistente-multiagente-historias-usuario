@@ -135,13 +135,43 @@ class StoryDraftContent(BaseModel):
     criterios: list[AcceptanceCriterion] = Field(min_length=1, max_length=30)
 
 
+class NotaHu(BaseModel):
+    """Algo que debe quedar registrado en la HU para quien la implementa o la refina.
+
+    No es control de calidad de la redacción: es una acción fuera del sistema (``dependencia``) o algo que
+    el análisis técnico debe confirmar antes de estimar (``pendiente_tecnico``).
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    tipo: Literal["dependencia", "pendiente_tecnico"]
+    texto: str = Field(min_length=1, max_length=500)
+
+
+class DevolucionPO(BaseModel):
+    """Devolución del Product Owner: el motivo y, cuando el Redactor la revisa, cómo se atendió."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    fecha: str = Field(min_length=10, max_length=40)
+    destino: Literal["analista", "redactor", "asesor"]
+    motivo: str = Field(min_length=1, max_length=1000)
+    atencion: str | None = Field(default=None, min_length=1, max_length=1000)
+
+
 class StoryReviewOutput(BaseModel):
-    """Structured quality feedback; it deliberately has no approval field."""
+    """Structured quality feedback; it deliberately has no approval field.
+
+    ``observations`` es el control de calidad de esta pasada (se muestra al revisar, no se guarda en la HU).
+    ``notas_hu`` y ``atencion_devolucion`` sí pasan a la bitácora de la HU aprobada.
+    """
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     requires_correction: bool
     observations: list[str] = Field(default_factory=list, max_length=20)
+    notas_hu: list[NotaHu] = Field(default_factory=list, max_length=10)
+    atencion_devolucion: str | None = Field(default=None, min_length=1, max_length=1000)
 
     @field_validator("observations")
     @classmethod
@@ -465,6 +495,9 @@ class WorkflowState(TypedDict, total=False):
     technical_assessment: dict
     impact_decisions: list[dict]
     review_observations: list[str]
+    ultima_revision: list[str]
+    notas_hu: list[dict]
+    devoluciones_po: list[dict]
     po_feedback: str
     po_decision: dict
     po_route: str
@@ -493,6 +526,9 @@ class WorkflowSnapshot(BaseModel):
     technical_assessment: TechnicalAssessment | None = None
     impact_decisions: list[ImpactDecisionAnswer] = Field(default_factory=list)
     review_observations: list[str] = Field(default_factory=list)
+    ultima_revision: list[str] = Field(default_factory=list)
+    notas_hu: list[NotaHu] = Field(default_factory=list)
+    devoluciones_po: list[DevolucionPO] = Field(default_factory=list)
     po_decision: POApprovalSubmission | None = None
     persistence_result: PersistenceResult | None = None
     change_recommendation: ChangeRecommendation | None = None

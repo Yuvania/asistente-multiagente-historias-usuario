@@ -1,4 +1,5 @@
 import React from 'react';
+import { TIPO_NOTA } from '../../utils/bitacora';
 
 const ROTULO_REVISION = {
   draft: 'Borrador',
@@ -34,7 +35,10 @@ export const WorkflowResultsPanel = ({ results, showStory = false }) => {
   const listaImpacto = results.technical_assessment?.impacto_negocio ?? [];
   const listaDecision = results.impact_decisions ?? [];
   const listaSupuesto = results.analyst?.supuesto_validar_po ?? [];
-  const observations = results.review_observations ?? story?.observations ?? [];
+  // Solo la última revisión: las rondas anteriores ya se atendieron y no se acumulan en pantalla.
+  const observations = results.ultima_revision ?? [];
+  const listaNota = results.notas_hu ?? [];
+  const listaDevolucion = results.devoluciones_po ?? [];
 
   return (
     <section className="workflow-results" aria-label="Resultados del workflow">
@@ -46,6 +50,26 @@ export const WorkflowResultsPanel = ({ results, showStory = false }) => {
           {observations.length
             ? <ul>{observations.map((observation, index) => <li key={`${observation}-${index}`}>{observation}</li>)}</ul>
             : <p>Sin observaciones pendientes.</p>}
+        </div>
+      )}
+
+      {showStory && story && (listaNota.length > 0 || listaDevolucion.length > 0) && (
+        <div className="workflow-results__card">
+          <h3>Quedará registrado en la HU</h3>
+          <p className="workflow-results__notice">
+            Al aprobar, esto pasa a la bitácora de la HU junto con las decisiones tomadas en el paso 4.
+          </p>
+          <ul>
+            {listaNota.map((nota, index) => (
+              <li key={`nota-${index}`}><strong>{TIPO_NOTA[nota.tipo] ?? 'Nota'}:</strong> {nota.texto}</li>
+            ))}
+            {listaDevolucion.map((devolucion, index) => (
+              <li key={`devolucion-${index}`}>
+                <strong>{TIPO_NOTA.devolucion}:</strong> {devolucion.motivo}
+                {devolucion.atencion && <div>Cómo se atendió: {devolucion.atencion}</div>}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

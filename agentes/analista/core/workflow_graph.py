@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from collections.abc import Awaitable, Callable, Mapping
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -29,8 +30,10 @@ from agentes.analista.core.workflow_models import (
     ChangeDecisionSubmission,
     ChangePersistenceResult,
     ChangeRecommendation,
+    DevolucionPO,
     DraftStory,
     FlowMode,
+    NotaHu,
     PersistenceResult,
     POApprovalDecision,
     POApprovalSubmission,
@@ -58,6 +61,40 @@ class WorkflowNotFoundError(LookupError):
     """The workflow has no checkpoint in this process."""
 
 
+def _hoy() -> str:
+    return datetime.now(UTC).date().isoformat()
+
+
+def _sin_que_inicial(texto: str) -> str:
+    return re.sub(r"^\s*que\s+", "", texto, flags=re.IGNORECASE).strip() or texto
+
+
+def _devolucion_en_curso(state: Mapping[str, Any]) -> str | None:
+    """El motivo de la última devolución del PO, para que el Redactor diga cómo la atendió."""
+    devoluciones = state.get("devoluciones_po") or []
+    return devoluciones[-1].get("motivo") if devoluciones else None
+
+
+def _seguimiento_hu(state: Mapping[str, Any], decision: POApprovalSubmission) -> dict[str, Any]:
+    """Lo que queda en la HU aprobada además de la historia: lo útil para el grooming y la implementación.
+
+    Las observaciones de control de calidad del Redactor no se guardan: sirvieron para revisar la historia.
+    """
+    analisis = state.get("analyst_response") or {}
+    return {
+        "beneficios": list(analisis.get("beneficios") or []),
+        "impacto_negocio": list((state.get("technical_assessment") or {}).get("impacto_negocio") or []),
+        "decisiones_impacto": [
+            {"pregunta": item["pregunta"], "respuesta": item["respuesta"]} for item in state.get("impact_decisions", [])
+        ],
+        "supuestos_po": list(analisis.get("supuesto_validar_po") or []),
+        "notas": list(state.get("notas_hu") or []),
+        "devoluciones_po": list(state.get("devoluciones_po") or []),
+        "nota_aprobacion": decision.reason,
+        "aprobada_el": _hoy(),
+    }
+
+
 class WorkflowNotInterruptedError(RuntimeError):
     """A resume was attempted while the workflow had no human interrupt."""
 
@@ -70,6 +107,7 @@ def _public_snapshot(state: Mapping[str, Any]) -> WorkflowSnapshot:
     allowed = {
         "workflow_id", "mode", "status", "current_stage", "active_agent",
         "pending_questions", "analyst_response", "draft_story", "review_observations",
+        "ultima_revision", "notas_hu", "devoluciones_po",
         "technical_assessment", "impact_decisions", "completion_reason",
         "po_decision", "persistence_result",
         "change_recommendation", "change_decision", "change_persistence_result",
@@ -183,6 +221,7 @@ def build_workflow_graph(
             requirement=state["requirement_input"] or "",
             analyst_response=analysis_with_impact(state),
             story=state["draft_story"],
+            devolucion_po=_devolucion_en_curso(state),
         )
 
     async def call_advisor(state: WorkflowState) -> TechnicalAssessment | Mapping[str, Any]:
@@ -442,7 +481,11 @@ def build_workflow_graph(
         content = StoryDraftContent.model_validate(await call_draft(state))
         # La plantilla ya muestra «Como»: se quita si el modelo lo repitió al inicio del rol.
         rol = re.sub(r"^\s*como\s+", "", content.como, flags=re.IGNORECASE).strip() or content.como
-        content = content.model_copy(update={"como": rol})
+        # Igual con «Dado que»: el criterio no debe empezar con «que» (se leería «Dado que que…»).
+        criterios = [
+            criterio.model_copy(update={"dado": _sin_que_inicial(criterio.dado)}) for criterio in content.criterios
+        ]
+        content = content.model_copy(update={"como": rol, "criterios": criterios})
         previous = DraftStory.model_validate(state["draft_story"]) if state.get("draft_story") else None
         round_number = min(previous.review_round + 1, 2) if previous else 0
         story = DraftStory(
@@ -471,12 +514,23 @@ def build_workflow_graph(
         )
         revised_story = story.model_copy(update={"review_status": status, "observations": observations})
         should_correct = result.requires_correction and not at_limit
+        # Cada revisión reemplaza las notas para la HU: la última versión de la historia es la que vale.
+        notas: list[dict[str, Any]] = []
+        for nota in result.notas_hu:
+            if all(nota.texto.casefold() != previa["texto"].casefold() for previa in notas):
+                notas.append(nota.model_dump(mode="json"))
+        devoluciones = [dict(item) for item in state.get("devoluciones_po", [])]
+        if result.atencion_devolucion and devoluciones:
+            devoluciones[-1]["atencion"] = result.atencion_devolucion
         stage = WorkflowStage.WRITER if should_correct else WorkflowStage.PO_APPROVAL
         workflow_status = WorkflowStatus.RUNNING if should_correct else WorkflowStatus.INTERRUPTED
         _trace_stage(observability, state, stage=WorkflowStage.REVIEW, agent=AgentId.WRITER_REVIEWER)
         return {
             "draft_story": revised_story.model_dump(mode="json"),
             "review_observations": observations,
+            "ultima_revision": list(result.observations),
+            "notas_hu": notas,
+            "devoluciones_po": devoluciones,
             "review_requires_correction": should_correct,
             "completion_reason": "La revisión agotó dos rondas; requiere revisión del PO." if needs_attention else None,
             "current_stage": stage,
@@ -532,6 +586,9 @@ def build_workflow_graph(
             "kind": "product_owner_approval",
             "story": state.get("draft_story"),
             "review_observations": state.get("review_observations", []),
+            "ultima_revision": state.get("ultima_revision", []),
+            "notas_hu": state.get("notas_hu", []),
+            "devoluciones_po": state.get("devoluciones_po", []),
             "impacto_negocio": (state.get("technical_assessment") or {}).get("impacto_negocio", []),
             "decisiones_impacto": state.get("impact_decisions", []),
             "supuesto_validar_po": (state.get("analyst_response") or {}).get("supuesto_validar_po", []),
@@ -570,6 +627,13 @@ def build_workflow_graph(
         else:
             reason = decision.reason or ""
             updates["po_feedback"] = reason
+            destino = {
+                POApprovalDecision.RETURN_TO_ANALYST: "analista",
+                POApprovalDecision.RETURN_TO_WRITER: "redactor",
+                POApprovalDecision.RETURN_TO_ADVISOR: "asesor",
+            }[decision.decision]
+            devolucion = DevolucionPO(fecha=_hoy(), destino=destino, motivo=reason)
+            updates["devoluciones_po"] = [*state.get("devoluciones_po", []), devolucion.model_dump(mode="json")][-10:]
             if decision.decision == POApprovalDecision.RETURN_TO_ANALYST:
                 updates.update({"current_stage": WorkflowStage.ANALYST, "active_agent": AgentId.ANALYST})
             elif decision.decision == POApprovalDecision.RETURN_TO_WRITER:
@@ -603,6 +667,7 @@ def build_workflow_graph(
                 {"pregunta": item.get("question", item["question_id"]), "respuesta": item["answer"]}
                 for item in state.get("business_clarifications", state.get("latest_business_answers", []))
             ],
+            "seguimiento": _seguimiento_hu(state, decision),
         }
         nonlocal repository_instance
         change_persistence_result = state.get("change_persistence_result")
