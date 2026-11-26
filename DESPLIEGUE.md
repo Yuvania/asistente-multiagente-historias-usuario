@@ -45,6 +45,10 @@ Se cambian en el panel de Render (**Environment**); al guardar, Render reinicia 
 | `LANGFUSE_*` | No | Observabilidad. |
 | `VITE_ANIO`, `VITE_VERSION` | No | Año y versión del pie de página: «HISTORIAS DE USUARIO ® Derechos Reservados *año* - V.*versión*». Son de **compilación**: al cambiarlos Render vuelve a construir la imagen. Por defecto: año actual y `1.0.0`. |
 | `VITE_PREFIJO_HU` | No | Prefijo del número de la HU. Es de **compilación**: si lo cambias, hay que volver a desplegar. |
+| `PINECONE_API_KEY` | No | Clave de Pinecone para el RAG. Sin ella (o si Pinecone falla) las herramientas usan la copia local y lo indican con `status=degraded`. Los demás `PINECONE_*` vienen en `render.yaml`. |
+| `ASESOR_REPOSITORIO_URL` | No | Repositorio de código que revisa el Asesor Técnico (https, público, **sin credenciales en la URL**). Vacío: usa `ejemplos/polizas_demo`. |
+| `ASESOR_REPOSITORIO_RAMA` | No | Rama de ese repositorio (por defecto `main`). |
+| `ANALISTA_MCP_TRANSPORTE` | No | `stdio` (predeterminado: cada servidor MCP en su propio proceso) o `memoria` (mismo protocolo MCP, mismo proceso; usa menos RAM). |
 
 ## Base de datos gratuita (TiDB Cloud Starter)
 
@@ -86,9 +90,11 @@ Para usarlo en serio: en `render.yaml` cambie `plan: free` por `plan: starter`, 
 
 ## Ingesta, salud y memoria
 
-- No hay ingesta Pinecone conectada en esta revisión. FastAPI no espera una ingesta al iniciar porque no existe una tarea de ingesta integrada. `INGESTA_AL_ARRANCAR` no está cableada y debe permanecer sin configurar; `PINECONE_API_KEY` tampoco forma parte del Blueprint actual.
+- La ingesta en Pinecone es una operación administrativa explícita (`python -m agentes.conocimiento.ingesta --fuente todas`); FastAPI no la ejecuta al iniciar. Si cambias el repositorio del Asesor, vuelve a ingerir `--fuente codigo` para que la búsqueda por significado use el código nuevo (la copia local lo usa de inmediato).
+- Al arrancar, el contenedor descarga el repositorio del Asesor (`python -m agentes.conocimiento.repositorio_codigo`); si falla, el servicio sigue con el ejemplo incluido.
 - `/healthz` responde con una comprobación local mínima para el health check de Render. `/api/analista/health` hace diagnósticos adicionales contra OpenCode y el registro MCP del Analista; puede tardar más y requiere autenticación.
 - El entrypoint inicia OpenCode y Uvicorn con `--workers 1`, requisito para conservar las conversaciones en memoria. Mantén una sola instancia.
+- Cada consulta de un agente abre su servidor MCP como proceso aparte (`stdio`) y lo cierra al terminar; nunca hay dos abiertos a la vez en un mismo flujo (el Asesor se consulta después de cerrar el servidor del agente que pregunta). Si la memoria no alcanza, usa `ANALISTA_MCP_TRANSPORTE=memoria`.
 - El plan Free actual asigna 512 MB por instancia ([planes de cómputo de Render](https://render.com/docs/compute-plans)); OpenCode y FastAPI comparten esa memoria. Esta revisión local no puede consultar las métricas del servicio Render: monitoréalas en el panel de Render durante cualquier prueba. Si hay reinicios por memoria, detén la prueba y evalúa el plan existente antes de volver a intentarlo. No añadas workers ni servicios.
 
 Para las pruebas de PowerShell y los límites de validación actuales, consulta [la guía de arranque y pruebas](docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md).

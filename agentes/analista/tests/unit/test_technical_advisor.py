@@ -58,11 +58,96 @@ def test_code_tool_has_no_user_supplied_path_and_advisor_role_is_read_only():
         authorize_mcp_tool(AgentId.ANALYST, "consultar_codigo_demo", KnowledgeNamespace.CODE)
 
 
+class _FakeAdvisorOpenCode:
+    """OpenCode simulado: devuelve en orden los textos de la cola (planes y evaluación final)."""
+
+    queue: list[str] = []
+    prompts: list[str] = []
+
+    def __init__(self, *, prompt, agent_id):
+        assert agent_id == AgentId.TECHNICAL_ADVISOR
+        assert "Asesor Técnico" in prompt.text
+        self.settings = SimpleNamespace(turn_timeout_seconds=10)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_args):
+        return None
+
+    def set_deadline(self, _deadline):
+        pass
+
+    async def server_info(self):
+        return {"version": "2.0.27"}
+
+    async def verify_agent(self, agent):
+        assert agent == AgentId.TECHNICAL_ADVISOR
+        return {"id": agent.value}
+
+    async def select_model(self, _agent):
+        return {"providerID": "mock", "id": "mock-model"}
+
+    @asynccontextmanager
+    async def session(self, *, title, model):
+        assert title.startswith("Asesor Técnico")
+        yield {"id": "mock-session"}
+
+    async def submit_prompt(self, _session_id, prompt):
+        type(self).prompts.append(prompt)
+        return {"time": {"created": len(type(self).prompts)}}
+
+    async def wait_for_assistant(self, _session_id, *, deadline, after=None):
+        return {"text": type(self).queue.pop(0), "finish": "stop"}
+
+
+def _advisor_adapter(results, calls):
+    class Tool:
+        def __init__(self, name):
+            self.name = name
+            self.description = name
+            self.args = {"ruta": {}} if name == "leer_archivo_codigo" else {"consulta": {}, "limite": {}}
+
+        async def ainvoke(self, arguments):
+            calls.append((self.name, arguments))
+            return results[self.name]
+
+    class Adapter:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def list_tools(self):
+            return [Tool(name) for name in sorted(results)]
+
+    return Adapter()
+
+
 @pytest.mark.asyncio
-async def test_advisor_cites_only_sources_retrieved_in_this_call(monkeypatch):
-    from agentes.analista.core import technical_advisor
+async def test_advisor_plans_searches_repository_opens_a_file_and_cites_only_consulted_sources(monkeypatch):
+    from agentes.analista.core import ejecutor_mcp, technical_advisor
 
     calls = []
+    results = {
+        "consultar_codigo_demo": {"fuentes": [{
+            "source_id": "ejemplos/polizas_demo/servicios/primas.py",
+            "source_ref": "ejemplos/polizas_demo/servicios/primas.py",
+            "contenido": "def calcular_prima(): ...",
+            "contenido_no_confiable": True,
+        }], "total": 1, "origen": "simulado"},
+        "consultar_estandares": {"estandares": [{
+            "id": "STD-REF-001", "titulo": "Validaciones",
+            "regla": "Validar el dato y su mensaje.", "referencia": "Estándar ficticio v1",
+        }], "total": 1, "origen": "simulado", "contenido_no_confiable": True},
+        "leer_archivo_codigo": {"encontrado": True, "archivo": {
+            "source_id": "ejemplos/polizas_demo/mapa_dependencias.md",
+            "source_ref": "ejemplos/polizas_demo/mapa_dependencias.md",
+            "contenido": "primas afecta alta y renovación", "contenido_no_confiable": True,
+        }},
+        "buscar_hu_similares": {"historias": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True},
+    }
     output = {
         "affected_modules": [{
             "source_id": "ejemplos/polizas_demo/servicios/primas.py",
@@ -74,78 +159,27 @@ async def test_advisor_cites_only_sources_retrieved_in_this_call(monkeypatch):
             "source_ref": "agentes/analista/fuentes/estandares.json",
             "evidence": "El estándar consultado requiere validar los datos.",
         }],
-        "risks": [],
+        "risks": [{
+            "source_id": "ejemplos/polizas_demo/mapa_dependencias.md",
+            "source_ref": "ejemplos/polizas_demo/mapa_dependencias.md",
+            "evidence": "Un cambio de prima afecta alta y renovación.",
+        }],
         "critical_processes": [],
         "uncertainties": [],
     }
-
-    class Tool:
-        def __init__(self, name):
-            self.name = name
-
-        async def ainvoke(self, arguments):
-            calls.append((self.name, arguments))
-            if self.name == "consultar_codigo_demo":
-                return {"fuentes": [{
-                    "source_id": "ejemplos/polizas_demo/servicios/primas.py",
-                    "source_ref": "ejemplos/polizas_demo/servicios/primas.py",
-                    "contenido": "def calcular_prima(): ...",
-                    "contenido_no_confiable": True,
-                }], "total": 1, "origen": "simulado"}
-            return {"estandares": [{
-                "id": "STD-REF-001", "titulo": "Validaciones",
-                "regla": "Validar el dato y su mensaje.", "referencia": "Estándar ficticio v1",
-            }], "total": 1, "origen": "simulado", "contenido_no_confiable": True}
-
-    class Adapter:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def list_tools(self):
-            return [Tool("consultar_estandares"), Tool("consultar_codigo_demo")]
-
-    class FakeOpenCode:
-        def __init__(self, *, prompt, agent_id):
-            assert agent_id == AgentId.TECHNICAL_ADVISOR
-            assert "Asesor Técnico" in prompt.text
-            self.settings = SimpleNamespace(turn_timeout_seconds=10)
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        def set_deadline(self, _deadline):
-            pass
-
-        async def server_info(self):
-            return {"version": "2.0.27"}
-
-        async def verify_agent(self, agent):
-            assert agent == AgentId.TECHNICAL_ADVISOR
-            return {"id": agent.value}
-
-        async def select_model(self, _agent):
-            return {"providerID": "mock", "id": "mock-model"}
-
-        @asynccontextmanager
-        async def session(self, *, title, model):
-            assert title.startswith("Asesor Técnico")
-            yield {"id": "mock-session"}
-
-        async def submit_prompt(self, _session_id, prompt):
-            assert "primas.py" in prompt
-            return {"time": {"created": 1}}
-
-        async def wait_for_assistant(self, _session_id, *, deadline, after=None):
-            return {"text": json.dumps(output, ensure_ascii=False), "finish": "stop"}
-
-    monkeypatch.setattr(technical_advisor, "MCPAdapter", lambda _server: Adapter())
-    monkeypatch.setattr(technical_advisor, "OpenCodeClient", FakeOpenCode)
+    _FakeAdvisorOpenCode.prompts = []
+    _FakeAdvisorOpenCode.queue = [
+        json.dumps({"razonamiento": "Busco el cálculo de prima y las reglas.", "consultas": [
+            {"herramienta": "consultar_codigo_demo", "consulta": "cálculo de prima"},
+            {"herramienta": "consultar_estandares", "consulta": "validaciones"},
+        ]}),
+        json.dumps({"razonamiento": "Confirmo dependencias en el mapa.", "consultas": [
+            {"herramienta": "leer_archivo_codigo", "consulta": "mapa_dependencias.md"},
+        ]}),
+        json.dumps(output, ensure_ascii=False),
+    ]
+    monkeypatch.setattr(ejecutor_mcp, "MCPAdapter", lambda _server: _advisor_adapter(results, calls))
+    monkeypatch.setattr(technical_advisor, "OpenCodeClient", _FakeAdvisorOpenCode)
 
     assessment = await technical_advisor.TechnicalAdvisor().assess(
         requirement="Ajustar el cálculo de prima de póliza.", story={"quiero": "calcular prima"}
@@ -153,75 +187,38 @@ async def test_advisor_cites_only_sources_retrieved_in_this_call(monkeypatch):
 
     assert assessment.affected_modules[0].source_ref == "ejemplos/polizas_demo/servicios/primas.py"
     assert assessment.dependencies[0].source_ref == "agentes/analista/fuentes/estandares.json"
-    assert [item.source_ref for item in assessment.consulted_sources] == [
+    assert {item.source_ref for item in assessment.consulted_sources} == {
         "ejemplos/polizas_demo/servicios/primas.py",
+        "ejemplos/polizas_demo/mapa_dependencias.md",
         "agentes/analista/fuentes/estandares.json",
-    ]
-    assert [name for name, _ in calls] == ["consultar_codigo_demo", "consultar_estandares"]
-    assert all(arguments["limite"] in (5, 12) for _, arguments in calls)
+    }
+    assert [name for name, _ in calls] == ["consultar_codigo_demo", "consultar_estandares", "leer_archivo_codigo"]
+    assert calls[-1][1] == {"ruta": "mapa_dependencias.md"}
+    prompts = _FakeAdvisorOpenCode.prompts
+    assert "ronda 1 de 2" in prompts[0] and "ronda 2 de 2" in prompts[1]
+    assert "primas.py" in prompts[1]  # la segunda ronda ve los resultados de la primera
+    assert "primas.py" in prompts[2] and "mapa_dependencias.md" in prompts[2]
 
 
 @pytest.mark.asyncio
 async def test_no_evidence_is_reported_as_uncertainty_without_claims(monkeypatch):
-    from agentes.analista.core import technical_advisor
+    from agentes.analista.core import ejecutor_mcp, technical_advisor
 
-    class Tool:
-        def __init__(self, name):
-            self.name = name
-
-        async def ainvoke(self, _arguments):
-            if self.name == "consultar_codigo_demo":
-                return {"fuentes": [], "total": 0, "origen": "simulado"}
-            return {"estandares": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True}
-
-    class Adapter:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        async def list_tools(self):
-            return [Tool("consultar_codigo_demo"), Tool("consultar_estandares")]
-
-    class FakeOpenCode:
-        def __init__(self, *, prompt, agent_id):
-            self.settings = SimpleNamespace(turn_timeout_seconds=10)
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_args):
-            return None
-
-        def set_deadline(self, _deadline):
-            pass
-
-        async def server_info(self):
-            return {"version": "2.0.27"}
-
-        async def verify_agent(self, _agent):
-            return {"id": "asesor_tecnico"}
-
-        async def select_model(self, _agent):
-            return {"id": "mock"}
-
-        @asynccontextmanager
-        async def session(self, *, title, model):
-            yield {"id": "mock"}
-
-        async def submit_prompt(self, *_args):
-            return {"time": {"created": 1}}
-
-        async def wait_for_assistant(self, *_args, **_kwargs):
-            return {"text": json.dumps({
-                "affected_modules": [], "risks": [], "critical_processes": [],
-                "dependencies": [],
-                "uncertainties": [],
-            }), "finish": "stop"}
-
-    monkeypatch.setattr(technical_advisor, "MCPAdapter", lambda _server: Adapter())
-    monkeypatch.setattr(technical_advisor, "OpenCodeClient", FakeOpenCode)
+    results = {
+        "consultar_codigo_demo": {"fuentes": [], "total": 0, "origen": "simulado"},
+        "consultar_estandares": {"estandares": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True},
+        "leer_archivo_codigo": {"encontrado": False, "motivo": "no existe"},
+        "buscar_hu_similares": {"historias": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True},
+    }
+    _FakeAdvisorOpenCode.prompts = []
+    _FakeAdvisorOpenCode.queue = [
+        "no es JSON",  # plan inválido → plan predeterminado (búsquedas del rol)
+        json.dumps({"razonamiento": "Sin evidencia adicional.", "consultas": []}),
+        json.dumps({"affected_modules": [], "risks": [], "critical_processes": [], "dependencies": [], "uncertainties": []}),
+    ]
+    calls = []
+    monkeypatch.setattr(ejecutor_mcp, "MCPAdapter", lambda _server: _advisor_adapter(results, calls))
+    monkeypatch.setattr(technical_advisor, "OpenCodeClient", _FakeAdvisorOpenCode)
 
     result = await technical_advisor.TechnicalAdvisor().assess(
         requirement="Consultar un módulo sin coincidencias.", story={}
@@ -232,6 +229,33 @@ async def test_no_evidence_is_reported_as_uncertainty_without_claims(monkeypatch
     assert not result.critical_processes
     assert not result.consulted_sources
     assert result.uncertainties
+    # El plan predeterminado usa solo herramientas de búsqueda (no abre archivos sin ruta).
+    assert {name for name, _ in calls} == {"consultar_codigo_demo", "consultar_estandares", "buscar_hu_similares"}
+
+
+@pytest.mark.asyncio
+async def test_advisor_as_collaborator_runs_a_single_round(monkeypatch):
+    from agentes.analista.core import ejecutor_mcp, technical_advisor
+
+    results = {
+        "consultar_codigo_demo": {"fuentes": [], "total": 0, "origen": "simulado"},
+        "consultar_estandares": {"estandares": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True},
+        "leer_archivo_codigo": {"encontrado": False},
+        "buscar_hu_similares": {"historias": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True},
+    }
+    _FakeAdvisorOpenCode.prompts = []
+    _FakeAdvisorOpenCode.queue = [
+        json.dumps({"consultas": [{"herramienta": "consultar_codigo_demo", "consulta": "pago"}]}),
+        json.dumps({"affected_modules": [], "risks": [], "critical_processes": [], "dependencies": [], "uncertainties": ["Sin evidencia."]}),
+    ]
+    monkeypatch.setattr(ejecutor_mcp, "MCPAdapter", lambda _server: _advisor_adapter(results, []))
+    monkeypatch.setattr(technical_advisor, "OpenCodeClient", _FakeAdvisorOpenCode)
+
+    evaluacion = await technical_advisor.TechnicalAdvisor().consultar("¿Afecta el pago?", "contexto del Gestor")
+
+    assert evaluacion["uncertainties"] == ["Sin evidencia."]
+    assert "ronda 1 de 1" in _FakeAdvisorOpenCode.prompts[0]
+    assert len(_FakeAdvisorOpenCode.prompts) == 2
 
 
 @pytest.mark.asyncio

@@ -175,6 +175,21 @@ class ToolExecution(ContractModel):
         return self
 
 
+class ConsultaRealizada(ContractModel):
+    herramienta: str = Field(min_length=1, max_length=60)
+    consulta: str = Field(min_length=1, max_length=500)
+
+
+class PasoPlan(ContractModel):
+    """Lo que el agente decidió consultar en una ronda (autonomía visible para la persona analista)."""
+
+    ronda: int = Field(ge=1, le=3)
+    origen: Literal["modelo", "predeterminado"]
+    razonamiento: str = Field(default="", max_length=800)
+    consultas: list[ConsultaRealizada] = Field(default_factory=list, max_length=6)
+    asesor_consultado: bool = False
+
+
 class AgentTurnResponse(ContractModel):
     conversation_id: UUID4
     request_id: UUID4
@@ -189,6 +204,7 @@ class AgentTurnResponse(ContractModel):
     limitaciones: list[str] = Field(max_length=10)
     duracion_ms: int = Field(ge=0)
     prompt_version: str = Field(min_length=1, max_length=40)
+    plan_agente: list[PasoPlan] = Field(default_factory=list, max_length=3)
 
     @field_validator("respuesta_markdown")
     @classmethod

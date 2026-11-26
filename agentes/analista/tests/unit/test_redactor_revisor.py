@@ -44,10 +44,18 @@ def test_business_answer_contract_rejects_duplicates_and_unbounded_payloads():
 
 @pytest.mark.asyncio
 async def test_redactor_uses_simulated_opencode_and_langchain_pydantic_parsers(monkeypatch):
+    draft_plan = (
+        '{"razonamiento":"Reviso estándares de redacción y HU parecidas.","consultas":['
+        '{"herramienta":"consultar_estandares","consulta":"criterios de aceptación"},'
+        '{"herramienta":"buscar_hu_similares","consulta":"consultar saldo"},'
+        '{"herramienta":"leer_archivo_codigo","consulta":"modelos.py"}]}'
+    )
     outputs = [
+        draft_plan,
         '{"como":"persona usuaria","quiero":"consultar saldo","para":"conocer el disponible",'
         '"criterios":[{"dado":"una cuenta activa","cuando":"consulto el saldo",'
         '"entonces":"veo el disponible"}]}',
+        "sin plan válido",
         '{"requires_correction":false,"observations":[]}',
     ]
     calls = []
@@ -106,6 +114,15 @@ async def test_redactor_uses_simulated_opencode_and_langchain_pydantic_parsers(m
     assert draft.como == "persona usuaria"
     assert draft.criterios[0].dado == "una cuenta activa"
     assert review.requires_correction is False
-    assert "format_instructions" not in calls[0]
-    assert '"requerimiento"' in calls[0]
-    assert len(calls) == 2
+    # Ronda de draft: plan del modelo → consultas MCP del Redactor → redacción con la evidencia.
+    assert "FASE DE PLANIFICACIÓN" in calls[0]
+    assert "consultar_glosario" not in calls[0]  # el Redactor no ve herramientas ajenas
+    assert "format_instructions" not in calls[1]
+    assert '"requerimiento"' in calls[1]
+    assert '"herramienta":"consultar_estandares"' not in calls[1]
+    assert '"nombre":"consultar_estandares"' in calls[1]
+    assert '"nombre":"buscar_hu_similares"' in calls[1]
+    assert "herramientas no permitidas" in calls[1]  # leer_archivo_codigo se descartó
+    # Ronda de review: plan inválido → plan predeterminado del backend, con constancia.
+    assert "no entregó un plan válido" in calls[3]
+    assert len(calls) == 4

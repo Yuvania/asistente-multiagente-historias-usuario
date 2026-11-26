@@ -29,6 +29,9 @@ fi
 
 # OpenCode debe arrancar desde la raíz del proyecto para cargar opencode.jsonc y el prompt.
 cd /app
+
+# Repositorio de código del Asesor Técnico (solo lectura). Si falla, se usa el ejemplo incluido.
+python -m agentes.conocimiento.repositorio_codigo || echo "Aviso: no se pudo preparar el repositorio del Asesor." >&2
 "${OPENCODE_BIN:-opencode}" serve --hostname 127.0.0.1 --port 4096 &
 PID_OPENCODE=$!
 

@@ -173,10 +173,13 @@ async def test_writer_review_loop_allows_two_corrections_then_stops_for_po(monke
         async def session(self, *, title, model):
             yield {"id": "fake-session"}
 
-        async def submit_prompt(self, _session_id, _prompt):
+        async def submit_prompt(self, _session_id, prompt):
+            self.last_prompt = prompt
             return {"time": {"created": len(opencode_agents)}}
 
         async def wait_for_assistant(self, _session_id, *, deadline, after=None):
+            if self.last_prompt.startswith("FASE DE PLANIFICACIÓN"):
+                return {"text": '{"razonamiento":"Sin consultas adicionales.","consultas":[]}', "finish": "stop"}
             return {"text": simulated_outputs.pop(0), "finish": "stop"}
 
     monkeypatch.setattr(redactor_revisor, "OpenCodeClient", SimulatedOpenCode)

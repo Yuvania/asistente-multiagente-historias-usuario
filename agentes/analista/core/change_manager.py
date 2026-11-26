@@ -1,4 +1,13 @@
-"""Post-grooming change analysis using the isolated OpenCode role."""
+"""Agente Gestor de Cambios: compara una solicitud con la HU aprobada y recomienda.
+
+Propiedades de agente:
+- Autonomía: decide qué consultar (HU similares, lecciones, checklist) y si pide criterio al Asesor.
+- Razonamiento: compara la solicitud con la HU aprobada, clasifica (aclaración o cambio de alcance)
+  y determina la causa raíz.
+- Herramientas: su servidor MCP sobre RAG y la consulta al Agente Asesor Técnico.
+- Memoria: HU aprobadas e historial de causas raíz (lecciones) del Repositorio de HU.
+La decisión final es del Product Owner.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -10,6 +19,8 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from agentes.analista.core.agent_registry import AgentId, get_agent_spec
+from agentes.analista.core.ciclo_agente import ConsultorAsesor, ejecutar_ciclo
+from agentes.analista.core.ejecutor_mcp import SesionMCP
 from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClientError
 from agentes.analista.core.opencode_compat import is_supported_opencode_version
 from agentes.analista.core.prompt_loader import PromptLoadError
@@ -37,9 +48,30 @@ class ChangeManagerError(RuntimeError):
     """Safe error raised when change analysis cannot produce a valid contract."""
 
 
+_TAREA = (
+    "Compara la solicitud nueva con la HU aprobada, clasifícala como aclaración o cambio de alcance, "
+    "identifica la causa raíz y propone una lección para el checklist de vacíos. Consulta HU similares y "
+    "lecciones previas para detectar cambios que se repiten; pide criterio técnico solo si hace falta."
+)
+
+
+def _asesor_predeterminado() -> ConsultorAsesor:
+    from agentes.analista.core.technical_advisor import TechnicalAdvisor
+
+    return TechnicalAdvisor().consultar
+
+
 class ChangeManager:
-    def __init__(self, client_factory: Any | None = None) -> None:
+    def __init__(
+        self,
+        client_factory: Any | None = None,
+        *,
+        sesion_mcp_factory: Any | None = None,
+        consultor_asesor: ConsultorAsesor | None = None,
+    ) -> None:
         self._client_factory = client_factory or OpenCodeClient
+        self._sesion_mcp_factory = sesion_mcp_factory or SesionMCP
+        self._consultor_asesor = consultor_asesor
 
     async def evaluate(
         self,
@@ -82,31 +114,44 @@ class ChangeManager:
         try:
             spec = get_agent_spec(AgentId.CHANGE_MANAGER)
             parser = PydanticOutputParser(pydantic_object=ChangeRecommendation)
-            rendered = _PROMPT.format_messages(
-                system_prompt=spec.prompt.text,
-                payload=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                format_instructions=parser.get_format_instructions(),
-            )
-            user_prompt = "\n".join(str(message.content) for message in rendered)
         except (PromptLoadError, ValueError, TypeError) as exc:
             raise ChangeManagerError("No se pudo preparar el análisis del Gestor de Cambios.") from exc
 
-        try:
-            async with self._client_factory(prompt=spec.prompt, agent_id=AgentId.CHANGE_MANAGER) as client:
-                deadline = asyncio.get_running_loop().time() + client.settings.turn_timeout_seconds
-                client.set_deadline(deadline)
-                server = await client.server_info()
-                if not is_supported_opencode_version(server.get("version")):
-                    raise OpenCodeClientError("OPENCODE_INCOMPATIBLE", "La versión de OpenCode no es compatible.")
-                agent = await client.verify_agent(AgentId.CHANGE_MANAGER)
-                model = await client.select_model(agent)
-                async with client.session(title="Gestor de Cambios: comparar HU aprobada", model=model) as session:
-                    admission = await client.submit_prompt(session["id"], user_prompt)
-                    generated = await client.wait_for_assistant(
-                        session["id"], deadline=deadline, after=admission.get("time", {}).get("created"),
+        async with self._client_factory(prompt=spec.prompt, agent_id=AgentId.CHANGE_MANAGER) as client:
+            deadline = asyncio.get_running_loop().time() + client.settings.turn_timeout_seconds
+            client.set_deadline(deadline)
+            server = await client.server_info()
+            if not is_supported_opencode_version(server.get("version")):
+                raise OpenCodeClientError("OPENCODE_INCOMPATIBLE", "La versión de OpenCode no es compatible.")
+            agent = await client.verify_agent(AgentId.CHANGE_MANAGER)
+            model = await client.select_model(agent)
+            async with client.session(title="Gestor de Cambios: comparar HU aprobada", model=model) as session:
+                ciclo = await ejecutar_ciclo(
+                    agent_id=AgentId.CHANGE_MANAGER, client=client, session_id=session["id"],
+                    deadline=deadline, tarea=_TAREA,
+                    contexto=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                    consulta_base=" ".join((change_request, str(approved.get("titulo", "")))),
+                    consultor_asesor=self._consultor_asesor or _asesor_predeterminado(),
+                    sesion_mcp_factory=self._sesion_mcp_factory,
+                )
+                completo = {
+                    **payload,
+                    "approved_knowledge_evidence": [*payload["approved_knowledge_evidence"], *ciclo.observacion()],
+                    "query_limitations": ciclo.limitacion,
+                }
+                try:
+                    rendered = _PROMPT.format_messages(
+                        system_prompt=spec.prompt.text,
+                        payload=json.dumps(completo, ensure_ascii=False, separators=(",", ":")),
+                        format_instructions=parser.get_format_instructions(),
                     )
-        except OpenCodeClientError:
-            raise
+                    user_prompt = "\n".join(str(message.content) for message in rendered)
+                except (ValueError, TypeError) as exc:
+                    raise ChangeManagerError("No se pudo preparar el análisis del Gestor de Cambios.") from exc
+                admission = await client.submit_prompt(session["id"], user_prompt)
+                generated = await client.wait_for_assistant(
+                    session["id"], deadline=deadline, after=admission.get("time", {}).get("created"),
+                )
 
         try:
             recommendation = ChangeRecommendation.model_validate(parser.parse(generated["text"]))

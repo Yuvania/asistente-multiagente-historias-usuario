@@ -63,14 +63,21 @@ AGENT_SPECS: Final[dict[AgentId, AgentSpec]] = {
 }
 
 # Tool permissions are backend-owned and scoped to each role-specific MCP server.
+# Cada agente solo ve en su servidor MCP las herramientas de esta lista (mínimo privilegio).
 MCP_TOOL_ALLOWLIST: Final[dict[AgentId, frozenset[str]]] = {
     AgentId.ANALYST: frozenset({
         "consultar_glosario", "buscar_hu_similares",
         "consultar_estandares", "aplicar_checklist_vacios",
     }),
-    AgentId.WRITER_REVIEWER: frozenset({"consultar_estandares", "aplicar_checklist_vacios"}),
-    AgentId.TECHNICAL_ADVISOR: frozenset({"consultar_estandares", "consultar_codigo_demo"}),
-    AgentId.CHANGE_MANAGER: frozenset(),
+    AgentId.WRITER_REVIEWER: frozenset({
+        "consultar_estandares", "aplicar_checklist_vacios", "buscar_hu_similares",
+    }),
+    AgentId.TECHNICAL_ADVISOR: frozenset({
+        "consultar_estandares", "consultar_codigo_demo", "leer_archivo_codigo", "buscar_hu_similares",
+    }),
+    AgentId.CHANGE_MANAGER: frozenset({
+        "buscar_hu_similares", "consultar_lecciones", "aplicar_checklist_vacios",
+    }),
 }
 
 AGENT_NAMESPACE_ALLOWLIST: Final[dict[AgentId, frozenset[KnowledgeNamespace]]] = {
@@ -83,16 +90,47 @@ AGENT_NAMESPACE_ALLOWLIST: Final[dict[AgentId, frozenset[KnowledgeNamespace]]] =
         KnowledgeNamespace.STANDARDS, KnowledgeNamespace.CHECKLIST,
         KnowledgeNamespace.APPROVED_STORIES,
     }),
-    AgentId.TECHNICAL_ADVISOR: frozenset({KnowledgeNamespace.STANDARDS, KnowledgeNamespace.CODE}),
-    AgentId.CHANGE_MANAGER: frozenset({KnowledgeNamespace.APPROVED_STORIES, KnowledgeNamespace.LESSONS}),
+    AgentId.TECHNICAL_ADVISOR: frozenset({
+        KnowledgeNamespace.STANDARDS, KnowledgeNamespace.CODE, KnowledgeNamespace.APPROVED_STORIES,
+    }),
+    AgentId.CHANGE_MANAGER: frozenset({
+        KnowledgeNamespace.APPROVED_STORIES, KnowledgeNamespace.LESSONS, KnowledgeNamespace.CHECKLIST,
+    }),
 }
 
 _TOOL_NAMESPACE: Final[dict[str, KnowledgeNamespace]] = {
     "consultar_glosario": KnowledgeNamespace.GLOSSARY,
     "consultar_estandares": KnowledgeNamespace.STANDARDS,
     "aplicar_checklist_vacios": KnowledgeNamespace.CHECKLIST,
+    "buscar_hu_similares": KnowledgeNamespace.APPROVED_STORIES,
+    "consultar_lecciones": KnowledgeNamespace.LESSONS,
     "consultar_codigo_demo": KnowledgeNamespace.CODE,
+    "leer_archivo_codigo": KnowledgeNamespace.CODE,
 }
+
+# Roles que pueden pedir criterio técnico al Asesor durante su propio ciclo.
+# El Redactor-Revisor ya lo recibe en el grafo: el Asesor actúa justo después de su borrador.
+ASESOR_CONSULTABLE_POR: Final[frozenset[AgentId]] = frozenset({AgentId.ANALYST, AgentId.CHANGE_MANAGER})
+
+# Rondas máximas de consulta por agente (límite de pasos por solicitud).
+MAXIMO_RONDA_HERRAMIENTA: Final[dict[AgentId, int]] = {
+    AgentId.ANALYST: 1,
+    AgentId.WRITER_REVIEWER: 1,
+    AgentId.TECHNICAL_ADVISOR: 2,
+    AgentId.CHANGE_MANAGER: 1,
+}
+
+
+def tool_namespace(tool_name: str) -> KnowledgeNamespace | None:
+    return _TOOL_NAMESPACE.get(tool_name)
+
+
+def puede_consultar_asesor(agent_id: AgentId | str) -> bool:
+    try:
+        resolved = agent_id if isinstance(agent_id, AgentId) else AgentId(agent_id)
+    except (TypeError, ValueError):
+        return False
+    return resolved in ASESOR_CONSULTABLE_POR
 
 
 def get_agent_spec(agent_id: AgentId | str) -> AgentSpec:

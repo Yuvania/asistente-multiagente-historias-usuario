@@ -19,8 +19,19 @@ from agentes.analista.core.models import (
 from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClientError, OpenCodeSettings
 from agentes.analista.core.opencode_compat import is_supported_opencode_version
 from agentes.analista.core.prompt_loader import PromptLoadError, load_prompt
-from agentes.analista.core.orchestrator import EXPECTED_TOOLS
+from agentes.analista.core.agent_registry import AgentId, allowed_mcp_tools
+from agentes.analista.mcp.gestor_server import gestor_mcp
+from agentes.analista.mcp.redactor_server import redactor_mcp
+from agentes.analista.mcp.technical_tools import technical_mcp
 from agentes.analista.mcp.tools import mcp as servidor_mcp
+
+# Un servidor MCP por agente; cada uno debe exponer exactamente sus herramientas permitidas.
+SERVIDOR_POR_ROL = {
+    AgentId.ANALYST: servidor_mcp,
+    AgentId.WRITER_REVIEWER: redactor_mcp,
+    AgentId.TECHNICAL_ADVISOR: technical_mcp,
+    AgentId.CHANGE_MANAGER: gestor_mcp,
+}
 
 
 logger = logging.getLogger(__name__)
@@ -88,10 +99,14 @@ async def health(request: Request) -> HealthResponse:
     # consulta de salud consume ~90 MB y agota la memoria del plan gratuito (512 MB).
     mcp_check = McpCheck(status=CheckStatus.UNAVAILABLE, tools=[])
     try:
-        registered = await servidor_mcp.list_tools()
-        names = {tool.name for tool in registered}
-        if names == EXPECTED_TOOLS:
-            mcp_check = McpCheck(status=CheckStatus.OK, tools=[ToolName(name) for name in sorted(names)])
+        coincide = True
+        for rol, servidor in SERVIDOR_POR_ROL.items():
+            registered = await servidor.list_tools()
+            if {tool.name for tool in registered} != set(allowed_mcp_tools(rol)):
+                coincide = False
+                logger.warning("mcp_servidor_inconsistente", extra={"event": "mcp_servidor_inconsistente", "agent": rol.value})
+        if coincide:
+            mcp_check = McpCheck(status=CheckStatus.OK, tools=sorted(ToolName))
     except Exception:
         logger.warning("No se pudo verificar el registro de herramientas MCP", exc_info=True)
 

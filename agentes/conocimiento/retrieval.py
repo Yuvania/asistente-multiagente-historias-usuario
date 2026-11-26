@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 import unicodedata
@@ -17,7 +18,10 @@ from agentes.analista.memory.repositorio import detect_personal_data, load_memor
 
 from .client import PineconeKnowledgeClient
 from .documents import APPROVED_KINDS, validate_document_metadata
+from .repositorio_codigo import es_ruta_codigo
 from .sources import AuthorizedSourceLoader, SourceRecord, validate_namespace
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeSource(BaseModel):
@@ -64,10 +68,12 @@ _ROLE_ALLOWED_KINDS: dict[AgentId, dict[str, frozenset[str]]] = {
     AgentId.TECHNICAL_ADVISOR: {
         "estandares": frozenset({"simulated_fixture"}),
         "codigo": frozenset({"simulated_code"}),
+        "hu_aprobadas": frozenset({"simulated_reference", "approved_history"}),
     },
     AgentId.CHANGE_MANAGER: {
         "hu_aprobadas": frozenset({"approved_history"}),
         "lecciones": frozenset({"approved_lesson"}),
+        "checklist": frozenset({"simulated_fixture"}),
     },
 }
 
@@ -103,8 +109,9 @@ def _local_sources() -> list[SourceRecord]:
     records.extend(loader.load_demo_code())
     try:
         histories, lessons = load_memory_entries()
-    except Exception:
+    except Exception as exc:
         # The existing local repository reader fails closed and may be absent.
+        logger.info("knowledge_repository_unavailable", extra={"event": "knowledge_repository_unavailable", "error": type(exc).__name__})
         histories, lessons = [], []
     for item in histories:
         if not isinstance(item, Mapping):
@@ -214,7 +221,8 @@ class KnowledgeRetriever:
         candidates: list[_Candidate] = []
         try:
             records = list(self._local_source_provider())
-        except Exception:
+        except Exception as exc:
+            logger.warning("knowledge_local_sources_unavailable", extra={"event": "knowledge_local_sources_unavailable", "error": type(exc).__name__})
             return []
         for item in records:
             if isinstance(item, SourceRecord):
@@ -294,7 +302,7 @@ def _eligible_document(document: Document, role: AgentId, namespace: str) -> boo
         return False
     if metadata.get("source_kind") not in _ROLE_ALLOWED_KINDS[role].get(namespace, frozenset()):
         return False
-    if role == AgentId.CHANGE_MANAGER:
+    if role == AgentId.CHANGE_MANAGER and namespace in {"hu_aprobadas", "lecciones"}:
         if metadata.get("source_kind") not in APPROVED_KINDS or metadata.get("approval_status") != "aprobada":
             return False
     return _valid_source_ref(metadata)
@@ -313,7 +321,7 @@ def _valid_source_ref(metadata: Mapping[str, Any]) -> bool:
             AuthorizedSourceLoader().read_code_file(ref)
         except Exception:
             return False
-        return ref.startswith("ejemplos/polizas_demo/") and ref.endswith((".py", ".md"))
+        return es_ruta_codigo(ref)
     if kind in APPROVED_KINDS:
         prefix = "RepositorioHU:hu_aprobada/" if kind == "approved_history" else "RepositorioHU:leccion/"
         return (
@@ -335,6 +343,12 @@ def _valid_source_ref(metadata: Mapping[str, Any]) -> bool:
 
 
 _default_retriever: KnowledgeRetriever | None = None
+
+
+def establecer_recuperador(retriever: Any | None) -> None:
+    """Sustituye el recuperador que usan las herramientas MCP (pruebas y diagnóstico; None restaura)."""
+    global _default_retriever
+    _default_retriever = retriever
 
 
 def get_knowledge_retriever() -> KnowledgeRetriever:

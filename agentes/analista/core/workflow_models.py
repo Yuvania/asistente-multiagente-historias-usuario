@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, UUID4, field_validator, model
 
 from agentes.analista.core.agent_registry import AgentId
 from agentes.analista.core.models import AgentTurnResponse, Question
+from agentes.conocimiento.repositorio_codigo import es_ruta_codigo
 
 
 class FlowMode(StrEnum):
@@ -201,11 +202,7 @@ class SourceCitation(BaseModel):
 
     @model_validator(mode="after")
     def validate_allowlisted_source(self) -> "SourceCitation":
-        is_demo_file = (
-            self.source_ref.startswith("ejemplos/polizas_demo/")
-            and self.source_ref.endswith((".py", ".md"))
-            and self.source_id == self.source_ref
-        )
+        is_demo_file = es_ruta_codigo(self.source_ref) and self.source_id == self.source_ref
         standard_prefix = "agentes/analista/fuentes/estandares.json#"
         is_standards_file = (
             self.source_ref.startswith(standard_prefix)

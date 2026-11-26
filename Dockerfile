@@ -21,6 +21,9 @@ RUN npm install --prefix /opt/opencode --no-audit --no-fund @opencode/cli@2.1.2
 # 3) Imagen final
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 MALLOC_ARENA_MAX=2
+# git: el Asesor Técnico descarga (solo lectura) el repositorio de código que revisa.
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home --uid 1000 app && mkdir -p /var/data && chown app:app /var/data
 WORKDIR /app
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { TituloPaginaComponent } from '../Comun/TituloPaginaComponent';
+import { PlanAgenteComponent } from '../Comun/PlanAgenteComponent';
 import { PasosComponent } from '../Comun/PasosComponent';
 import { BotonComponent } from '../Comun/BotonComponent';
 import { CampoTextoComponent } from '../Comun/CampoTextoComponent';
@@ -862,6 +863,7 @@ const CrearHistoriaUsuarioContenido = () => {
                     {' '}Las fuentes son simuladas o anonimizadas y deben confirmarse con Negocio.
                   </p>
                 )}
+                <PlanAgenteComponent plan={agentResponse?.plan_agente} style={{ marginTop: '1rem' }} />
                 {agentResponse?.limitaciones?.length > 0 && (
                   <ul style={{ paddingLeft: '1.2rem', fontSize: '0.875rem', color: 'var(--color-text-secondary)' }}>
                     {agentResponse.limitaciones.map((item) => <li key={item}>{item}</li>)}

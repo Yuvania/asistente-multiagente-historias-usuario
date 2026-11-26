@@ -3,7 +3,11 @@ name: Feature 003 CI
 on:
   push:
     branches:
+      - main
       - feat/sistema-multiagente-rag
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read

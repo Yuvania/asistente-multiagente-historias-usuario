@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -10,7 +11,10 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from agentes.analista.memory.repositorio import RepositorioHU, detect_personal_data
+from agentes.conocimiento.repositorio_codigo import raiz_codigo_relativa
 
+
+logger = logging.getLogger(__name__)
 
 AUTHORIZED_NAMESPACES = frozenset(
     {"glosario", "estandares", "checklist", "hu_aprobadas", "lecciones", "codigo"}
@@ -97,7 +101,10 @@ class AuthorizedSourceLoader:
 
     def __init__(self, project_root: str | Path | None = None, *, code_root: str | Path | None = None) -> None:
         self.project_root = Path(project_root or Path(__file__).resolve().parents[2]).resolve()
-        self.code_root = Path(code_root).resolve() if code_root else (self.project_root / "ejemplos" / "polizas_demo").resolve()
+        self.code_root = (
+            Path(code_root).resolve() if code_root
+            else (self.project_root / raiz_codigo_relativa(self.project_root)).resolve()
+        )
         if not self._is_within(self.code_root, self.project_root):
             raise SourceError("La raíz de código debe estar dentro del proyecto autorizado.")
 
@@ -205,6 +212,12 @@ class AuthorizedSourceLoader:
                 if not self._is_within(resolved, self.code_root) or not resolved.is_file():
                     continue
                 relative = resolved.relative_to(self.project_root).as_posix()
+                try:
+                    if not resolved.read_text(encoding="utf-8").strip():
+                        continue  # un archivo vacío (p. ej. __init__.py) no aporta evidencia
+                except (OSError, UnicodeError):
+                    logger.warning("codigo_archivo_ilegible", extra={"event": "codigo_archivo_ilegible", "ruta": relative})
+                    continue
                 records.append(self.read_code_file(relative))
         return records
 
@@ -241,7 +254,7 @@ class AuthorizedSourceLoader:
         rel = PurePosixPath(relative_path).as_posix()
         return SourceRecord(
             namespace="codigo", source_id=rel, source_kind="simulated_code", source_ref=rel,
-            origin="Código ficticio leído estáticamente; contenido no confiable", text=text,
+            origin="Repositorio de código leído estáticamente (solo lectura); contenido no confiable", text=text,
         )
 
 

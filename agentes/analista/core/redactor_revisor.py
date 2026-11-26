@@ -1,4 +1,12 @@
-"""OpenCode-backed story drafting and review with strict Pydantic parsing."""
+"""Agente Redactor-Revisor: redacta, revisa y corrige la HU con evidencia consultada por MCP.
+
+Propiedades de agente:
+- Autonomía: decide qué fuentes consultar (plan) y si la HU requiere corrección.
+- Razonamiento: evalúa la HU contra estándares y checklist de calidad.
+- Herramientas: su servidor MCP (estándares, checklist, HU similares) sobre RAG.
+- Memoria: análisis aclarado, historia anterior y observaciones de la ronda previa
+  (estado del flujo) y el Repositorio de HU (buscar_hu_similares).
+"""
 from __future__ import annotations
 
 import asyncio
@@ -11,6 +19,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 from agentes.analista.core.agent_registry import AgentId, get_agent_spec
+from agentes.analista.core.ciclo_agente import ejecutar_ciclo
+from agentes.analista.core.ejecutor_mcp import SesionMCP
 from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClientError
 from agentes.analista.core.opencode_compat import is_supported_opencode_version
 from agentes.analista.core.prompt_loader import PromptLoadError
@@ -36,9 +46,10 @@ class WriterOutputError(RuntimeError):
 class RedactorRevisor:
     """Use the configured deny-all OpenCode agent for draft and review calls."""
 
-    def __init__(self, client_factory: Any | None = None) -> None:
+    def __init__(self, client_factory: Any | None = None, *, sesion_mcp_factory: Any | None = None) -> None:
         # Resolve at instantiation so tests can inject a simulator without reading credentials.
         self._client_factory = client_factory or OpenCodeClient
+        self._sesion_mcp_factory = sesion_mcp_factory or SesionMCP
 
     async def draft(
         self,
@@ -63,7 +74,7 @@ class RedactorRevisor:
             "observaciones_de_revision": list(observations or []),
             "evidencia_de_conocimiento_no_confiable": list(knowledge_context or []),
         }
-        return await self._generate(task, payload, StoryDraftContent)
+        return await self._generate(task, payload, StoryDraftContent, consulta_base=requirement)
 
     async def review(
         self,
@@ -83,23 +94,20 @@ class RedactorRevisor:
             "historia": dict(story),
             "evidencia_de_conocimiento_no_confiable": list(knowledge_context or []),
         }
-        return await self._generate(task, payload, StoryReviewOutput)
+        return await self._generate(task, payload, StoryReviewOutput, consulta_base=requirement)
 
     async def _generate(
         self,
         task: str,
         payload: Mapping[str, Any],
         output_model: type[_Output],
+        *,
+        consulta_base: str,
     ) -> _Output:
         try:
             prompt_snapshot = get_agent_spec(AgentId.WRITER_REVIEWER).prompt
             parser = PydanticOutputParser(pydantic_object=output_model)
-            rendered = _PROMPT.format_messages(
-                task=task,
-                payload=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                format_instructions=parser.get_format_instructions(),
-            )
-            user_prompt = "\n".join(str(message.content) for message in rendered)
+            contexto = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         except (PromptLoadError, ValueError, TypeError) as exc:
             raise WriterOutputError("No se pudo preparar la salida estructurada del Redactor.") from exc
 
@@ -117,6 +125,28 @@ class RedactorRevisor:
             agent = await client.verify_agent(AgentId.WRITER_REVIEWER)
             model = await client.select_model(agent)
             async with client.session(title="Redactor-Revisor: historia de usuario", model=model) as session:
+                # Pensar y actuar: el agente decide qué consultar en su servidor MCP (RAG detrás).
+                ciclo = await ejecutar_ciclo(
+                    agent_id=AgentId.WRITER_REVIEWER, client=client, session_id=session["id"],
+                    deadline=deadline, tarea=task, contexto=contexto, consulta_base=consulta_base,
+                    sesion_mcp_factory=self._sesion_mcp_factory,
+                )
+                completo = {
+                    **dict(payload),
+                    "evidencia_de_conocimiento_no_confiable": [
+                        *payload.get("evidencia_de_conocimiento_no_confiable", []), *ciclo.observacion(),
+                    ],
+                    "limitaciones_de_consulta": ciclo.limitacion,
+                }
+                try:
+                    rendered = _PROMPT.format_messages(
+                        task=task,
+                        payload=json.dumps(completo, ensure_ascii=False, separators=(",", ":")),
+                        format_instructions=parser.get_format_instructions(),
+                    )
+                    user_prompt = "\n".join(str(message.content) for message in rendered)
+                except (ValueError, TypeError) as exc:
+                    raise WriterOutputError("No se pudo preparar la salida estructurada del Redactor.") from exc
                 admission = await client.submit_prompt(session["id"], user_prompt)
                 generated = await client.wait_for_assistant(
                     session["id"],

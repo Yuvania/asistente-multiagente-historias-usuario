@@ -42,7 +42,13 @@ def test_opencode_config_registers_all_agents_with_external_prompts_and_deny_all
         (AgentId.ANALYST, "buscar_hu_similares"),
         (AgentId.WRITER_REVIEWER, "consultar_estandares"),
         (AgentId.WRITER_REVIEWER, "aplicar_checklist_vacios"),
+        (AgentId.WRITER_REVIEWER, "buscar_hu_similares"),
         (AgentId.TECHNICAL_ADVISOR, "consultar_estandares"),
+        (AgentId.TECHNICAL_ADVISOR, "leer_archivo_codigo"),
+        (AgentId.TECHNICAL_ADVISOR, "buscar_hu_similares"),
+        (AgentId.CHANGE_MANAGER, "buscar_hu_similares"),
+        (AgentId.CHANGE_MANAGER, "consultar_lecciones"),
+        (AgentId.CHANGE_MANAGER, "aplicar_checklist_vacios"),
     ],
 )
 def test_backend_allows_only_read_only_tools_assigned_to_role(agent_id, tool_name):
@@ -52,8 +58,11 @@ def test_backend_allows_only_read_only_tools_assigned_to_role(agent_id, tool_nam
 @pytest.mark.parametrize(
     ("agent_id", "tool_name"),
     [
-        (AgentId.TECHNICAL_ADVISOR, "buscar_hu_similares"),
+        (AgentId.TECHNICAL_ADVISOR, "consultar_glosario"),
+        (AgentId.WRITER_REVIEWER, "leer_archivo_codigo"),
+        (AgentId.ANALYST, "consultar_codigo_demo"),
         (AgentId.CHANGE_MANAGER, "consultar_glosario"),
+        (AgentId.CHANGE_MANAGER, "consultar_codigo_demo"),
         (AgentId.ANALYST, "filesystem.read"),
         (AgentId.ANALYST, "shell"),
         ("unknown-agent", "consultar_estandares"),
@@ -68,5 +77,17 @@ def test_backend_rejects_namespace_outside_agent_allowlist():
     assert authorize_mcp_tool(AgentId.TECHNICAL_ADVISOR, "consultar_estandares", KnowledgeNamespace.STANDARDS)
     with pytest.raises(AgentPermissionError):
         authorize_mcp_tool(AgentId.TECHNICAL_ADVISOR, "consultar_estandares", KnowledgeNamespace.APPROVED_STORIES)
+    assert authorize_mcp_tool(AgentId.ANALYST, "buscar_hu_similares", KnowledgeNamespace.APPROVED_STORIES)
     with pytest.raises(AgentPermissionError):
-        authorize_mcp_tool(AgentId.ANALYST, "buscar_hu_similares", KnowledgeNamespace.APPROVED_STORIES)
+        authorize_mcp_tool(AgentId.ANALYST, "buscar_hu_similares", KnowledgeNamespace.GLOSSARY)
+    with pytest.raises(AgentPermissionError):
+        authorize_mcp_tool(AgentId.WRITER_REVIEWER, "consultar_estandares", KnowledgeNamespace.LESSONS)
+
+
+def test_only_analyst_and_change_manager_can_consult_the_advisor():
+    from agentes.analista.core.agent_registry import puede_consultar_asesor
+
+    assert puede_consultar_asesor(AgentId.ANALYST)
+    assert puede_consultar_asesor(AgentId.CHANGE_MANAGER)
+    assert not puede_consultar_asesor(AgentId.TECHNICAL_ADVISOR)
+    assert not puede_consultar_asesor("desconocido")

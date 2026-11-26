@@ -115,7 +115,6 @@ def test_agent_tools_read_approved_memory(tmp_path, monkeypatch):
     )
     repo.decidir_leccion(result["leccion_id"], "aprobar")
     monkeypatch.setenv("ANALISTA_REPO_DB", str(repo.fuente))
-    monkeypatch.setattr(tools, "_SOURCES", tools.load_sources())
     stories = tools.buscar_hu_similares("vigencia cobertura adicional renovación", 5)
     assert "0b3f6f0e-52c8-4f0b-9c1e-6a1d2f3b4c01" in {story.id for story in stories.historias}
     checklist = tools.aplicar_checklist_vacios("formato del campo de vigencia", 5)

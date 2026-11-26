@@ -22,6 +22,13 @@ def test_checkpoints_route_each_flow_without_sharing_private_inputs():
     assert change_checkpoint.active_agent == AgentId.CHANGE_MANAGER
     assert "Información del Gestor" not in analyst_checkpoint.model_dump_json()
     assert "Información del Analista" not in change_checkpoint.model_dump_json()
-    assert allowed_mcp_tools(analyst_checkpoint.active_agent).isdisjoint(
-        allowed_mcp_tools(change_checkpoint.active_agent)
-    )
+    # Cada rol tiene su propio servidor MCP con su propio conjunto de herramientas; aunque compartan
+    # un nombre (buscar_hu_similares), la recuperación filtra por rol (el Gestor solo ve HU aprobadas).
+    from agentes.analista.core.ejecutor_mcp import SERVIDOR_MCP
+    from agentes.conocimiento.retrieval import _ROLE_ALLOWED_KINDS
+
+    analyst_tools = allowed_mcp_tools(analyst_checkpoint.active_agent)
+    change_tools = allowed_mcp_tools(change_checkpoint.active_agent)
+    assert SERVIDOR_MCP[analyst_checkpoint.active_agent] != SERVIDOR_MCP[change_checkpoint.active_agent]
+    assert "consultar_lecciones" not in analyst_tools and "consultar_glosario" not in change_tools
+    assert _ROLE_ALLOWED_KINDS[change_checkpoint.active_agent]["hu_aprobadas"] == frozenset({"approved_history"})

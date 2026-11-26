@@ -1,22 +1,29 @@
-"""Real LangChain/MCP/OpenCode turn orchestration with bounded failure handling."""
+"""Agente Analista de Requerimientos: un turno Percibir → Pensar → Actuar con MCP y OpenCode.
+
+Propiedades de agente:
+- Autonomía: decide qué fuentes consultar y con qué consulta (plan), y si pide criterio al Asesor;
+  se detiene al entregar las preguntas a Negocio.
+- Razonamiento: clasifica la información (conocida, faltante, supuesta, ambigua) y planifica.
+- Herramientas: su servidor MCP (glosario, HU similares, estándares, checklist) con RAG detrás.
+- Memoria: historial del requerimiento en la sesión y Repositorio de HU (vía RAG).
+"""
 from __future__ import annotations
 
 import asyncio
 import hashlib
 import json
 import logging
-import time
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from langchain.mcp import MCPAdapter
 from langchain_core.exceptions import OutputParserException
-from langchain_core.runnables import RunnableLambda, RunnableParallel
-from pydantic import TypeAdapter, ValidationError
+from langchain_core.runnables import RunnableLambda
+from pydantic import ValidationError
 
-from agentes.analista.core.agent_registry import AgentId, AgentPermissionError, allowed_mcp_tools, authorize_mcp_tool
+from agentes.analista.core.agent_registry import AgentId
+from agentes.analista.core.ciclo_agente import ResultadoCiclo, ejecutar_ciclo
+from agentes.analista.core.ejecutor_mcp import MCPNoDisponibleError, ResultadoHerramienta
 from agentes.analista.core.context_builder import build_context, render_user_prompt
 from agentes.analista.core.models import (
     AgentTurnResponse,
@@ -36,19 +43,20 @@ from agentes.analista.core.output_parser import AgentOutput, format_instructions
 from agentes.analista.core.prompt_loader import load_prompt
 from agentes.analista.core.conversation_store import ConversationStore, StoreError
 from agentes.analista.core.observability import Observability
-from agentes.analista.mcp.tools import ChecklistResult, GlossaryResult, StandardsResult, StoriesResult
 
 
 logger = logging.getLogger(__name__)
-MCP_SERVER = Path(__file__).resolve().parents[1] / "mcp" / "server.py"
-MCP_TIMEOUT_SECONDS = 5.0
-EXPECTED_TOOLS = {item.value for item in ToolName}
-_RESULT_MODELS: dict[str, type[Any]] = {
-    "consultar_glosario": GlossaryResult,
-    "buscar_hu_similares": StoriesResult,
-    "consultar_estandares": StandardsResult,
-    "aplicar_checklist_vacios": ChecklistResult,
-}
+# Tiempo que se reserva para la respuesta final cuando el Analista consulta al Asesor Técnico.
+RESERVA_RESPUESTA_SEGUNDO = 25.0
+_TAREA_ANALISTA = (
+    "Analiza el requerimiento de Negocio: identifica la necesidad, clasifica la información en conocida, "
+    "faltante, supuesta y ambigua, y prepara preguntas por categoría. Decide qué fuentes te ayudan: glosario "
+    "para términos de seguros, HU similares para ver qué se tuvo que aclarar antes, estándares que aplican y "
+    "el checklist de vacíos (estados, permisos, validaciones, excepciones, cálculo de riesgo y comparativo)."
+)
+
+# Costura de pruebas: el ciclo agéntico (plan del modelo + ejecución MCP) se puede sustituir.
+_ejecutar_ciclo = ejecutar_ciclo
 
 
 class OrchestrationError(RuntimeError):
@@ -72,155 +80,44 @@ async def _within_deadline(awaitable: Any, deadline: float) -> Any:
         raise OrchestrationError(ErrorCode.TURN_TIMEOUT, "Se agotó el tiempo del turno.", retryable=True) from exc
 
 
-def _unwrap_tool_result(value: Any) -> Any:
-    if isinstance(value, tuple) and len(value) == 2:
-        artifact = value[1]
-        if artifact is not None:
-            value = artifact
-    if hasattr(value, "model_dump"):
-        return value.model_dump(mode="json")
-    if isinstance(value, dict):
-        for key in ("structuredContent", "structured_content", "data"):
-            if key in value and isinstance(value[key], (dict, list)):
-                return value[key]
-        return value
-    if isinstance(value, list):
-        for item in value:
-            text = item.get("text") if isinstance(item, dict) else getattr(item, "text", None)
-            if isinstance(text, str):
-                try:
-                    return json.loads(text)
-                except ValueError:
-                    continue
-        raise ValueError("El resultado MCP no contiene JSON estructurado")
-    artifact = getattr(value, "artifact", None)
-    if artifact is not None:
-        return _unwrap_tool_result(artifact)
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except ValueError:
-            return value
-    content = getattr(value, "content", None)
-    if isinstance(content, list):
-        for item in content:
-            text = getattr(item, "text", None)
-            if isinstance(text, str):
-                try:
-                    return json.loads(text)
-                except ValueError:
-                    continue
-    raise ValueError("La respuesta MCP no contiene resultado estructurado")
-
-
-def _result_count(name: str, data: Any) -> int:
-    fields = {
-        "consultar_glosario": ("definiciones",),
-        "buscar_hu_similares": ("historias",),
-        "consultar_estandares": ("estandares",),
-        "aplicar_checklist_vacios": ("total",),
-    }
-    if name == "aplicar_checklist_vacios":
-        return int(data["total"])
-    return len(data[fields[name][0]])
-
-
-async def _execute_tools(
-    query: str,
-    trace: Any = None,
-    *,
-    agent_id: AgentId | str = AgentId.ANALYST,
-) -> tuple[list[dict[str, Any]], list[ToolExecution], list[str]]:
-    started = time.monotonic()
-    try:
-        async with MCPAdapter(MCP_SERVER) as adapter:
-            tools = await adapter.list_tools()
-            by_name = {tool.name: tool for tool in tools}
-            if set(by_name) != EXPECTED_TOOLS:
-                raise OrchestrationError(ErrorCode.MCP_UNAVAILABLE, "El servidor MCP no expone el conjunto autorizado.", retryable=True)
-            try:
-                allowed = allowed_mcp_tools(agent_id)
-                selected_tools = {
-                    name: tool for name, tool in by_name.items()
-                    if name in allowed and authorize_mcp_tool(agent_id, name)
-                }
-            except AgentPermissionError as exc:
-                raise OrchestrationError(
-                    ErrorCode.MCP_UNAVAILABLE,
-                    "El rol no está autorizado para consultar estas herramientas.",
-                ) from exc
-            if not selected_tools:
-                return [], [], ["Este rol no tiene herramientas MCP asignadas en esta fase."]
-
-            async def invoke(name: str, tool: Any) -> dict[str, Any]:
-                authorize_mcp_tool(agent_id, name)
-                start = time.monotonic()
-                operation = trace.operation(
-                    kind="tool", name=f"mcp-{name}", metadata={"tool_name": name}
-                ) if trace else None
-                try:
-                    raw = await asyncio.wait_for(
-                        tool.ainvoke({"consulta": query, "limite": 5}), timeout=MCP_TIMEOUT_SECONDS
-                    )
-                    parsed = TypeAdapter(_RESULT_MODELS[name]).validate_python(_unwrap_tool_result(raw))
-                    data = parsed.model_dump(mode="json")
-                    count = _result_count(name, data)
-                    if operation:
-                        operation.finish(status="ok", metadata={"result_count": count})
-                    return {
-                        "name": name,
-                        "data": data,
-                        "count": count,
-                        "duration_ms": max(0, int((time.monotonic() - start) * 1000)),
-                        "status": ToolStatus.OK,
-                    }
-                except asyncio.TimeoutError:
-                    if operation:
-                        operation.finish(status="timeout", error_code="MCP_TIMEOUT")
-                    return {"name": name, "data": None, "count": None, "duration_ms": max(0, int((time.monotonic() - start) * 1000)), "status": ToolStatus.TIMEOUT}
-                except asyncio.CancelledError:
-                    if operation:
-                        operation.finish(status="cancelled", error_code="TURN_CANCELLED")
-                    raise
-                except Exception:
-                    if operation:
-                        operation.finish(status="error", error_code="MCP_TOOL_FAILED")
-                    return {"name": name, "data": None, "count": None, "duration_ms": max(0, int((time.monotonic() - start) * 1000)), "status": ToolStatus.ERROR}
-
-            def tool_runner(name: str, tool: Any) -> RunnableLambda:
-                async def run(_input: Any) -> dict[str, Any]:
-                    return await invoke(name, tool)
-
-                return RunnableLambda(run)
-
-            parallel = RunnableParallel(**{
-                name: tool_runner(name, tool)
-                for name, tool in selected_tools.items()
-            })
-            results = await asyncio.wait_for(parallel.ainvoke({"consulta": query}), timeout=MCP_TIMEOUT_SECONDS + 1)
-    except OrchestrationError:
-        raise
-    except Exception as exc:
-        logger.warning("mcp_call_failed", extra={"event": "mcp_call_failed", "error_code": "MCP_UNAVAILABLE"}, exc_info=True)
-        raise OrchestrationError(ErrorCode.MCP_UNAVAILABLE, "No fue posible consultar las fuentes autorizadas.", retryable=True) from exc
-
-    observations: list[dict[str, Any]] = []
-    executions: list[ToolExecution] = []
-    limitations: list[str] = []
-    for name in sorted(selected_tools):
-        result = results[name]
-        status = result["status"]
-        error_code = None if status == ToolStatus.OK else ("MCP_TIMEOUT" if status == ToolStatus.TIMEOUT else "MCP_TOOL_FAILED")
-        digest = hashlib.sha256(json.dumps(result["data"], sort_keys=True, ensure_ascii=False).encode()).hexdigest() if result["data"] is not None else None
-        executions.append(ToolExecution(
-            tool_name=ToolName(name), status=status, result_count=result["count"],
-            duration_ms=result["duration_ms"], error_code=error_code, result_digest=digest,
-        ))
-        if status == ToolStatus.OK:
-            observations.append({"nombre": name, "datos": result["data"], "resultados": result["count"]})
+def _ejecuciones(resultado: list[ResultadoHerramienta]) -> list[ToolExecution]:
+    """Agrupa por herramienta las consultas del plan (una herramienta puede usarse con varias consultas)."""
+    salida: list[ToolExecution] = []
+    for nombre in ToolName:
+        grupo = [item for item in resultado if item.nombre == nombre.value]
+        if not grupo:
+            continue
+        correcto = [item for item in grupo if item.estado == "ok"]
+        if correcto:
+            estado, codigo = ToolStatus.OK, None
+        elif any(item.estado == "timeout" for item in grupo):
+            estado, codigo = ToolStatus.TIMEOUT, "MCP_TIMEOUT"
         else:
-            limitations.append(f"No se pudo consultar {name}; sus resultados no se usaron.")
-    return observations, executions, limitations
+            estado, codigo = ToolStatus.ERROR, "MCP_TOOL_FAILED"
+        digest = hashlib.sha256("|".join(item.digest or "" for item in correcto).encode()).hexdigest() if correcto else None
+        salida.append(ToolExecution(
+            tool_name=nombre, status=estado,
+            result_count=sum(int(item.cantidad or 0) for item in correcto) if correcto else None,
+            duration_ms=max(item.duracion_ms for item in grupo), error_code=codigo, result_digest=digest,
+        ))
+    return salida
+
+
+def _plan_publico(ciclo: ResultadoCiclo) -> list[dict[str, Any]]:
+    """Resumen del plan para la interfaz: razonamiento y consultas, sin resultados ni datos."""
+    salida = []
+    for paso in ciclo.paso[:3]:
+        salida.append({
+            "ronda": paso.ronda,
+            "origen": paso.origen,
+            "razonamiento": paso.razonamiento[:800],
+            "consultas": [
+                {"herramienta": item["herramienta"][:60], "consulta": item["consulta"][:500]}
+                for item in paso.consulta[:6]
+            ],
+            "asesor_consultado": paso.ronda == 1 and ciclo.asesor is not None,
+        })
+    return salida
 
 
 def _to_response(
@@ -233,6 +130,7 @@ def _to_response(
     tool_executions: list[ToolExecution],
     limitations: list[str],
     duration_ms: int,
+    plan: list[dict[str, Any]] | None = None,
 ) -> AgentTurnResponse:
     def question_key(value: str) -> str:
         return " ".join(value.casefold().split()).rstrip(".,;:!?¿¡")
@@ -296,6 +194,7 @@ def _to_response(
         limitaciones=limitations[:10],
         duracion_ms=duration_ms,
         prompt_version=load_prompt().version,
+        plan_agente=plan or [],
     )
 
 
@@ -331,15 +230,20 @@ async def run_turn(
     trace_error_code: str | None = None
     try:
         record = await store.get(conversation_id)
-        tool_results, executions, limitations = await _within_deadline(
-            _execute_tools(request.message, trace), deadline
-        )
-        for execution in executions:
-            await store.add_tool_execution(conversation_id, turn_id, generation, execution)
-        payload = build_context(record, request.message, tool_results, limitations)
-        user_prompt = render_user_prompt(payload, format_instructions())
+        executions: list[ToolExecution] = []
+        limitations: list[str] = []
+        plan: list[dict[str, Any]] = []
+        from agentes.analista.core.technical_advisor import TechnicalAdvisor
 
-        async def invoke_opencode(prompt_text: str) -> AgentOutput:
+        asesor = TechnicalAdvisor()
+
+        async def consultar_asesor(pregunta: str, contexto: str) -> dict[str, Any]:
+            disponible = deadline - asyncio.get_running_loop().time() - RESERVA_RESPUESTA_SEGUNDO
+            if disponible < 10:
+                raise TimeoutError("No queda tiempo para consultar al Asesor Técnico en este turno.")
+            return await asyncio.wait_for(asesor.consultar(pregunta, contexto), timeout=disponible)
+
+        async def invoke_opencode(message_text: str) -> AgentOutput:
             async with OpenCodeClient() as client:
                 client.set_deadline(deadline)
                 await client.server_info()
@@ -355,6 +259,26 @@ async def run_turn(
                     async with client.session(title=title, model=model) as session:
                         session_id = session["id"]
                         await store.set_opencode_session(conversation_id, turn_id, generation, session_id)
+                        # Pensar y actuar: el Analista planifica sus consultas MCP y el backend las ejecuta.
+                        memoria = build_context(record, message_text, [], [])
+                        try:
+                            ciclo: ResultadoCiclo = await _ejecutar_ciclo(
+                                agent_id=AgentId.ANALYST, client=client, session_id=session_id, deadline=deadline,
+                                tarea=_TAREA_ANALISTA,
+                                contexto=json.dumps(memoria.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":")),
+                                consulta_base=message_text, trace=trace, consultor_asesor=consultar_asesor,
+                            )
+                        except MCPNoDisponibleError as exc:
+                            raise OrchestrationError(
+                                ErrorCode.MCP_UNAVAILABLE, "No fue posible consultar las fuentes autorizadas.", retryable=True,
+                            ) from exc
+                        executions.extend(_ejecuciones(ciclo.resultado))
+                        limitations.extend(dict.fromkeys(ciclo.limitacion))
+                        plan.extend(_plan_publico(ciclo))
+                        for execution in executions:
+                            await store.add_tool_execution(conversation_id, turn_id, generation, execution)
+                        payload = build_context(record, message_text, ciclo.observacion(), limitations)
+                        prompt_text = render_user_prompt(payload, format_instructions())
                         admission = await client.submit_prompt(session_id, prompt_text)
                         after = admission.get("time", {}).get("created")
                         generated = await client.wait_for_assistant(session_id, deadline=deadline, after=after)
@@ -396,7 +320,7 @@ async def run_turn(
                     operation.finish(status="error", error_code="GENERATION_FAILED")
                     raise
 
-        output = await _within_deadline(RunnableLambda(invoke_opencode).ainvoke(user_prompt), deadline)
+        output = await _within_deadline(RunnableLambda(invoke_opencode).ainvoke(request.message), deadline)
         if asyncio.get_running_loop().time() >= deadline:
             raise OrchestrationError(ErrorCode.TURN_TIMEOUT, "Se agotó el tiempo del turno.", retryable=True)
 
@@ -410,6 +334,7 @@ async def run_turn(
             tool_executions=executions,
             limitations=limitations,
             duration_ms=duration_ms,
+            plan=plan,
         )
         if asyncio.get_running_loop().time() >= deadline:
             raise OrchestrationError(ErrorCode.TURN_TIMEOUT, "Se agotó el tiempo del turno.", retryable=True)
@@ -435,8 +360,8 @@ async def run_turn(
                 code=ErrorCode(exc.code), message=str(exc), retryable=exc.retryable,
                 request_id=request.request_id, retry_at=exc.retry_at,
             ))
-        except StoreError:
-            pass
+        except StoreError as store_error:
+            logger.warning("turn_failure_not_recorded", extra={"event": "turn_failure_not_recorded", "error_code": store_error.code.value})
         raise OrchestrationError(
             ErrorCode(exc.code), str(exc), retryable=exc.retryable, retry_at=exc.retry_at
         ) from exc
@@ -450,8 +375,8 @@ async def run_turn(
                 code=code, message=message, retryable=retryable, request_id=request.request_id,
                 retry_at=exc.retry_at if isinstance(exc, OrchestrationError) else None,
             ), status=TurnStatus.EXPIRED if code == ErrorCode.TURN_TIMEOUT else TurnStatus.FAILED)
-        except StoreError:
-            pass
+        except StoreError as store_error:
+            logger.warning("turn_failure_not_recorded", extra={"event": "turn_failure_not_recorded", "error_code": store_error.code.value})
         raise OrchestrationError(
             code, message, retryable=retryable,
             retry_at=exc.retry_at if isinstance(exc, OrchestrationError) else None,
@@ -464,8 +389,8 @@ async def run_turn(
                 code=ErrorCode.INTERNAL_ERROR, message="No fue posible completar el análisis.", retryable=True,
                 request_id=request.request_id,
             ))
-        except StoreError:
-            pass
+        except StoreError as store_error:
+            logger.warning("turn_failure_not_recorded", extra={"event": "turn_failure_not_recorded", "error_code": store_error.code.value})
         raise OrchestrationError(ErrorCode.INTERNAL_ERROR, "No fue posible completar el análisis.", retryable=True) from exc
     finally:
         if not trace_finished:

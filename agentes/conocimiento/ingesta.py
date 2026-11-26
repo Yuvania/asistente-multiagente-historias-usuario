@@ -29,7 +29,11 @@ _SOURCE_RECONCILIATION_SCOPES = {
         ("hu_aprobadas", "RepositorioHU:hu_aprobada/", frozenset({"approved_history"})),
         ("lecciones", "RepositorioHU:leccion/", frozenset({"approved_lesson"})),
     ),
-    "codigo": (("codigo", "ejemplos/polizas_demo/", frozenset({"simulated_code"})),),
+    # Ambos prefijos: al cambiar del ejemplo incluido al repositorio sincronizado se purgan los vectores viejos.
+    "codigo": (
+        ("codigo", "ejemplos/polizas_demo/", frozenset({"simulated_code"})),
+        ("codigo", "repositorio_codigo/", frozenset({"simulated_code"})),
+    ),
 }
 
 

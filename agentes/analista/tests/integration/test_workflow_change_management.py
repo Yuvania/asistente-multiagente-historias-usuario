@@ -90,7 +90,8 @@ def _post_request():
 
 @pytest.mark.asyncio
 async def test_change_manager_reads_approved_story_and_uses_dedicated_external_prompt():
-    outputs = ['''{"recommendation":"aclaracion","comparison":[{"approved_excerpt":"Consultar saldo",'''
+    outputs = ['{"razonamiento":"Reviso lecciones previas.","consultas":[{"herramienta":"consultar_lecciones","consulta":"movimientos"}]}',
+               '''{"recommendation":"aclaracion","comparison":[{"approved_excerpt":"Consultar saldo",'''
                '''"request_excerpt":"consulta de movimientos","explanation":"La petición agrega movimientos."}],'''
                '''"impact":["Se debe aclarar el período."],"rationale":"La HU no establece el período.",'''
                '''"uncertainties":["No se indicó el período."],"lessons_proposed":[]}''']
@@ -146,7 +147,9 @@ async def test_change_manager_reads_approved_story_and_uses_dedicated_external_p
     assert result.comparison[0].approved_excerpt == "Consultar saldo"
     assert result.impact and result.rationale
     assert repository.calls == [("obtener_hu", APPROVED_ID)]
-    assert len(requests) == 1
+    assert len(requests) == 2  # plan del Gestor + comparación final
+    assert requests[0].startswith("FASE DE PLANIFICACIÓN")
+    assert '"nombre":"consultar_lecciones"' in requests[1]
 
 
 @pytest.mark.asyncio

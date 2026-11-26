@@ -58,3 +58,13 @@ services:
         value: cosine
       - key: PINECONE_EMBEDDING_MODEL
         value: multilingual-e5-large
+      # Repositorio de código que revisa el Asesor Técnico (público, https, sin credenciales en la URL).
+      # Vacío: se usa el ejemplo incluido en ejemplos/polizas_demo.
+      - key: ASESOR_REPOSITORIO_URL
+        value: https://github.com/Yuvania/polizas-demo.git
+      - key: ASESOR_REPOSITORIO_RAMA
+        value: main
+      # Transporte MCP entre cada agente y su servidor: stdio (proceso aparte) o memoria (mismo proceso;
+      # mismo protocolo, menos RAM si el plan gratuito se queda corto).
+      - key: ANALISTA_MCP_TRANSPORTE
+        value: stdio

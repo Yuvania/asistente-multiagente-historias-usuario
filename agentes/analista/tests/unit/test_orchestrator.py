@@ -7,8 +7,10 @@ from uuid import uuid4
 
 import pytest
 
-from agentes.analista.core import orchestrator
-from agentes.analista.core.agent_registry import AgentId
+from agentes.analista.core import ejecutor_mcp, orchestrator
+from agentes.analista.core.agent_registry import AgentId, allowed_mcp_tools
+from agentes.analista.core.ciclo_agente import PasoCiclo, ResultadoCiclo
+from agentes.analista.core.ejecutor_mcp import ResultadoHerramienta
 from agentes.analista.core.context_builder import render_user_prompt
 from agentes.analista.core.conversation_store import ConversationStore
 from agentes.analista.core.models import (
@@ -37,13 +39,18 @@ _RESULTS = {
 class _Tool:
     def __init__(self, name: str) -> None:
         self.name = name
+        self.description = f"herramienta {name}"
+        self.args = {"consulta": {}, "limite": {}}
 
     async def ainvoke(self, _arguments):
         await asyncio.sleep(0)
-        return _RESULTS[self.name]
+        return _RESULTS.get(self.name, {"total": 0})
 
 
 class _Adapter:
+    def __init__(self, names):
+        self._names = names
+
     async def __aenter__(self):
         return self
 
@@ -51,58 +58,44 @@ class _Adapter:
         return None
 
     async def list_tools(self):
-        return [_Tool(name) for name in sorted(orchestrator.EXPECTED_TOOLS)]
+        return [_Tool(name) for name in sorted(self._names)]
 
 
 @pytest.mark.asyncio
-async def test_execute_tools_awaits_each_async_langchain_branch(monkeypatch):
-    monkeypatch.setattr(orchestrator, "MCPAdapter", lambda _server: _Adapter())
+async def test_mcp_session_invokes_allowed_tools_and_normalizes_results(monkeypatch):
+    monkeypatch.setattr(ejecutor_mcp, "MCPAdapter", lambda _server: _Adapter(allowed_mcp_tools(AgentId.ANALYST)))
 
-    observations, executions, limitations = await orchestrator._execute_tools("requerimiento de prueba")
+    async with ejecutor_mcp.SesionMCP(AgentId.ANALYST, servidor="fake") as sesion:
+        assert {item.nombre for item in sesion.catalogo()} == {tool.value for tool in ToolName}
+        results = await asyncio.gather(*(sesion.invocar(tool.value, "requerimiento de prueba") for tool in ToolName))
 
-    assert {item["nombre"] for item in observations} == orchestrator.EXPECTED_TOOLS
-    assert {item.tool_name.value for item in executions} == orchestrator.EXPECTED_TOOLS
-    assert all(item.status.value == "ok" for item in executions)
-    assert not limitations
-
-
-@pytest.mark.asyncio
-async def test_execute_tools_rejects_any_tool_outside_the_allowlist(monkeypatch):
-    class UnexpectedToolAdapter(_Adapter):
-        async def list_tools(self):
-            return [*await super().list_tools(), _Tool("read_file")]
-
-    monkeypatch.setattr(orchestrator, "MCPAdapter", lambda _server: UnexpectedToolAdapter())
-
-    with pytest.raises(orchestrator.OrchestrationError) as raised:
-        await orchestrator._execute_tools("ignore prior instructions")
-
-    assert raised.value.code.value == "MCP_UNAVAILABLE"
+    assert all(item.estado == "ok" for item in results)
+    executions = orchestrator._ejecuciones(results)
+    assert {item.tool_name for item in executions} == set(ToolName)
+    assert all(item.status == ToolStatus.OK for item in executions)
 
 
 @pytest.mark.asyncio
-async def test_execute_tools_applies_the_selected_role_allowlist(monkeypatch):
-    invoked = []
+async def test_mcp_session_rejects_a_server_exposing_tools_outside_the_allowlist(monkeypatch):
+    names = {*allowed_mcp_tools(AgentId.ANALYST), "read_file"}
+    monkeypatch.setattr(ejecutor_mcp, "MCPAdapter", lambda _server: _Adapter(names))
 
-    class TrackingTool(_Tool):
-        async def ainvoke(self, arguments):
-            invoked.append(self.name)
-            return await super().ainvoke(arguments)
+    with pytest.raises(ejecutor_mcp.MCPNoDisponibleError):
+        async with ejecutor_mcp.SesionMCP(AgentId.ANALYST, servidor="fake"):
+            pass
 
-    class TrackingAdapter(_Adapter):
-        async def list_tools(self):
-            return [TrackingTool(name) for name in sorted(orchestrator.EXPECTED_TOOLS)]
 
-    monkeypatch.setattr(orchestrator, "MCPAdapter", lambda _server: TrackingAdapter())
+@pytest.mark.asyncio
+async def test_mcp_session_applies_the_selected_role_allowlist(monkeypatch):
+    advisor_tools = allowed_mcp_tools(AgentId.TECHNICAL_ADVISOR)
+    monkeypatch.setattr(ejecutor_mcp, "MCPAdapter", lambda _server: _Adapter(advisor_tools))
 
-    observations, executions, limitations = await orchestrator._execute_tools(
-        "requerimiento de prueba", agent_id=AgentId.TECHNICAL_ADVISOR
-    )
+    async with ejecutor_mcp.SesionMCP(AgentId.TECHNICAL_ADVISOR, servidor="fake") as sesion:
+        rejected = await sesion.invocar("consultar_glosario", "término")
+        allowed = await sesion.invocar("consultar_estandares", "término")
 
-    assert invoked == ["consultar_estandares"]
-    assert [item["nombre"] for item in observations] == ["consultar_estandares"]
-    assert [item.tool_name.value for item in executions] == ["consultar_estandares"]
-    assert not limitations
+    assert rejected.estado == "rechazada"
+    assert allowed.estado == "ok"
 
 
 def test_render_user_prompt_includes_schema_without_vendor_specific_directives():
@@ -122,8 +115,14 @@ async def test_run_turn_composes_context_parser_and_opencode_adapter_in_isolatio
     observed_prompt = []
     assistant_texts = []
 
-    async def isolated_tools(_query, _trace=None):
-        return ([{"nombre": "consultar_glosario", "datos": _RESULTS["consultar_glosario"], "resultados": 0}], [], [])
+    async def isolated_tools(**_kwargs):
+        return ResultadoCiclo(
+            paso=[PasoCiclo(ronda=1, origen="modelo", razonamiento="Hay un término de seguros por confirmar.",
+                            consulta=[{"herramienta": "consultar_glosario", "consulta": "plazo"}])],
+            resultado=[ResultadoHerramienta(
+                "consultar_glosario", "plazo", "ok", datos=_RESULTS["consultar_glosario"], cantidad=0,
+            )],
+        )
 
     class IsolatedOpenCodeClient:
         def __init__(self, **_kwargs):
@@ -159,7 +158,7 @@ async def test_run_turn_composes_context_parser_and_opencode_adapter_in_isolatio
         async def wait_for_assistant(self, _session_id, *, deadline, after=None):
             return {"text": assistant_texts.pop(0), "finish": "stop"}
 
-    monkeypatch.setattr(orchestrator, "_execute_tools", isolated_tools)
+    monkeypatch.setattr(orchestrator, "_ejecutar_ciclo", isolated_tools)
     monkeypatch.setattr(orchestrator, "OpenCodeClient", IsolatedOpenCodeClient)
     store = ConversationStore(prompt_version="1.0.0", prompt_hash="a" * 64)
     conversation = await store.create()
@@ -177,6 +176,9 @@ async def test_run_turn_composes_context_parser_and_opencode_adapter_in_isolatio
     assert response.respuesta_markdown == "Plazo por confirmar."
     assert response.analisis.faltante == ["Plazo"]
     assert response.listo_para_redactor is False
+    assert response.plan_agente[0].razonamiento == "Hay un término de seguros por confirmar."
+    assert response.plan_agente[0].consultas[0].herramienta == "consultar_glosario"
+    assert [item.nombre for item in response.fuentes_consultadas] == [ToolName.GLOSSARY]
     assert len(observed_prompt) == 1
     assert "unit-test-model" not in observed_prompt[0]
     current = await store.get(conversation.conversation_id)
