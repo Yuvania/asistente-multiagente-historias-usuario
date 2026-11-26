@@ -18,8 +18,15 @@ const CHANGE_CHOICES = [
   ['devolver', 'Devolver para revisión'],
 ];
 
-export const WorkflowInterruptionForm = ({ interrupt, onResume, busy = false, error = '', canSubmit = true }) => {
-  const [answers, setAnswers] = useState({});
+// Preguntas que se responden con texto: las de Negocio (paso 3) y las decisiones del impacto (paso 4).
+const TIPO_CON_RESPUESTA = new Set(['business_answers', 'impact_decisions']);
+
+export const WorkflowInterruptionForm = ({
+  interrupt, onResume, busy = false, error = '', canSubmit = true, borrador = {}, onSaveDraft,
+}) => {
+  // Respuestas escritas en otra sesión y guardadas sin enviar.
+  const [answers, setAnswers] = useState(() => ({ ...borrador }));
+  const [draftNotice, setDraftNotice] = useState('');
   const [decision, setDecision] = useState('');
   const [reason, setReason] = useState('');
   const [lessonDecisions, setLessonDecisions] = useState({});
@@ -30,11 +37,13 @@ export const WorkflowInterruptionForm = ({ interrupt, onResume, busy = false, er
   const submit = async (event) => {
     event.preventDefault();
     if (busy) return;
-    if (interrupt.kind === 'business_answers') {
+    if (TIPO_CON_RESPUESTA.has(interrupt.kind)) {
       const questions = interrupt.payload?.questions ?? [];
       const unanswered = questions.filter((question) => !String(answers[question.question_id] ?? '').trim());
       if (unanswered.length) {
-        setValidationError('Responda todas las preguntas pendientes antes de reanudar.');
+        setValidationError(interrupt.kind === 'impact_decisions'
+          ? 'Responda todas las decisiones pendientes antes de continuar.'
+          : 'Responda todas las preguntas pendientes antes de reanudar.');
         return;
       }
       const totalLength = questions.reduce((total, question) => total + String(answers[question.question_id] ?? '').length + question.question_id.length + 4, 0);
@@ -113,12 +122,39 @@ export const WorkflowInterruptionForm = ({ interrupt, onResume, busy = false, er
               value={answers[question.question_id] ?? ''}
               onChange={(event) => {
                 setValidationError('');
+                setDraftNotice('');
                 setAnswers((current) => ({ ...current, [question.question_id]: event.target.value }));
               }}
             />
           ))}
           <p>Máximo {interrupt.payload?.max_answer_chars ?? 1000} caracteres por respuesta y {interrupt.payload?.max_total_chars ?? 3500} en total.</p>
         </>
+      )}
+
+      {interrupt.kind === 'impact_decisions' && (interrupt.payload?.questions ?? []).length > 0 && (
+        <>
+          <h3>Decisiones pendientes</h3>
+          <p>Antes de redactar la historia hay que decidir estas reglas. Si necesita consultarlas, guarde lo que lleva y retome después.</p>
+          {(interrupt.payload?.questions ?? []).map((question) => (
+            <AreaTextoComponent
+              key={question.question_id}
+              id={`workflow-decision-${question.question_id}`}
+              label={question.pregunta}
+              required
+              rows={2}
+              maxLength={interrupt.payload?.max_answer_chars ?? 1000}
+              value={answers[question.question_id] ?? ''}
+              onChange={(event) => {
+                setValidationError('');
+                setDraftNotice('');
+                setAnswers((current) => ({ ...current, [question.question_id]: event.target.value }));
+              }}
+            />
+          ))}
+        </>
+      )}
+      {interrupt.kind === 'impact_decisions' && (interrupt.payload?.questions ?? []).length === 0 && (
+        <p>No hay decisiones pendientes. Confirme que revisó el impacto para que se redacte la historia.</p>
       )}
 
       {interrupt.kind === 'po_approval' && (
@@ -166,10 +202,26 @@ export const WorkflowInterruptionForm = ({ interrupt, onResume, busy = false, er
       )}
 
       {validationError && <AlertaComponent type="warning" title="Revise la respuesta">{validationError}</AlertaComponent>}
+      {draftNotice && <AlertaComponent type="success" title="Respuestas guardadas">{draftNotice}</AlertaComponent>}
       {error && <AlertaComponent type="danger" title="No se pudo continuar">{error}</AlertaComponent>}
-      <BotonComponent type="submit" variant="primary" disabled={busy || !interrupt.kind || !canSubmit}>
-        {busy ? 'Enviando…' : 'Confirmar y continuar'}
-      </BotonComponent>
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <BotonComponent type="submit" variant="primary" disabled={busy || !interrupt.kind || !canSubmit}>
+          {busy ? 'Enviando…' : 'Confirmar y continuar'}
+        </BotonComponent>
+        {onSaveDraft && TIPO_CON_RESPUESTA.has(interrupt.kind) && (interrupt.payload?.questions ?? []).length > 0 && (
+          <BotonComponent
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            onClick={async () => {
+              const guardado = await onSaveDraft(answers);
+              if (guardado) setDraftNotice('Puede salir y retomarlas después desde Historias de Usuario → En proceso.');
+            }}
+          >
+            Guardar sin enviar
+          </BotonComponent>
+        )}
+      </div>
     </form>
   );
 };

@@ -111,8 +111,8 @@ _TOOL_NAMESPACE: Final[dict[str, KnowledgeNamespace]] = {
 }
 
 # Roles que pueden pedir criterio técnico al Asesor durante su propio ciclo.
-# El Redactor-Revisor ya lo recibe en el grafo: el Asesor actúa justo después de su borrador.
-ASESOR_CONSULTABLE_POR: Final[frozenset[AgentId]] = frozenset({AgentId.ANALYST, AgentId.CHANGE_MANAGER})
+# En la creación de una HU el Asesor ya actúa en el grafo, después del Analista y antes del Redactor.
+ASESOR_CONSULTABLE_POR: Final[frozenset[AgentId]] = frozenset({AgentId.CHANGE_MANAGER})
 
 # Rondas máximas de consulta por agente (límite de pasos por solicitud).
 MAXIMO_RONDA_HERRAMIENTA: Final[dict[AgentId, int]] = {

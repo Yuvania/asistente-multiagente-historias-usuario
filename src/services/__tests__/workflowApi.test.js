@@ -49,12 +49,12 @@ describe('workflowApi', () => {
     expect(WorkflowApiError).toBeDefined();
   });
 
-  it('explains that a 404 checkpoint must be restarted', async () => {
+  it('explains that a missing workflow must be restarted', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       error: { code: 'WORKFLOW_NOT_FOUND', message: 'Not found', retryable: false },
     }), { status: 404 })));
 
-    await expect(getWorkflow('lost-workflow')).rejects.toThrow(/checkpoint se perdió.*inicie un flujo nuevo/i);
+    await expect(getWorkflow('lost-workflow')).rejects.toThrow(/no se encontró el flujo.*inicie uno nuevo/i);
   });
 
   it('does not turn an intentional cancellation into a network failure', async () => {

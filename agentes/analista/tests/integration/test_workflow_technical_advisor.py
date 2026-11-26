@@ -20,7 +20,7 @@ from agentes.analista.core.models import AgentTurnResponse, Analysis
 
 
 @pytest.mark.asyncio
-async def test_workflow_runs_advisor_after_review_and_surfaces_only_mocked_evidence():
+async def test_workflow_runs_advisor_before_the_story_and_surfaces_only_mocked_evidence():
     source_ref = "ejemplos/polizas_demo/servicios/primas.py"
     dependency_ref = "ejemplos/polizas_demo/mapa_dependencias.md"
     seen_calls = []
@@ -117,14 +117,19 @@ async def test_workflow_runs_advisor_after_review_and_surfaces_only_mocked_evide
 
     async def advisor(state):
         seen_calls.append(("stage", state["current_stage"]))
+        # El Asesor trabaja antes de la historia: todavía no hay borrador.
+        assert "draft_story" not in state
         return await technical_advisor.assess(
-            requirement=state["requirement_input"], story=state["draft_story"]
+            requirement=state["requirement_input"], story={"analisis_validado": state["analyst_response"]["analisis"]}
         )
 
     runtime = WorkflowRuntime(analyst=analyst, draft=draft, review=review, advisor=advisor)
-    result = await runtime.execute(WorkflowCreateRequest(
+    impact = await runtime.execute(WorkflowCreateRequest(
         mode=FlowMode.PRE_GROOMING, requirement="Calcular prima ficticia para una póliza demo."
     ))
+    assert impact.current_stage == WorkflowStage.IMPACT_WAIT
+    assert impact.draft_story is None
+    result = await runtime.resume(impact.workflow_id, {"answers": []})
 
     assert result.current_stage == WorkflowStage.PO_APPROVAL
     assert result.status == WorkflowStatus.INTERRUPTED

@@ -86,7 +86,7 @@ Para usarlo en serio: en `render.yaml` cambie `plan: free` por `plan: starter`, 
 ## Importante
 
 - **Seguridad:** quien entre al URL consume la cuota de tu plan de OpenCode. Por eso el acceso con clave es obligatorio y no se debe compartir el URL con la clave fuera del equipo. No uses datos personales reales en las historias.
-- **Un solo servidor:** el servicio está pensado para una sola instancia (las conversaciones del agente viven en memoria). No lo escales a varias instancias.
+- **Un solo servidor:** el servicio está pensado para una sola instancia (las conversaciones del agente y los flujos activos viven en memoria; los flujos se guardan en la base de datos cada vez que esperan a una persona, así que un reinicio no los pierde). No lo escales a varias instancias.
 - **Credenciales del modelo:** el contenedor escribe `OPENCODE_API_KEY` en el archivo de credenciales de OpenCode al arrancar. Si el endpoint `/api/analista/health` indica que el modelo no está disponible, revisa que la clave sea válida y el plan esté activo.
 - **Rotación:** cambia `OPENCODE_API_KEY` y `ACCESO_CLAVE` desde el panel cuando alguien deje el equipo.
 - **Datos compartidos:** las historias y el Repositorio de HU viven en la base de datos. El navegador solo conserva una copia local (caché) que se actualiza al abrir la aplicación y al volver a ella; sin conexión se puede leer, pero los cambios se envían cuando el servicio responde.

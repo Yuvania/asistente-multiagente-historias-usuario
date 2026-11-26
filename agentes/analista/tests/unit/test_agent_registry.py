@@ -84,10 +84,11 @@ def test_backend_rejects_namespace_outside_agent_allowlist():
         authorize_mcp_tool(AgentId.WRITER_REVIEWER, "consultar_estandares", KnowledgeNamespace.LESSONS)
 
 
-def test_only_analyst_and_change_manager_can_consult_the_advisor():
+def test_only_the_change_manager_can_consult_the_advisor():
     from agentes.analista.core.agent_registry import puede_consultar_asesor
 
-    assert puede_consultar_asesor(AgentId.ANALYST)
+    # En la creación de una HU el Asesor ya actúa en el grafo, después del Analista.
+    assert not puede_consultar_asesor(AgentId.ANALYST)
     assert puede_consultar_asesor(AgentId.CHANGE_MANAGER)
     assert not puede_consultar_asesor(AgentId.TECHNICAL_ADVISOR)
     assert not puede_consultar_asesor("desconocido")

@@ -2,10 +2,11 @@ const API_BASE = '/api/workflows';
 
 const STATUS_MESSAGES = Object.freeze({
   400: 'La respuesta no coincide con la intervención humana pendiente. Revise los datos y vuelva a intentarlo.',
-  404: 'No se encontró el flujo. El checkpoint se perdió, posiblemente porque se reinició el proceso. Inicie un flujo nuevo.',
+  404: 'No se encontró el flujo. Puede que se haya descartado; revise la lista de HU en proceso o inicie uno nuevo.',
   409: 'El flujo está ocupado o ya no espera esta decisión. Actualice su estado antes de volver a enviar.',
   422: 'La respuesta no cumple el contrato del flujo. Revise los campos e inténtelo de nuevo.',
   503: 'Un servicio necesario no está disponible. El flujo no avanzó; puede reintentar cuando el servicio vuelva.',
+  500: 'Ocurrió un error inesperado. El avance anterior quedó guardado: consulte el estado del flujo.',
   504: 'El flujo tardó demasiado y su resultado está incompleto. Consulte su estado antes de repetir la decisión.',
 });
 
@@ -65,4 +66,17 @@ export const resumeWorkflow = (workflowId, body, { signal } = {}) => request(
   `/${encodeURIComponent(workflowId)}/resume`, { method: 'POST', body, signal },
 );
 
-export const workflowApi = Object.freeze({ startWorkflow, getWorkflow, resumeWorkflow });
+export const listWorkflows = ({ signal } = {}) => request('', { signal });
+export const deleteWorkflow = (workflowId, { signal } = {}) => request(
+  `/${encodeURIComponent(workflowId)}`, { method: 'DELETE', signal },
+);
+export const saveWorkflowDraft = (workflowId, respuestas, { signal } = {}) => request(
+  `/${encodeURIComponent(workflowId)}/borrador`, { method: 'PUT', body: { respuestas }, signal },
+);
+export const retryWorkflow = (workflowId, { signal } = {}) => request(
+  `/${encodeURIComponent(workflowId)}/reintentar`, { method: 'POST', signal },
+);
+
+export const workflowApi = Object.freeze({
+  startWorkflow, getWorkflow, resumeWorkflow, listWorkflows, deleteWorkflow, saveWorkflowDraft, retryWorkflow,
+});

@@ -225,11 +225,18 @@ def test_api_starts_pre_and_post_and_returns_status_results_and_real_interrupt_i
         assert current.json()["status"] == "interrupted"
         assert current.json()["interrupt"]["interrupt_id"] == pre_body["interrupt"]["interrupt_id"]
 
-        resumed = _resume(client, pre_body["workflow_id"], pre_body["interrupt"], {
+        impact = _resume(client, pre_body["workflow_id"], pre_body["interrupt"], {
             "answers": [{"question_id": "q-plazo", "answer": "30 días"}],
         })
-        assert resumed.status_code == 200
+        assert impact.status_code == 200, impact.text
+        assert impact.json()["stage"] == "espera_impacto"
+        assert impact.json()["interrupt"]["kind"] == "impact_decisions"
+        assert impact.json()["results"]["story"] is None
+        resumed = _resume(client, pre_body["workflow_id"], impact.json()["interrupt"], {"answers": []})
+        assert resumed.status_code == 200, resumed.text
         assert resumed.json()["stage"] == "aprobacion_po"
+        # La aprobación del PO no expone el detalle técnico del Asesor.
+        assert resumed.json()["interrupt"]["payload"].get("technical_assessment") is None
         assert resumed.json()["interrupt"]["kind"] == "po_approval"
         assert resumed.json()["interrupt"]["payload"]["supuesto_validar_po"] == [
             "Se supone: el plazo se cuenta en días naturales",
@@ -255,9 +262,10 @@ def test_api_answers_business_questions_and_po_can_approve_or_return_without_mod
     runtime, repository, _opencode, _mcp = _runtime(pending_business=True)
     with _client(runtime) as client:
         started = _start_pre(client).json()
-        business = _resume(client, started["workflow_id"], started["interrupt"], {
+        impact = _resume(client, started["workflow_id"], started["interrupt"], {
             "answers": [{"question_id": "q-plazo", "answer": "30 días"}],
         }).json()
+        business = _resume(client, started["workflow_id"], impact["interrupt"], {"answers": []}).json()
         approval_interrupt = business["interrupt"]
         assert "approval" not in business["results"]["story"]
         assert repository.saved_stories == []

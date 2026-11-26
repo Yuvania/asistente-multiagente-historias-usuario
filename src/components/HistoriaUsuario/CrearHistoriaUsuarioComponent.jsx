@@ -26,9 +26,9 @@ import { SIN_IDENTIFICAR, leerNombreUsuario } from '../../utils/usuarioActual';
 import { OPCION_AREA_SOLICITANTE, OPCION_SISTEMA, armarOpcion } from '../../data/catalogos';
 import { EditorCriteriosComponent } from './EditorCriteriosComponent';
 import { buildRepositoryPayload, repositorioApi, repositorioErrorMessage } from '../../services/repositorioApi';
-import { getWorkflow, resumeWorkflow, startWorkflow, WorkflowApiError } from '../../services/workflowApi';
+import { getWorkflow, resumeWorkflow, retryWorkflow, saveWorkflowDraft, startWorkflow, WorkflowApiError } from '../../services/workflowApi';
 import { WorkflowInterruptionForm } from '../Comun/WorkflowInterruptionForm';
-import { WorkflowResultsPanel } from '../Comun/WorkflowResultsPanel';
+import { ImpactoNegocioComponent, WorkflowResultsPanel } from '../Comun/WorkflowResultsPanel';
 import '../Comun/workflow-panels.scss';
 import {
   MAX_AGENT_MESSAGE_CODEPOINTS,
@@ -65,13 +65,30 @@ const ROTULO_ESTADO_WORKFLOW = {
   cancelled: 'cancelado',
 };
 
+// Pasos del asistente. El Asesor Técnico muestra el impacto (paso 4) antes de redactar la historia.
+const PASO = Object.freeze({ REQUERIMIENTO: 1, ANALISIS: 2, PREGUNTAS: 3, IMPACTO: 4, HISTORIA: 5, APROBACION: 6 });
+
 const STEPPER_STEPS = [
-  { id: 1, label: 'Requerimiento' },
-  { id: 2, label: 'Análisis del agente' },
-  { id: 3, label: 'Preguntas a Negocio' },
-  { id: 4, label: 'Historia (borrador)' },
-  { id: 5, label: 'Aprobación del PO' }
+  { id: PASO.REQUERIMIENTO, label: 'Requerimiento' },
+  { id: PASO.ANALISIS, label: 'Análisis del agente' },
+  { id: PASO.PREGUNTAS, label: 'Preguntas a Negocio' },
+  { id: PASO.IMPACTO, label: 'Impacto en otros módulos' },
+  { id: PASO.HISTORIA, label: 'Historia (borrador)' },
+  { id: PASO.APROBACION, label: 'Aprobación del PO' }
 ];
+
+// Paso en el que debe abrirse un flujo según lo que espera (al retomarlo o al recibir su estado).
+const pasoDelFlujo = (snapshot) => {
+  const kind = snapshot?.interrupt?.kind;
+  if (kind === 'business_answers') return PASO.PREGUNTAS;
+  if (kind === 'impact_decisions') return PASO.IMPACTO;
+  if (snapshot?.results?.story) return PASO.HISTORIA;
+  if (snapshot?.results?.technical_assessment) return PASO.IMPACTO;
+  return snapshot?.results?.analyst ? PASO.PREGUNTAS : null;
+};
+
+// Formulario del paso 1 que se guarda con el flujo para poder retomarlo.
+const CAMPO_FORMULARIO = ['requirementName', 'infoType', 'requestType', 'system', 'codigoHu', 'requester', 'description'];
 
 const INFO_TYPE_OPTIONS = [
   { value: 'Minuta', label: 'Minuta de reunión' },
@@ -87,17 +104,20 @@ const CrearHistoriaUsuarioContenido = () => {
   const navigate = useNavigate();
   const ubicacion = useLocation();
   const workflowFromChange = ubicacion.state?.workflowSnapshot ?? null;
+  // Retomar una HU en proceso: /historias/nueva?flujo=<id>
+  const flujoRetomado = new URLSearchParams(ubicacion.search).get('flujo');
   const prefill = ubicacion.state?.prefill;
   const reanalizarId = ubicacion.state?.reanalizarId;
   // Revisión: el cambio de alcance se analiza sobre la misma HU (mismo código), no como una HU nueva.
   const revisionDeId = ubicacion.state?.revisionDeId;
   const [historiaOrigen] = useState(() => (revisionDeId ? getStoryById(revisionDeId) : null));
   // Borrador automático: solo para una historia nueva (no al reanalizar o prellenar).
-  const [borrador] = useState(() => (prefill || reanalizarId || workflowFromChange ? null : leerBorrador()));
+  const [borrador] = useState(() => (prefill || reanalizarId || workflowFromChange || flujoRetomado ? null : leerBorrador()));
   const [borradorRecuperado, setBorradorRecuperado] = useState(Boolean(borrador));
   const [activeStep, setActiveStep] = useState(workflowFromChange
-    ? (workflowFromChange.interrupt?.kind === 'business_answers' ? 2 : 4)
-    : (borrador?.activeStep ?? 1));
+    ? (workflowFromChange.interrupt?.kind === 'business_answers' ? PASO.ANALISIS : (pasoDelFlujo(workflowFromChange) ?? PASO.HISTORIA))
+    : (borrador?.activeStep ?? PASO.REQUERIMIENTO));
+  const [retomando, setRetomando] = useState(Boolean(flujoRetomado));
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
   const [formError, setFormError] = useState('');
   const [workflowResponse, setWorkflowResponse] = useState(workflowFromChange);
@@ -182,7 +202,8 @@ const CrearHistoriaUsuarioContenido = () => {
     ? (esperaRespuesta ? (workflowResponse.interrupt.payload?.questions ?? []).length : 0)
     : questions.filter((q) => q.status === 'pendiente').length;
   const workflowSinSiguientePaso = Boolean(workflowResponse) && !esperaRespuesta && !agentReady
-    && !workflowResponse?.results?.story;
+    && !workflowResponse?.results?.story && !workflowResponse?.results?.technical_assessment;
+  const guardado = workflowResponse?.guardado ?? null;
   const sources = describeSources(agentResponse?.fuentes_consultadas);
 
   const setWorkflowSnapshot = (snapshot) => {
@@ -211,9 +232,30 @@ const CrearHistoriaUsuarioContenido = () => {
       })));
       setObservations((snapshot?.results?.review_observations ?? story.observations ?? []).join('\n'));
     }
-    if (snapshot?.interrupt?.kind === 'business_answers') setActiveStep(3);
-    else if (story) setActiveStep(4);
+    const paso = pasoDelFlujo(snapshot);
+    if (paso) setActiveStep(paso);
   };
+
+  // Al retomar se recupera también el formulario del paso 1 (nombre, sistema, código...).
+  const restaurarFormulario = (formulario = {}) => {
+    const setter = {
+      requirementName: setRequirementName, infoType: setInfoType, requestType: setRequestType, system: setSystem,
+      codigoHu: setCodigoHu, requester: setRequester, description: setDescription,
+    };
+    Object.entries(formulario).forEach(([campo, valor]) => {
+      if (setter[campo] && typeof valor === 'string') setter[campo](valor);
+    });
+  };
+
+  const formularioActual = () => Object.fromEntries(CAMPO_FORMULARIO.map((campo) => [campo, String({
+    requirementName, infoType, requestType, system, codigoHu: normalizarCodigoHu(codigoHu), requester, description,
+  }[campo] ?? '')]));
+
+  const datosParaRetomar = () => ({
+    titulo: requirementName.trim().slice(0, 200) || undefined,
+    creado_por: (leerNombreUsuario() || '').slice(0, 120) || undefined,
+    formulario: formularioActual(),
+  });
 
   const runWorkflowRequest = async (operation) => {
     if (workflowOperationRef.current) return null;
@@ -252,14 +294,51 @@ const CrearHistoriaUsuarioContenido = () => {
     const requirement = buildRequirementMessage(
       { name: requirementName, infoType, description, system, codigoHu: normalizarCodigoHu(codigoHu), requestType },
     );
-    const snapshot = await runWorkflowRequest((signal) => startWorkflow({ mode: 'pre_grooming', requirement }, { signal }));
+    const snapshot = await runWorkflowRequest((signal) => startWorkflow({ mode: 'pre_grooming', requirement, ...datosParaRetomar() }, { signal }));
     if (snapshot) setWorkflowSnapshot(snapshot);
+  };
+
+  // Guarda respuestas escritas y no enviadas, para terminarlas otro día.
+  const guardarRespuestasSinEnviar = async (respuestas) => {
+    if (!workflowResponse?.workflow_id) return false;
+    const limpias = Object.fromEntries(Object.entries(respuestas).filter(([, valor]) => String(valor).trim()));
+    // Es rápido y no ejecuta agentes: no se muestra la pantalla de espera, para no perder lo que está escrito.
+    try {
+      await saveWorkflowDraft(workflowResponse.workflow_id, limpias);
+    } catch (cause) {
+      setWorkflowError(cause instanceof WorkflowApiError ? cause.message : 'No se pudieron guardar las respuestas.');
+      setWorkflowErrorStatus(cause?.status || null);
+      return false;
+    }
+    setWorkflowResponse((actual) => (actual ? { ...actual, guardado: { ...(actual.guardado ?? {}), borrador_respuestas: limpias } } : actual));
+    return true;
+  };
+
+  // Vuelve a ejecutar el paso que falló, desde el último punto guardado.
+  const reintentarFlujo = async () => {
+    if (!workflowResponse?.workflow_id) return;
+    const snapshot = await runWorkflowRequest((signal) => retryWorkflow(workflowResponse.workflow_id, { signal }));
+    if (snapshot) setWorkflowSnapshot(snapshot);
+  };
+
+  // Tras un error, el estado guardado dice si se puede reintentar; se consulta sin ocultar el error.
+  const actualizarTrasError = async (workflowId) => {
+    try {
+      const snapshot = await getWorkflow(workflowId);
+      setWorkflowResponse(snapshot);
+    } catch (cause) {
+      console.warn('No se pudo consultar el estado del flujo después del error:', cause?.message ?? cause);
+    }
   };
 
   const resumeWorkflowInterrupt = async (body) => {
     if (!workflowResponse?.workflow_id || !body?.interrupt_id) return;
-    const snapshot = await runWorkflowRequest((signal) => resumeWorkflow(workflowResponse.workflow_id, body, { signal }));
-    if (!snapshot) return;
+    const workflowId = workflowResponse.workflow_id;
+    const snapshot = await runWorkflowRequest((signal) => resumeWorkflow(workflowId, body, { signal }));
+    if (!snapshot) {
+      await actualizarTrasError(workflowId);
+      return;
+    }
     setWorkflowSnapshot(snapshot);
     const persistence = snapshot.results?.persistence_result;
     if (body.kind === 'po_approval' && body.response?.decision === 'aprobar' && persistence?.status === 'saved') {
@@ -296,6 +375,22 @@ const CrearHistoriaUsuarioContenido = () => {
     setWorkflowSnapshot(workflowFromChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workflowFromChange?.workflow_id]);
+
+  // Retomar una HU en proceso: se carga el flujo guardado y se abre en el paso donde quedó.
+  useEffect(() => {
+    if (!flujoRetomado) return;
+    (async () => {
+      const snapshot = await runWorkflowRequest((signal) => getWorkflow(flujoRetomado, { signal }));
+      if (snapshot) {
+        restaurarFormulario(snapshot.guardado?.formulario);
+        setAnalyzedSignature('retomado');
+        setWorkflowSnapshot(snapshot);
+        if (!pasoDelFlujo(snapshot)) setActiveStep(PASO.PREGUNTAS);
+      }
+      setRetomando(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flujoRetomado]);
 
   // Cada respuesta nueva del agente actualiza el análisis y las preguntas.
   const turnId = agentResponse?.turn_id;
@@ -342,6 +437,7 @@ const CrearHistoriaUsuarioContenido = () => {
     const snapshot = await runWorkflowRequest((signal) => startWorkflow({
       mode: 'pre_grooming',
       requirement: message,
+      ...datosParaRetomar(),
     }, { signal }));
     if (snapshot) {
       setWorkflowSnapshot(snapshot);
@@ -392,8 +488,10 @@ const CrearHistoriaUsuarioContenido = () => {
         },
       };
       setFormError('');
-      const snapshot = await runWorkflowRequest((signal) => resumeWorkflow(workflowResponse.workflow_id, resumeBody, { signal }));
+      const workflowId = workflowResponse.workflow_id;
+      const snapshot = await runWorkflowRequest((signal) => resumeWorkflow(workflowId, resumeBody, { signal }));
       if (snapshot) setWorkflowSnapshot(snapshot);
+      else await actualizarTrasError(workflowId);
       return;
     }
     const respuestas = buildAnswersMessage(questions, sentAnswers);
@@ -447,7 +545,7 @@ const CrearHistoriaUsuarioContenido = () => {
         setFormError('El Analista tiene preguntas de Negocio pendientes; deben responderse y enviarse al workflow primero.');
         return;
       }
-      setActiveStep(4);
+      setActiveStep(PASO.HISTORIA);
       return;
     }
     if (pendingCount > 0 || unsentQuestions.length > 0) {
@@ -489,7 +587,7 @@ const CrearHistoriaUsuarioContenido = () => {
       );
 
       setIsGeneratingStory(false);
-      setActiveStep(4);
+      setActiveStep(PASO.HISTORIA);
     }, 800);
   };
 
@@ -512,9 +610,9 @@ const CrearHistoriaUsuarioContenido = () => {
   // Step 4: la persona edita el borrador (el Agente Redactor-Revisor aún no existe)
   const handleUserStoryChange = (field, value) => setUserStory((prev) => ({ ...prev, [field]: value }));
 
-  // Al llegar al paso 4 se propone el número según el código de HU y las historias ya guardadas.
+  // Al llegar a la historia se propone el número según el código de HU y las historias ya guardadas.
   useEffect(() => {
-    if (activeStep !== 4) return;
+    if (activeStep !== PASO.HISTORIA) return;
     setPlantilla((previo) => (previo.number.trim()
       ? previo
       : { ...previo, number: numeroSugerido(codigoHu, getStoredStories()) }));
@@ -581,10 +679,11 @@ const CrearHistoriaUsuarioContenido = () => {
     const unanswered = questions
       .filter((question) => question.status === 'pendiente' || !String(question.answer ?? '').trim())
       .map((question) => question.question);
+    const sinAnalizar = activeStep === PASO.REQUERIMIENTO && !agentResponse;
     const datos = {
       ...baseStoryData(),
       pendingQuestions: unanswered,
-      status: unanswered.length > 0 ? 'pendiente_de_informacion' : 'revisada'
+      status: sinAnalizar ? 'borrador' : (unanswered.length > 0 ? 'pendiente_de_informacion' : 'revisada'),
     };
     // Re-análisis de un borrador existente: se actualiza la misma HU en lugar de crear otra.
     const saved = (reanalizarId && updateStory(reanalizarId, { ...datos, analisisDesactualizado: false, respuestasNuevas: false, criteriosModificados: false })) || addStory(datos);
@@ -645,12 +744,16 @@ const CrearHistoriaUsuarioContenido = () => {
         steps={STEPPER_STEPS}
         activeStep={activeStep}
         onStepClick={(step) => {
-          if ((workflowResponse?.interrupt?.kind === 'business_answers' || (!workflowResponse && pendingCount > 0)) && step > 3) {
-            setFormError('No avance con preguntas de Negocio pendientes; respóndalas y reanude el workflow.');
+          if ((workflowResponse?.interrupt?.kind === 'business_answers' || (!workflowResponse && pendingCount > 0)) && step > PASO.PREGUNTAS) {
+            setFormError('No avance con preguntas de Negocio pendientes; respóndalas y reanude el flujo.');
             return;
           }
-          if (workflowResponse?.interrupt?.kind === 'po_approval' && step === 5 && !workflowResponse.results?.story) {
-            setFormError('El workflow todavía no ha generado una HU para aprobación.');
+          if (workflowResponse?.interrupt?.kind === 'impact_decisions' && step > PASO.IMPACTO) {
+            setFormError('Revise el impacto en otros módulos y confirme para que se redacte la historia.');
+            return;
+          }
+          if (workflowResponse && step >= PASO.HISTORIA && !workflowResponse.results?.story) {
+            setFormError('El flujo todavía no ha generado la historia.');
             return;
           }
           setFormError('');
@@ -659,11 +762,16 @@ const CrearHistoriaUsuarioContenido = () => {
       />
 
       {workflowResponse && (
-        <AlertaComponent type="info" title="Workflow LangGraph activo en memoria">
-          El identificador solo vive en esta sesión de la interfaz. Los checkpoints están en memoria del backend: al reiniciar el proceso se pierden y hay que iniciar un workflow nuevo. No se guarda el identificador en localStorage.
+        <AlertaComponent type="info" title={guardado?.persistente ? 'El avance se guarda automáticamente' : 'Flujo activo'}>
+          {guardado?.persistente
+            ? 'Cada vez que el flujo espera una respuesta queda guardado. Puede salir y retomarlo otro día desde Historias de Usuario → En proceso.'
+            : 'Este flujo vive mientras el servicio esté activo; si se reinicia, hay que iniciar uno nuevo.'}
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
-            <BotonComponent variant="secondary" onClick={refreshWorkflow} disabled={workflowBusy}>Consultar estado del workflow</BotonComponent>
-            <BotonComponent variant="secondary" onClick={startFreshWorkflow} disabled={workflowBusy}>Iniciar un workflow nuevo</BotonComponent>
+            <BotonComponent variant="secondary" onClick={refreshWorkflow} disabled={workflowBusy}>Consultar estado</BotonComponent>
+            {guardado?.reintentable && (
+              <BotonComponent variant="primary" icon={RotateCcw} onClick={reintentarFlujo} disabled={workflowBusy}>Reintentar el paso que falló</BotonComponent>
+            )}
+            <BotonComponent variant="secondary" onClick={startFreshWorkflow} disabled={workflowBusy}>Iniciar un flujo nuevo</BotonComponent>
           </div>
         </AlertaComponent>
       )}
@@ -671,7 +779,8 @@ const CrearHistoriaUsuarioContenido = () => {
         <AlertaComponent type={workflowErrorStatus === 404 ? 'warning' : 'danger'} title={workflowErrorStatus ? `Workflow: HTTP ${workflowErrorStatus}` : 'Workflow no disponible'}>
           {workflowError}
           {!workflowResponse && <p>Puede seguir con el flujo manual del Analista existente. Una HU manual no se combinará con una aprobación del workflow.</p>}
-          {workflowResponse && workflowErrorStatus === 404 && <p>El checkpoint no se recuperó. Inicie un flujo nuevo para continuar.</p>}
+          {workflowResponse && workflowErrorStatus === 404 && <p>El flujo no se encontró. Inicie uno nuevo para continuar.</p>}
+          {workflowResponse && guardado?.reintentable && <p>El avance anterior quedó guardado. Use «Reintentar el paso que falló».</p>}
           {!workflowResponse && (
             <div style={{ marginTop: '0.6rem' }}>
               <BotonComponent variant="secondary" onClick={startFreshWorkflow} disabled={workflowBusy}>Reintentar con un workflow nuevo</BotonComponent>
@@ -679,10 +788,8 @@ const CrearHistoriaUsuarioContenido = () => {
           )}
         </AlertaComponent>
       )}
-      {!workflowResponse && activeStep === 1 && !workflowError && (
-        <AlertaComponent type="info" title="Los workflows no se recuperan automáticamente">
-          El identificador de workflow no se guarda en localStorage y los checkpoints viven en memoria del backend. Si se recarga la página o se reinicia el proceso, inicie un flujo nuevo; la interfaz no afirmará que recuperó el checkpoint anterior.
-        </AlertaComponent>
+      {retomando && (
+        <AlertaComponent type="info" title="Retomando la HU en proceso">Cargando el avance guardado…</AlertaComponent>
       )}
 
       {borradorRecuperado && (
@@ -710,14 +817,20 @@ const CrearHistoriaUsuarioContenido = () => {
           <p className="ai-loader__text">
             {isGeneratingStory
               ? 'Generando el borrador de la Historia de Usuario...'
-              : activeStep === 3
-                ? 'El Agente Analista actualiza el análisis con las respuestas...'
-                : 'El Agente Analista está analizando el requerimiento...'}
+              : activeStep === PASO.PREGUNTAS
+                ? 'El Analista revisa las respuestas; si ya no quedan vacíos, el Asesor Técnico busca qué otras funciones afecta el cambio...'
+                : activeStep === PASO.IMPACTO
+                  ? 'El Redactor-Revisor escribe y revisa la historia de usuario...'
+                  : activeStep >= PASO.HISTORIA
+                    ? 'El flujo continúa con la decisión indicada...'
+                    : 'El Agente Analista está analizando el requerimiento...'}
           </p>
           <p className="ai-loader__subtext">
             {isGeneratingStory
-              ? 'Borrador simulado: el Agente Redactor-Revisor aún no está implementado.'
-              : 'Consulta glosario, HU similares, estándares y checklist. Puede tardar hasta 90 segundos.'}
+              ? 'Borrador del modo manual (sin el flujo de agentes).'
+              : workflowResponse
+                ? 'Puede tardar varios minutos. Si sale de la página, el avance anterior queda guardado.'
+                : 'Consulta glosario, HU similares, estándares y checklist. Puede tardar unos minutos.'}
           </p>
           {agent.isProcessing && (
             <BotonComponent variant="secondary" icon={X} onClick={agent.cancelTurn}>
@@ -836,7 +949,22 @@ const CrearHistoriaUsuarioContenido = () => {
                     <BotonComponent type="button" variant="secondary" icon={RotateCcw} onClick={handleRestartAnalysis}>
                       Empezar de nuevo
                     </BotonComponent>
-                  ) : <span />}
+                  ) : (
+                    <BotonComponent
+                      type="button"
+                      variant="secondary"
+                      icon={Save}
+                      onClick={() => {
+                        if (!requirementName.trim()) {
+                          setFormError('Escriba al menos el nombre del requerimiento para guardarlo.');
+                          return;
+                        }
+                        handleSaveDraft();
+                      }}
+                    >
+                      Guardar y continuar después
+                    </BotonComponent>
+                  )}
                   <BotonComponent type="submit" variant="primary" icon={Sparkles} size="lg">
                     {agentResponse ? 'Volver a analizar' : 'Analizar Requerimiento'}
                   </BotonComponent>
@@ -908,7 +1036,9 @@ const CrearHistoriaUsuarioContenido = () => {
                   </AlertaComponent>
                 ) : agentReady ? (
                   <AlertaComponent type="success" title="No quedan vacíos relevantes">
-                    El agente considera aclarado el requerimiento. Puede generar el borrador de la Historia de Usuario.
+                    {workflowResponse
+                      ? 'El agente considera aclarado el requerimiento. Siga al paso 4 para revisar qué otras funciones afecta el cambio.'
+                      : 'El agente considera aclarado el requerimiento. Puede generar el borrador de la Historia de Usuario.'}
                     {(agentResponse?.supuesto_validar_po?.length ?? 0) > 0 && (
                       <> Quedan {agentResponse.supuesto_validar_po.length} supuestos que validará el Product Owner al aprobar.</>
                     )}
@@ -925,10 +1055,13 @@ const CrearHistoriaUsuarioContenido = () => {
 
                 {workflowResponse?.interrupt?.kind === 'business_answers' ? (
                   <WorkflowInterruptionForm
+                    key={workflowResponse.interrupt.interrupt_id}
                     interrupt={workflowResponse.interrupt}
                     onResume={resumeWorkflowInterrupt}
                     busy={workflowBusy}
                     error={workflowError}
+                    borrador={guardado?.borrador_respuestas}
+                    onSaveDraft={guardado?.persistente ? guardarRespuestasSinEnviar : undefined}
                   />
                 ) : !workflowResponse && questions.map((q, idx) => (
                   <TarjetaPreguntaComponent key={q.id} question={q} index={idx} onAnswerChange={handleQuestionAnswerChange} />
@@ -937,9 +1070,14 @@ const CrearHistoriaUsuarioContenido = () => {
                 {formError && <AlertaComponent type="danger" title="No se pudo enviar">{formError}</AlertaComponent>}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)' }}>
-                  <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(2)}>
+                  <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(PASO.ANALISIS)}>
                     Atrás
                   </BotonComponent>
+                  {workflowResponse && workflowResponse.results?.technical_assessment && (
+                    <BotonComponent variant="primary" icon={ArrowRight} onClick={() => setActiveStep(PASO.IMPACTO)}>
+                      Impacto en otros módulos
+                    </BotonComponent>
+                  )}
                   {!workflowResponse && (
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                       <BotonComponent variant={unsentQuestions.length > 0 ? 'primary' : 'secondary'} icon={Sparkles} onClick={handleSendAnswers} disabled={unsentQuestions.length === 0}>
@@ -956,11 +1094,57 @@ const CrearHistoriaUsuarioContenido = () => {
             </div>
           )}
 
-          {/* STEP 4: Historia de Usuario */}
-          {activeStep === 4 && (
+          {/* STEP 4: Impacto en otros módulos (Asesor Técnico) */}
+          {activeStep === PASO.IMPACTO && (
             <div>
               <TarjetaComponent
-                title="Paso 4 — Historia de Usuario Generada"
+                title="Paso 4 — Impacto en otros módulos"
+                subtitle="El Asesor Técnico revisó qué otras funciones del sistema afecta el cambio. Revise y tome las decisiones pendientes antes de redactar la historia."
+              >
+                {!workflowResponse ? (
+                  <AlertaComponent type="info" title="Disponible con el flujo de agentes">
+                    En el modo manual no se revisa el impacto en otros módulos. Continúe con la historia.
+                  </AlertaComponent>
+                ) : workflowResponse.interrupt?.kind === 'impact_decisions' ? (
+                  <>
+                    <ImpactoNegocioComponent listaImpacto={workflowResponse.interrupt.payload?.impacto_negocio ?? []} />
+                    <WorkflowInterruptionForm
+                      key={workflowResponse.interrupt.interrupt_id}
+                      interrupt={workflowResponse.interrupt}
+                      onResume={resumeWorkflowInterrupt}
+                      busy={workflowBusy}
+                      error={workflowError}
+                      borrador={guardado?.borrador_respuestas}
+                      onSaveDraft={guardado?.persistente ? guardarRespuestasSinEnviar : undefined}
+                    />
+                  </>
+                ) : workflowResponse.results?.technical_assessment ? (
+                  <WorkflowResultsPanel results={{ technical_assessment: workflowResponse.results.technical_assessment, impact_decisions: workflowResponse.results.impact_decisions }} />
+                ) : (
+                  <AlertaComponent type="info" title="Todavía no hay impacto">
+                    El Asesor Técnico revisa el impacto cuando el Analista termina y ya no quedan preguntas para Negocio.
+                  </AlertaComponent>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)' }}>
+                  <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(PASO.PREGUNTAS)}>
+                    Atrás
+                  </BotonComponent>
+                  {(!workflowResponse || workflowResponse.results?.story) && (
+                    <BotonComponent variant="primary" icon={ArrowRight} onClick={() => setActiveStep(PASO.HISTORIA)}>
+                      Historia (borrador)
+                    </BotonComponent>
+                  )}
+                </div>
+              </TarjetaComponent>
+            </div>
+          )}
+
+          {/* STEP 5: Historia de Usuario */}
+          {activeStep === PASO.HISTORIA && (
+            <div>
+              <TarjetaComponent
+                title="Paso 5 — Historia de Usuario Generada"
                 subtitle="Visualización de la historia en formato estándar y criterios de aceptación."
               >
                 {workflowResponse
@@ -1023,10 +1207,10 @@ const CrearHistoriaUsuarioContenido = () => {
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)' }}>
-                  <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(3)}>
+                  <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(workflowResponse ? PASO.IMPACTO : PASO.PREGUNTAS)}>
                     Atrás
                   </BotonComponent>
-                  <BotonComponent variant="primary" icon={ArrowRight} onClick={() => setActiveStep(5)} disabled={!storyIsComplete}>
+                  <BotonComponent variant="primary" icon={ArrowRight} onClick={() => setActiveStep(PASO.APROBACION)} disabled={!storyIsComplete}>
                     Aprobación del Product Owner
                   </BotonComponent>
                 </div>
@@ -1034,11 +1218,11 @@ const CrearHistoriaUsuarioContenido = () => {
             </div>
           )}
 
-          {/* STEP 5: Aprobación del Product Owner */}
-          {activeStep === 5 && (
+          {/* STEP 6: Aprobación del Product Owner */}
+          {activeStep === PASO.APROBACION && (
             <div>
               <TarjetaComponent
-                title="Paso 5 — Aprobación del Product Owner"
+                title="Paso 6 — Aprobación del Product Owner"
                 subtitle="Solo una persona aprueba. Al aprobar, la HU se guarda en el Repositorio de HU y queda lista para grooming."
               >
                 <div className="grid-2" style={{ marginBottom: '1.5rem' }}>
@@ -1103,7 +1287,7 @@ const CrearHistoriaUsuarioContenido = () => {
                   </>
                 ) : workflowResponse?.interrupt?.kind === 'po_approval' && workflowStoryEdited ? (
                   <AlertaComponent type="warning" title="La edición no se enviará a la API de aprobación">
-                    Restaure la versión del checkpoint para aprobarla en LangGraph, o abandone el workflow y use el guardado manual disponible en el paso 4. La edición manual nunca se enviará como aprobación del checkpoint.
+                    Restaure la versión del checkpoint para aprobarla en LangGraph, o abandone el workflow y use el guardado manual disponible en el paso 5. La edición manual nunca se enviará como aprobación del checkpoint.
                   </AlertaComponent>
                 ) : workflowResponse?.results?.persistence_result?.status === 'saved' ? (
                   <AlertaComponent type="success" title="HU aprobada y guardada por el backend">
@@ -1131,7 +1315,7 @@ const CrearHistoriaUsuarioContenido = () => {
                 {descargaError && <AlertaComponent type="danger" title="No se pudo descargar">{descargaError}</AlertaComponent>}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)' }}>
-                  <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(4)}>
+                  <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(PASO.HISTORIA)}>
                     Atrás
                   </BotonComponent>
                   <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>

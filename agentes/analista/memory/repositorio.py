@@ -112,6 +112,26 @@ sincronizacion_conocimiento = Table(
     Column("actualizada_en", String(40), nullable=False),
 )
 
+# Flujos de creación o cambio de una HU que todavía no terminan: se guardan cada vez que esperan a una persona
+# (o fallan) para poder retomarlos otro día, aunque el servicio se haya reiniciado.
+workflow_guardado = Table(
+    "workflow_guardado", _metadata,
+    Column("id", _GUID, primary_key=True),  # el workflow_id público
+    Column("hilo", String(64), nullable=False),  # identificador interno del hilo de LangGraph; no se expone
+    Column("modo", String(20), nullable=False),
+    Column("titulo", String(200), nullable=False),
+    Column("creado_por", String(120)),
+    Column("estado", String(20), nullable=False),  # esperando | en_ejecucion | error | completado | cancelado | fallido
+    Column("etapa", String(40), nullable=False),
+    Column("espera", String(40)),  # tipo de interrupción pendiente, si hay
+    Column("formulario", _Largo),
+    Column("borrador", _Largo),  # respuestas escritas y todavía no enviadas
+    Column("punto_control", _Largo),
+    Column("creado_en", String(40), nullable=False),
+    Column("actualizado_en", String(40), nullable=False),
+    Index("ix_workflow_guardado_estado", "estado"),
+)
+
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _LONG_DIGITS = re.compile(r"(?<![\d.,])\d{9,}(?![\d.,])")
 _ID_PATTERN = re.compile(r"\b\d-\d{4}-\d{4}\b")
@@ -242,6 +262,58 @@ class RepositorioHU:
                 conexion.execute(insert(hu_aprobada).values(id=hu["id"], **valores))
         self._avisar_cambio_conocimiento()
         return {"id": hu["id"], "titulo": hu["titulo"], "aprobada_en": aprobada_en}
+
+    # --- Flujos en proceso ----------------------------------------------
+    def guardar_workflow(self, registro: dict[str, Any]) -> None:
+        """Crea o actualiza el flujo guardado. Conserva ``creado_en`` y el borrador si no se envían."""
+        ahora = _now()
+        valores = {
+            "hilo": registro["hilo"], "modo": registro["modo"], "titulo": (registro.get("titulo") or "Sin título")[:200],
+            "creado_por": (registro.get("creado_por") or None) and registro["creado_por"][:120],
+            "estado": registro["estado"], "etapa": registro["etapa"], "espera": registro.get("espera"),
+            "formulario": json.dumps(registro.get("formulario") or {}, ensure_ascii=False),
+            "punto_control": json.dumps(registro.get("punto_control"), ensure_ascii=False),
+            "actualizado_en": ahora,
+        }
+        with self.motor.begin() as conexion:
+            existe = conexion.execute(
+                select(workflow_guardado.c.id).where(workflow_guardado.c.id == registro["id"])).first()
+            if existe:
+                conexion.execute(update(workflow_guardado).where(workflow_guardado.c.id == registro["id"]).values(**valores))
+            else:
+                conexion.execute(insert(workflow_guardado).values(
+                    id=registro["id"], creado_en=ahora, borrador=json.dumps({}), **valores))
+
+    def obtener_workflow(self, workflow_id: str) -> dict[str, Any] | None:
+        with self.motor.connect() as conexion:
+            fila = conexion.execute(select(workflow_guardado).where(workflow_guardado.c.id == workflow_id)).first()
+        if fila is None:
+            return None
+        registro = dict(fila._mapping)
+        for campo in ("formulario", "borrador", "punto_control"):
+            registro[campo] = json.loads(registro[campo]) if registro.get(campo) else None
+        return registro
+
+    def listar_workflow(self) -> list[dict[str, Any]]:
+        """Resumen de los flujos guardados, del más reciente al más antiguo (sin el punto de control)."""
+        consulta = select(
+            workflow_guardado.c.id, workflow_guardado.c.modo, workflow_guardado.c.titulo,
+            workflow_guardado.c.creado_por, workflow_guardado.c.estado, workflow_guardado.c.etapa,
+            workflow_guardado.c.espera, workflow_guardado.c.creado_en, workflow_guardado.c.actualizado_en,
+        ).order_by(workflow_guardado.c.actualizado_en.desc())
+        with self.motor.connect() as conexion:
+            return [dict(fila._mapping) for fila in conexion.execute(consulta)]
+
+    def guardar_borrador_workflow(self, workflow_id: str, borrador: dict[str, str]) -> None:
+        with self.motor.begin() as conexion:
+            resultado = conexion.execute(update(workflow_guardado).where(workflow_guardado.c.id == workflow_id).values(
+                borrador=json.dumps(borrador, ensure_ascii=False), actualizado_en=_now()))
+        if resultado.rowcount == 0:
+            raise RepositorioError("El flujo no está guardado.", not_found=True)
+
+    def eliminar_workflow(self, workflow_id: str) -> None:
+        with self.motor.begin() as conexion:
+            conexion.execute(delete(workflow_guardado).where(workflow_guardado.c.id == workflow_id))
 
     def listar_hu(self) -> list[dict[str, Any]]:
         consulta = select(hu_aprobada.c.id, hu_aprobada.c.titulo, hu_aprobada.c.aprobada_en).order_by(

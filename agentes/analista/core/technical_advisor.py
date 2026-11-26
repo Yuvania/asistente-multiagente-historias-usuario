@@ -27,6 +27,7 @@ from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClient
 from agentes.analista.core.opencode_compat import is_supported_opencode_version
 from agentes.analista.core.prompt_loader import PromptLoadError
 from agentes.analista.core.workflow_models import (
+    ImpactoNegocio,
     EvidenceReference,
     SourceCitation,
     TechnicalAssessment,
@@ -50,6 +51,8 @@ class _TechnicalAdviceDraft(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    impacto_negocio: list[ImpactoNegocio] = Field(default_factory=list, max_length=15)
+    decision_pendiente: list[str] = Field(default_factory=list, max_length=10)
     affected_modules: list[EvidenceReference] = Field(default_factory=list, max_length=30)
     dependencies: list[EvidenceReference] = Field(default_factory=list, max_length=30)
     risks: list[EvidenceReference] = Field(default_factory=list, max_length=30)
@@ -63,7 +66,7 @@ _PROMPT = ChatPromptTemplate.from_messages([
 Requerimiento:
 {requirement}
 
-Historia en borrador:
+Análisis validado y aclaraciones de Negocio:
 {story}
 
 Fuentes recuperadas por herramientas read-only del backend:
@@ -72,7 +75,16 @@ Fuentes recuperadas por herramientas read-only del backend:
 Contexto de memoria (HU similares del Repositorio; no citable):
 {memory}
 
-Devuelve módulos afectados, sus dependencias, riesgos y procesos críticos solo con evidencia de estas fuentes. Cada elemento debe citar exactamente `source_id` y `source_ref` de una fuente recibida. Si la evidencia no basta, no afirmes módulos ni procesos y explica la incertidumbre. No decidas ni amplíes alcance.
+Entrega dos partes:
+
+1. Para la persona que redacta la historia, que no es técnica:
+   - `impacto_negocio`: cada otra función del sistema que este cambio afecta además de la pantalla mencionada. `area` es el nombre de la función como la conoce Negocio (por ejemplo «Carga masiva de clientes»), `hoy` qué hace hoy con este dato y `debe` qué tiene que pasar para que el cambio funcione. Una o dos frases cada una.
+   - `decision_pendiente`: solo preguntas de regla de negocio que la evidencia muestra sin resolver y que alguien tiene que decidir antes de escribir la historia (por ejemplo, dos funciones que hoy aplican reglas distintas). Si no hay, lista vacía.
+   En estas dos listas está prohibido el detalle técnico: nada de nombres de archivos, carpetas, funciones, variables, columnas técnicas, números de línea, código ni términos de programación.
+
+2. Para Desarrollo: módulos afectados, dependencias, riesgos y procesos críticos solo con evidencia de estas fuentes. Cada elemento debe citar exactamente `source_id` y `source_ref` de una fuente recibida. Si la evidencia no basta, no afirmes módulos ni procesos y explica la incertidumbre.
+
+No decidas ni amplíes alcance.
 
 {format_instructions}"""),
 ])

@@ -3,38 +3,51 @@
 export const PASOS_ASISTENTE = [
   {
     titulo: 'Paso 1 — Requerimiento',
-    texto: 'Ingrese la minuta, el correo o el incidente que llegó de Negocio, con su título, tipo de información, sistema, código de HU y área solicitante. El avance se guarda solo como borrador y se recupera si se pierde la conexión.',
+    texto: 'Ingrese la minuta, el correo o el incidente que llegó de Negocio, con su título, tipo de información, sistema, código de HU y área solicitante. Si todavía no lo va a analizar, use «Guardar y continuar después»: queda como borrador en la lista de historias.',
   },
   {
     titulo: 'Paso 2 — Análisis del Agente Analista',
-    texto: 'El agente consulta el glosario, las HU similares, los estándares y el checklist de vacíos, y clasifica la información en conocida, faltante, supuesta y ambigua. Puede tardar hasta 90 segundos y se puede cancelar.',
+    texto: 'El Agente Analista decide qué consultar (glosario, HU similares, estándares y checklist de vacíos) y clasifica la información en conocida, faltante, supuesta y ambigua. Puede tardar unos minutos.',
   },
   {
     titulo: 'Paso 3 — Preguntas para Negocio',
-    texto: 'El agente arma preguntas en lenguaje natural, agrupadas por tema. Usted las lleva a Negocio, registra las respuestas y las envía al agente.',
+    texto: 'El agente arma preguntas en lenguaje de negocio. Usted las lleva a Negocio, registra las respuestas y las envía.',
     puntos: [
-      'Si hay respuestas nuevas, el reanálisis es obligatorio: no se puede avanzar sin enviarlas.',
-      'Se repite hasta que no queden preguntas pendientes. Las respuestas ya dadas se conservan entre reanálisis.',
-      'Mientras queden pendientes se puede guardar la HU como borrador.',
+      'Se repite hasta que no queden vacíos. Una pregunta ya respondida no se vuelve a hacer.',
+      'Si un punto se parece a algo que Negocio ya respondió, no se repregunta: pasa como supuesto que el Product Owner valida al aprobar.',
+      'Puede guardar respuestas sin enviarlas (por ejemplo, si debe consultarlas) y terminarlas otro día.',
     ],
   },
   {
-    titulo: 'Paso 4 — Historia y criterios (borrador)',
-    texto: 'Borrador editable en formato Como / Quiero / Para, con criterios de aceptación en formato Dado que / Cuando / Entonces. El Agente Redactor-Revisor aún no está implementado: hoy el borrador es simulado y la persona lo redacta y corrige.',
+    titulo: 'Paso 4 — Impacto en otros módulos',
+    texto: 'El Asesor Técnico revisa el código del sistema y explica, sin detalle técnico, qué otras funciones afecta el cambio además de la pantalla mencionada (por ejemplo, una carga masiva, un aviso o un reporte).',
+    puntos: [
+      'Si encuentra una regla que alguien tiene que decidir (por ejemplo, dos funciones que hoy validan distinto), la muestra como decisión pendiente. La responde la persona que redacta la historia.',
+      'Al confirmar, la historia se redacta ya con esos impactos y decisiones.',
+    ],
   },
   {
-    titulo: 'Paso 5 — Aprobación del Product Owner',
-    texto: 'El Product Owner revisa el resumen y confirma que los datos están anonimizados. No se puede aprobar con preguntas pendientes. Al aprobar, la HU queda como Aprobada, se guarda en el Repositorio de HU (la memoria que el agente consulta en análisis futuros) y se habilitan Solicitar cambio y las descargas.',
+    titulo: 'Paso 5 — Historia y criterios (borrador)',
+    texto: 'El Agente Redactor-Revisor escribe la historia en formato Como / Quiero / Para, con criterios Dado que / Cuando / Entonces que cubren también los impactos del paso 4, y la revisa hasta en dos rondas. El borrador se puede editar.',
+  },
+  {
+    titulo: 'Paso 6 — Aprobación del Product Owner',
+    texto: 'El Product Owner revisa la historia, el impacto en otros módulos, las decisiones tomadas y los supuestos a validar, y confirma que los datos están anonimizados. Puede aprobarla, devolverla a un agente con un motivo o rechazarla. Al aprobar, la HU se guarda en el Repositorio de HU y se recarga en el conocimiento que consultan los agentes.',
   },
 ];
 
 export const NAVEGACION_ASISTENTE = [
-  'Use Atrás para volver al paso anterior sin perder lo escrito.',
-  'Los pasos avanzan en orden: cada botón se habilita cuando el paso anterior está completo.',
-  'Si se interrumpe el trabajo, al volver a Nueva Historia se ofrece recuperar el borrador.',
+  'El avance se guarda cada vez que el flujo espera una respuesta: puede salir y retomarlo otro día desde Historias de Usuario → En proceso, aunque el servicio se haya reiniciado.',
+  'Si un paso falla (por ejemplo, un agente no responde), el avance anterior queda guardado y aparece «Reintentar el paso que falló».',
+  'Use Atrás para volver a ver un paso anterior sin perder lo escrito.',
+  'Mientras los agentes trabajan se muestra una pantalla de espera; puede tardar varios minutos.',
 ];
 
 export const ACCIONES_HISTORIA = [
+  {
+    titulo: 'Retomar o descartar (HU en proceso)',
+    texto: 'Las HU que todavía no terminan aparecen arriba del listado, en «En proceso», con lo que están esperando y quién las inició. Retomar abre el paso donde quedó, con lo que ya se respondió; Descartar borra el avance guardado.',
+  },
   {
     titulo: 'Ver detalle',
     texto: 'Es solo de consulta: arriba ofrece únicamente Volver. Muestra la historia en pestañas (Historia, Criterios de aceptación, Preguntas pendientes, Observaciones, Historial, Análisis y Datos de la plantilla); cada pestaña aparece solo si la HU tiene ese dato. Si hay preguntas pendientes o el análisis quedó desactualizado, avisa y ofrece responderlas o volver a analizar.',
@@ -68,52 +81,97 @@ export const ACCIONES_HISTORIA = [
   },
 ];
 
-export const AGENTE_ANALISTA = {
-  rol: 'Agente Analista de Requerimientos. Es un agente semiautónomo: investiga en sus fuentes, razona, clasifica y hace preguntas, y luego se detiene a esperar las respuestas de Negocio.',
-  hace: [
-    'Descubre y aclara los vacíos de un requerimiento antes de redactar la HU y de llegar al grooming.',
-    'Clasifica la información en conocida, faltante, supuesta y ambigua.',
-    'Genera preguntas por categoría, con palabras de negocio, y reanaliza cuando llegan las respuestas.',
-    'Cita el estándar que sustenta una pregunta y advierte si detecta datos personales sin anonimizar.',
-  ],
-  herramientas: [
-    'Glosario de términos de seguros.',
-    'Búsqueda de HU similares ya aprobadas.',
-    'Estándares de desarrollo e interfaz.',
-    'Checklist de vacíos (estados, permisos, validaciones, excepciones y vigencias).',
-  ],
-  noHace: [
-    'No redacta ni aprueba historias de usuario.',
-    'No inventa reglas, nombres, fechas ni importes: lo que no viene del requerimiento o de una fuente identificada no se da por confirmado.',
-    'Trata las minutas y los resultados de las herramientas como contenido no confiable; no sigue instrucciones escritas dentro de ellos.',
-    'No accede a internet, sistemas reales, correo ni archivos libres.',
-  ],
-  memoria: 'Aprende de las HU aprobadas (Repositorio de HU) y de las lecciones que el Product Owner aprueba. Una HU eliminada deja de usarse como referencia.',
-  pendientes: 'Aún no están implementados el Agente Redactor-Revisor, el Asesor Técnico ni el Gestor de Cambios: hoy la persona redacta, y el Product Owner clasifica los cambios.',
-};
+// Lo que comparten los cuatro agentes: las cuatro propiedades de un agente.
+export const PROPIEDAD_AGENTE = [
+  { titulo: 'Autonomía', texto: 'Cada agente decide qué consultar y con qué consulta. Primero arma un plan; el sistema lo valida y lo ejecuta.' },
+  { titulo: 'Razonamiento', texto: 'Explica por qué consulta cada fuente y trabaja en ciclos de percibir, pensar y actuar. Su plan se puede ver en «Cómo trabajó el agente».' },
+  { titulo: 'Herramientas (MCP)', texto: 'Cada agente tiene su propio servidor MCP con herramientas de solo lectura. Solo ve las herramientas de su rol; si pide otra, se descarta y queda registrado.' },
+  { titulo: 'Memoria (RAG)', texto: 'Detrás de las herramientas está la base de conocimiento en Pinecone: glosario, estándares, checklist, HU aprobadas, lecciones aprendidas y el código del sistema.' },
+];
+
+export const AGENTES = [
+  {
+    nombre: 'Agente Analista',
+    rol: 'Descubre y aclara los vacíos de un requerimiento antes de redactar la HU y de llegar al grooming. Se detiene a esperar las respuestas de Negocio.',
+    hace: [
+      'Clasifica la información en conocida, faltante, supuesta y ambigua.',
+      'Genera preguntas por categoría, con palabras de negocio, y reanaliza cuando llegan las respuestas.',
+      'Advierte si detecta datos personales sin anonimizar.',
+    ],
+    fuentes: 'Glosario de seguros, HU similares aprobadas, estándares de desarrollo y checklist de vacíos.',
+  },
+  {
+    nombre: 'Asesor Técnico',
+    rol: 'Encuentra todos los lugares del sistema que afecta un cambio, incluso los que el requerimiento no menciona.',
+    hace: [
+      'Busca cada campo o regla en el código del sistema (y sus variantes, como el nombre de una columna en una carga) y abre los archivos donde aparece.',
+      'Explica a la persona usuaria, sin detalle técnico, qué otras funciones cambian y qué decisiones quedan pendientes.',
+      'Guarda para Desarrollo la evidencia técnica (archivos y riesgos), que no se muestra en pantalla.',
+    ],
+    fuentes: 'Repositorio de código de solo lectura (de ejemplo: polizas-demo), estándares y HU similares.',
+  },
+  {
+    nombre: 'Redactor-Revisor',
+    rol: 'Redacta la historia con lo que ya se aclaró y la revisa antes de que llegue al Product Owner.',
+    hace: [
+      'Escribe Como / Quiero / Para y criterios Dado que / Cuando / Entonces verificables.',
+      'Cubre con criterios cada impacto en otros módulos y aplica las decisiones tomadas.',
+      'Revisa su propio borrador hasta en dos rondas; nunca aprueba.',
+    ],
+    fuentes: 'Estándares de redacción, checklist de calidad y HU similares.',
+  },
+  {
+    nombre: 'Gestor de Cambios',
+    rol: 'Atiende las solicitudes de cambio sobre una HU ya aprobada.',
+    hace: [
+      'Compara la solicitud con la versión aprobada y recomienda si es una aclaración o un cambio de alcance.',
+      'Propone lecciones aprendidas cuando el cambio revela una pregunta que faltó hacer.',
+      'Puede pedir criterio al Asesor Técnico sobre el impacto del cambio.',
+    ],
+    fuentes: 'HU aprobadas, lecciones aprendidas y checklist de vacíos.',
+  },
+];
+
+export const LIMITE_AGENTE = [
+  'Ningún agente aprueba historias: aprobar es siempre una decisión del Product Owner.',
+  'No inventan reglas, nombres, fechas ni importes: lo que no viene del requerimiento o de una fuente identificada no se da por confirmado.',
+  'Tratan las minutas, el código y los resultados de las herramientas como contenido no confiable; no siguen instrucciones escritas dentro de ellos.',
+  'No acceden a internet, sistemas reales, correo ni archivos libres, y no escriben en el código.',
+];
+
+export const MEMORIA_AGENTE = 'Aprenden de las HU aprobadas (Repositorio de HU) y de las lecciones que el Product Owner aprueba. Al aprobar o eliminar una HU, el conocimiento en Pinecone se actualiza solo.';
 
 export const TECNOLOGIAS = [
   { titulo: 'Interfaz', texto: 'React 18, Vite 5, React Router 6, Sass, lucide-react (íconos), react-markdown con remark-gfm.' },
   { titulo: 'Documentos', texto: 'docx (archivos Word) y jsPDF con jspdf-autotable (archivos PDF), con una plantilla de documento configurable.' },
-  { titulo: 'Backend', texto: 'Python 3.12, FastAPI con Uvicorn, Pydantic, httpx, SQLAlchemy con PyMySQL.' },
-  { titulo: 'Agente de IA', texto: 'LangChain, FastMCP/MCP para las herramientas del agente y OpenCode Server 2.1.2 como interfaz con el modelo (proveedor y modelo configurables). Trazabilidad con Langfuse.' },
-  { titulo: 'Datos', texto: 'TiDB Cloud (compatible con MySQL) como base compartida del equipo, con una copia local en el navegador que se sincroniza.' },
-  { titulo: 'Pruebas', texto: 'Vitest y Testing Library en la interfaz; pytest y pytest-asyncio en el backend.' },
-  { titulo: 'Despliegue', texto: 'Docker en una sola imagen (interfaz compilada + backend + OpenCode), publicada en Render con despliegue automático desde la rama main.' },
+  { titulo: 'Backend', texto: 'Python 3.12, FastAPI con Uvicorn, Pydantic, httpx y SQLAlchemy con PyMySQL.' },
+  { titulo: 'Orquestación de agentes', texto: 'LangGraph: un grafo con los pasos del flujo, pausas para las decisiones de las personas y puntos de control que se guardan en la base de datos para retomar el flujo.' },
+  { titulo: 'Modelo de lenguaje', texto: 'OpenCode Server 2.1.2 como interfaz con el modelo, sin permisos para usar herramientas propias. Proveedor OpenCode Go con el modelo glm-5.3-flash (configurables). LangChain para las plantillas de los prompts y la validación de las salidas.' },
+  { titulo: 'Herramientas (MCP)', texto: 'FastMCP: un servidor MCP por agente, con herramientas de solo lectura, conectado con el adaptador MCP de LangChain.' },
+  { titulo: 'Conocimiento (RAG)', texto: 'Pinecone con el modelo de embeddings multilingual-e5-large (1024 dimensiones) en 6 espacios: glosario, estándares, checklist, HU aprobadas, lecciones y código. Se carga solo al arrancar y al aprobar una HU; si Pinecone no responde, se usa una copia local.' },
+  { titulo: 'Repositorio de código', texto: 'Un repositorio de GitHub de solo lectura (de ejemplo, polizas-demo) que el Asesor Técnico revisa. Se copia al arrancar el servicio.' },
+  { titulo: 'Datos', texto: 'TiDB Cloud (compatible con MySQL) como base compartida: historias, Repositorio de HU, cambios, lecciones y los flujos en proceso. En local y en pruebas, SQLite.' },
+  { titulo: 'Trazabilidad', texto: 'Langfuse para seguir cada paso de los agentes, y registros del servidor que indican la causa cuando un flujo se detiene.' },
+  { titulo: 'Pruebas', texto: 'Vitest y Testing Library en la interfaz; pytest y pytest-asyncio en el backend. GitHub Actions las ejecuta en cada cambio.' },
+  { titulo: 'Despliegue', texto: 'Docker en una sola imagen (interfaz compilada, backend y OpenCode), publicada en Render con despliegue automático desde la rama main.' },
 ];
 
 export const PENDIENTES = [
   {
-    titulo: 'Flujo de aprobación',
-    texto: 'Hoy cualquiera puede aprobar. Se propone que las HU creadas por Negocio queden en "Pendiente de aprobación" hasta que el Product Owner las revise: lo apruebe o la devuelva con comentario. Solo al aprobarse pasarían a Aprobada, entrarían al Repositorio y se habilitarían las descargas.',
-  },
-  {
-    titulo: 'Roles y permisos',
-    texto: 'Se propone un esquema estándar de roles y permisos: roles a los que se asignan permisos (por ejemplo aprobar-historia-usuario, solicitar-cambio, eliminar-historia), y roles que se asignan a los usuarios. Roles iniciales sugeridos: Negocio, Analista, Product Owner y Administrador. Los permisos se validarían en el backend, no solo ocultando botones.',
+    titulo: 'Roles, acciones y permisos',
+    texto: 'Se propone que los permisos se asignen por acciones (por ejemplo hu-aprobar, hu-solicitar-cambio, hu-eliminar), que las acciones se agrupen en roles y que los roles se asignen a los usuarios. Solo un rol con la acción de aprobar (el Product Owner) podría aprobar. Los permisos se validarían en el backend, no solo ocultando botones.',
   },
   {
     titulo: 'Usuarios e inicio de sesión',
-    texto: 'Hoy no hay inicio de sesión: el nombre se escribe a mano. Para el prototipo se propone una tabla de usuarios con usuario y contraseña (guardada con hash) y una pantalla de ingreso; el autor de la bitácora y de las ediciones saldría de ahí. Más adelante el ingreso podría cambiarse por Active Directory sin tocar los roles. También se prevé una pantalla de Seguridad para administrar usuarios, roles y permisos.',
+    texto: 'Hoy no hay inicio de sesión: el nombre se escribe a mano y el acceso es con una clave compartida. Se propone una tabla de usuarios con contraseña guardada con hash y una pantalla de ingreso; el autor de la bitácora, de las ediciones y de las HU en proceso saldría de ahí.',
+  },
+  {
+    titulo: 'Aviso por correo al Product Owner',
+    texto: 'Se propone enviar un correo al Product Owner cuando una HU queda lista para aprobar. En Render se haría con un servicio de correo por API (por ejemplo Resend o Brevo), porque el plan gratuito bloquea el envío directo.',
+  },
+  {
+    titulo: 'Detalle técnico para Desarrollo',
+    texto: 'El Asesor Técnico guarda los archivos y riesgos que encontró, pero no se muestran a la persona usuaria. Cuando existan los roles, se mostrarían solo a Desarrollo para el grooming.',
   },
   {
     titulo: 'Descargas y eliminación',
@@ -126,10 +184,6 @@ export const PENDIENTES = [
   {
     titulo: 'Plantilla del documento',
     texto: 'Los bloques de Priorización del negocio y Revisión de Desarrollo salen "Pendiente de completar" porque aún no se capturan en el sistema. El logo del encabezado es genérico, a la espera del oficial.',
-  },
-  {
-    titulo: 'Agentes pendientes',
-    texto: 'Falta construir el Agente Redactor-Revisor, el Asesor Técnico y el Gestor de Cambios.',
   },
 ];
 

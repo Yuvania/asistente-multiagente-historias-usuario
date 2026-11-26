@@ -322,7 +322,9 @@ async def test_return_routes_to_new_analysis_and_waits_for_po_before_recording()
         repository=repository, change_manager=manager,
     )
     paused = await runtime.execute(_post_request())
-    returned = await runtime.resume(paused.workflow_id, {"decision": "devolver", "reason": "Precisar datos"})
+    impact = await runtime.resume(paused.workflow_id, {"decision": "devolver", "reason": "Precisar datos"})
+    assert impact.current_stage == WorkflowStage.IMPACT_WAIT
+    returned = await runtime.resume(paused.workflow_id, {"answers": []})
 
     assert returned.current_stage == WorkflowStage.PO_APPROVAL
     assert not any(entry[0] == "registrar_cambio" for entry in repository.calls)
@@ -407,7 +409,9 @@ async def test_scope_change_leads_to_new_analysis_and_waits_for_po_approval():
         repository=repository, change_manager=manager,
     )
     paused = await runtime.execute(_post_request())
-    after_apply = await runtime.resume(paused.workflow_id, {"decision": "aplicar"})
+    impact = await runtime.resume(paused.workflow_id, {"decision": "aplicar"})
+    assert impact.current_stage == WorkflowStage.IMPACT_WAIT
+    after_apply = await runtime.resume(paused.workflow_id, {"answers": []})
 
     assert after_apply.status == WorkflowStatus.INTERRUPTED
     assert after_apply.current_stage == WorkflowStage.PO_APPROVAL

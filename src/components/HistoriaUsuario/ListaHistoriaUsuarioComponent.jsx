@@ -9,6 +9,7 @@ import { EVENTO_SINCRONIZADO, getStoredStories } from '../../utils/storage';
 import { etiquetaHistoria } from '../../utils/plantillaHu';
 import { PlusCircle, Search, Filter, LayoutGrid, List } from 'lucide-react';
 import { EstadoVacioComponent } from '../Comun/EstadoVacioComponent';
+import { HuEnProcesoComponent } from './HuEnProcesoComponent';
 
 const CLAVE_VISTA = 'historias_usuario_vista';
 
@@ -86,6 +87,8 @@ export const ListaHistoriaUsuarioComponent = () => {
           </BotonComponent>
         }
       />
+
+      <HuEnProcesoComponent />
 
       {/* Filter and Search Bar */}
       <div className="card" style={{ marginBottom: '1.5rem', padding: '1rem 1.25rem' }}>

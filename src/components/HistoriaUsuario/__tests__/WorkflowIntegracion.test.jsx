@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../../App.jsx';
 import { analystApi } from '../../../services/analystApi.js';
 import { repositorioApi } from '../../../services/repositorioApi.js';
-import { getWorkflow, resumeWorkflow, startWorkflow, WorkflowApiError } from '../../../services/workflowApi.js';
+import { deleteWorkflow, getWorkflow, listWorkflows, resumeWorkflow, retryWorkflow, saveWorkflowDraft, startWorkflow, WorkflowApiError } from '../../../services/workflowApi.js';
 
 vi.mock('../../../services/analystApi.js', () => ({
   analystApi: {
@@ -15,6 +15,7 @@ vi.mock('../../../services/analystApi.js', () => ({
 }));
 vi.mock('../../../services/workflowApi.js', () => ({
   startWorkflow: vi.fn(), getWorkflow: vi.fn(), resumeWorkflow: vi.fn(),
+  listWorkflows: vi.fn(), deleteWorkflow: vi.fn(), saveWorkflowDraft: vi.fn(), retryWorkflow: vi.fn(),
   WorkflowApiError: class WorkflowApiError extends Error {
     constructor(status, message) { super(message); this.status = status; }
   },
@@ -63,6 +64,21 @@ const poInterrupt = {
     }, decisions: ['aprobar', 'rechazar'], return_requires_reason: true,
   }, response_schema: { type: 'object' },
 };
+const impactoNegocio = [{
+  area: 'Carga masiva de pólizas',
+  hoy: 'Calcula la vigencia con otra regla.',
+  debe: 'Usar el mismo plazo que la consulta.',
+}];
+const decisionImpacto = '¿La carga masiva usa el mismo plazo que la consulta?';
+const impactInterrupt = {
+  interrupt_id: 'interrupt-impact-2', kind: 'impact_decisions',
+  payload: {
+    impacto_negocio: impactoNegocio,
+    questions: [{ question_id: 'decision-1', pregunta: decisionImpacto }],
+    max_answer_chars: 1000, max_total_chars: 3500,
+  },
+  response_schema: { type: 'object' },
+};
 const poResults = {
   ...baseResults,
   analyst: {
@@ -71,8 +87,11 @@ const poResults = {
     supuesto_validar_po: ['Se supone: el plazo se cuenta en días naturales'],
   },
   story: draftStory,
-  review_observations: ['Criterio verificable'], technical_assessment: poInterrupt.payload.technical_assessment,
+  review_observations: ['Criterio verificable'],
+  technical_assessment: { ...poInterrupt.payload.technical_assessment, impacto_negocio: impactoNegocio, decision_pendiente: [decisionImpacto] },
+  impact_decisions: [{ question_id: 'decision-1', pregunta: decisionImpacto, respuesta: 'Sí, el mismo plazo.' }],
 };
+const impactResults = { ...baseResults, analyst: poResults.analyst, technical_assessment: poResults.technical_assessment };
 
 function renderAt(path = '/historias/nueva') {
   window.history.replaceState({}, '', path);
@@ -120,13 +139,87 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     expect(screen.queryByText(/Queda(n)? \d+ pregunta/i)).not.toBeInTheDocument();
   });
 
-  it('answers Business, displays writer/reviewer and fictional technical evidence, then saves only through backend PO approval', async () => {
+  it('retoma una HU en proceso en el paso de impacto con el formulario y las respuestas guardadas', async () => {
+    const user = userEvent.setup();
+    getWorkflow.mockResolvedValue({
+      workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_impacto',
+      results: impactResults, interrupt: impactInterrupt,
+      guardado: {
+        titulo: 'Consultar vigencia', creado_por: 'Analista', persistente: true, reintentable: false, estado: 'esperando',
+        formulario: { requirementName: 'Consultar vigencia', system: 'Portal de Clientes', codigoHu: 'POL-OF', description: 'Plazo de vigencia.' },
+        borrador_respuestas: { 'decision-1': 'Lo consulto con Negocio' },
+      },
+    });
+    saveWorkflowDraft.mockResolvedValue(null);
+
+    renderAt(`/historias/nueva?flujo=${WORKFLOW_ID}`);
+
+    expect(await screen.findByText(/Paso 4 — Impacto en otros módulos/i)).toBeInTheDocument();
+    expect(getWorkflow).toHaveBeenCalledWith(WORKFLOW_ID, expect.anything());
+    expect(screen.getByText(/El avance se guarda automáticamente/i)).toBeInTheDocument();
+    const respuesta = screen.getByLabelText(/La carga masiva usa el mismo plazo/);
+    expect(respuesta).toHaveValue('Lo consulto con Negocio');
+    await user.type(respuesta, ': sí');
+    await user.click(screen.getByRole('button', { name: /Guardar sin enviar/i }));
+
+    await waitFor(() => expect(saveWorkflowDraft).toHaveBeenCalledWith(
+      WORKFLOW_ID, { 'decision-1': 'Lo consulto con Negocio: sí' },
+    ));
+    expect(await screen.findByText(/Puede salir y retomarlas después/i)).toBeInTheDocument();
+    await user.click(screen.getByText('Requerimiento'));
+    expect(screen.getByLabelText(/Nombre del requerimiento/i)).toHaveValue('Consultar vigencia');
+  });
+
+  it('ofrece reintentar el paso que falló sin perder el avance', async () => {
+    const user = userEvent.setup();
+    getWorkflow.mockResolvedValue({
+      workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'running', stage: 'asesor_tecnico',
+      results: { ...baseResults, analyst: poResults.analyst }, interrupt: null,
+      guardado: { titulo: 'Consultar vigencia', persistente: true, reintentable: true, estado: 'error', formulario: {}, borrador_respuestas: {} },
+    });
+    retryWorkflow.mockResolvedValue({
+      workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_impacto',
+      results: impactResults, interrupt: impactInterrupt,
+      guardado: { persistente: true, reintentable: false, estado: 'esperando', formulario: {}, borrador_respuestas: {} },
+    });
+
+    renderAt(`/historias/nueva?flujo=${WORKFLOW_ID}`);
+    await user.click(await screen.findByRole('button', { name: /Reintentar el paso que falló/i }));
+
+    expect(retryWorkflow).toHaveBeenCalledWith(WORKFLOW_ID, expect.anything());
+    expect(await screen.findByText(/Paso 4 — Impacto en otros módulos/i)).toBeInTheDocument();
+  });
+
+  it('lista las HU en proceso para retomarlas o descartarlas', async () => {
+    const user = userEvent.setup();
+    listWorkflows.mockResolvedValue([
+      { workflow_id: WORKFLOW_ID, modo: 'pre_grooming', titulo: 'Teléfono opcional', creado_por: 'Analista',
+        estado: 'esperando', etapa: 'espera_impacto', espera: 'impact_decisions',
+        creado_en: '2026-11-26T10:00:00+00:00', actualizado_en: '2026-11-26T11:00:00+00:00' },
+      { workflow_id: 'otro', modo: 'pre_grooming', titulo: 'Ya terminada', estado: 'completado', etapa: 'repositorio',
+        espera: null, creado_en: '2026-11-26T10:00:00+00:00', actualizado_en: '2026-11-26T11:00:00+00:00' },
+    ]);
+    deleteWorkflow.mockResolvedValue(null);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    renderAt('/historias');
+
+    expect(await screen.findByText('Teléfono opcional')).toBeInTheDocument();
+    expect(screen.getByText(/Esperando decisiones del impacto en otros módulos/i)).toBeInTheDocument();
+    expect(screen.queryByText('Ya terminada')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Descartar/i }));
+    await waitFor(() => expect(deleteWorkflow).toHaveBeenCalledWith(WORKFLOW_ID));
+    await waitFor(() => expect(screen.queryByText('Teléfono opcional')).not.toBeInTheDocument());
+  });
+
+  it('answers Business, reviews the impact in business language, then saves only through backend PO approval', async () => {
     const user = userEvent.setup();
     startWorkflow.mockResolvedValue({
       workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_negocio',
       results: baseResults, interrupt: analystInterrupt,
     });
     resumeWorkflow
+      .mockResolvedValueOnce({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_impacto', results: impactResults, interrupt: impactInterrupt })
       .mockResolvedValueOnce({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'aprobacion_po', results: poResults, interrupt: poInterrupt })
       .mockResolvedValueOnce({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'completed', stage: 'repositorio', results: { ...poResults, po_decision: { decision: 'aprobar' }, persistence_result: { status: 'saved', story_id: WORKFLOW_ID, title: draftStory.quiero, approved_at: '2026-11-21T12:00:00Z' }, completion_reason: 'HU aprobada por el Product Owner y guardada en el Repositorio.' }, interrupt: null });
     vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -138,12 +231,23 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     await user.type(screen.getByLabelText(/¿Cuál es el plazo\?/i), '12 meses');
     await user.click(screen.getByRole('button', { name: /Confirmar y continuar/i }));
 
+    // Paso 4: el impacto en otros módulos, sin detalle técnico, y la decisión pendiente.
+    expect(await screen.findByText(/Paso 4 — Impacto en otros módulos/i)).toBeInTheDocument();
+    expect(screen.getByText('Carga masiva de pólizas')).toBeInTheDocument();
+    expect(screen.queryByText(/polizas\.py/i)).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/La carga masiva usa el mismo plazo/), 'Sí, el mismo plazo.');
+    await user.click(screen.getByRole('button', { name: /Confirmar y continuar/i }));
+
     expect(await screen.findByLabelText(/^Quiero/i)).toHaveValue('consultar la vigencia');
     expect(screen.getByText(/Criterio verificable/)).toBeInTheDocument();
     expect(screen.getByText(/Supuestos a validar por el Product Owner/i)).toBeInTheDocument();
     expect(screen.getByText(/el plazo se cuenta en días naturales/i)).toBeInTheDocument();
-    expect(screen.getByText(/archivos ficticios/i)).toBeInTheDocument();
-    expect(screen.getByText(/RAG\/Pinecone aún no está integrada/i)).toBeInTheDocument();
+    expect(screen.getByText(/Revisada por el Redactor-Revisor/i)).toBeInTheDocument();
+    expect(screen.getByText(/Sí, el mismo plazo\./)).toBeInTheDocument();
+    // Ningún detalle técnico ni el aviso viejo de RAG llegan a la persona usuaria.
+    expect(screen.queryByText(/archivos ficticios/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/RAG\/Pinecone aún no está integrada/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/polizas\.py/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Aprobación del Product Owner/i }));
     await user.click(screen.getByRole('checkbox'));
     await user.selectOptions(screen.getByLabelText('Decisión'), 'aprobar');
@@ -154,6 +258,10 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
       response: { answers: [{ question_id: 'q-plazo', answer: '12 meses' }] },
     }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(resumeWorkflow).toHaveBeenNthCalledWith(2, WORKFLOW_ID, {
+      kind: 'impact_decisions', interrupt_id: 'interrupt-impact-2',
+      response: { answers: [{ question_id: 'decision-1', answer: 'Sí, el mismo plazo.' }] },
+    }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(resumeWorkflow).toHaveBeenNthCalledWith(3, WORKFLOW_ID, {
       kind: 'po_approval', interrupt_id: 'interrupt-po-2', response: { decision: 'aprobar' },
     }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(repositorioApi.saveStory).not.toHaveBeenCalled();
@@ -184,7 +292,7 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     expect(repositorioApi.saveStory).not.toHaveBeenCalled();
   });
 
-  it('shows a lost checkpoint after 404 and offers a new workflow without claiming recovery', async () => {
+  it('shows a missing workflow after 404 and offers a new one without claiming recovery', async () => {
     const user = userEvent.setup();
     startWorkflow.mockResolvedValue({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'aprobacion_po', results: poResults, interrupt: poInterrupt });
     getWorkflow.mockRejectedValue(new WorkflowApiError(404, 'El checkpoint se perdió. Inicie un workflow nuevo.'));
@@ -192,10 +300,10 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     renderAt();
     await fillRequirement(user);
     await user.click(screen.getByRole('button', { name: /Analizar Requerimiento/i }));
-    await user.click(await screen.findByRole('button', { name: /Consultar estado del workflow/i }));
+    await user.click(await screen.findByRole('button', { name: /Consultar estado/i }));
     expect(await screen.findByText(/Workflow: HTTP 404/i)).toBeInTheDocument();
-    expect(screen.getByText(/checkpoint se perdió/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Iniciar un workflow nuevo/i })).toBeInTheDocument();
+    expect(screen.getByText(/El flujo no se encontró/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Iniciar un flujo nuevo/i })).toBeInTheDocument();
     expect(Object.values(localStorage).some((value) => value.includes(WORKFLOW_ID))).toBe(false);
   });
 

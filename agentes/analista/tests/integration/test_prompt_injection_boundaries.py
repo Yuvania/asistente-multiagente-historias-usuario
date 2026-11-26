@@ -305,12 +305,16 @@ async def test_malicious_evidence_cannot_skip_business_or_po_interrupt_or_write_
     assert runtime.pending_interrupt(started.workflow_id)["payload"]["kind"] == "business_answers"
     assert repository.writes == []
 
-    awaiting_po = await runtime.resume(started.workflow_id, {
+    impact = await runtime.resume(started.workflow_id, {
         "answers": [{"question_id": "q-plazo", "answer": "30 días"}],
     })
+    assert impact.current_stage == WorkflowStage.IMPACT_WAIT
+    assert runtime.pending_interrupt(started.workflow_id)["payload"]["kind"] == "impact_decisions"
+    assert repository.writes == []
+    awaiting_po = await runtime.resume(started.workflow_id, {"answers": []})
     assert awaiting_po.status == WorkflowStatus.INTERRUPTED
     assert awaiting_po.current_stage == WorkflowStage.PO_APPROVAL
-    assert awaiting_po.active_agent == AgentId.TECHNICAL_ADVISOR
+    assert awaiting_po.active_agent == AgentId.WRITER_REVIEWER
     assert MALICIOUS_JSON in awaiting_po.technical_assessment.uncertainties
     assert runtime.pending_interrupt(started.workflow_id)["payload"]["kind"] == "product_owner_approval"
     assert repository.writes == []
@@ -321,5 +325,5 @@ async def test_malicious_evidence_cannot_skip_business_or_po_interrupt_or_write_
     current = runtime.get(started.workflow_id)
     assert current.status == WorkflowStatus.INTERRUPTED
     assert current.current_stage == WorkflowStage.PO_APPROVAL
-    assert current.active_agent == AgentId.TECHNICAL_ADVISOR
+    assert current.active_agent == AgentId.WRITER_REVIEWER
     assert repository.writes == []

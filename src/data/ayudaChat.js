@@ -11,10 +11,11 @@ export const PREGUNTAS_AYUDA = [
     pasos: [
       'Entre a "Nueva Historia" en el menú superior.',
       'Complete el requerimiento: título, tipo de información, sistema, área solicitante y descripción.',
-      'Pulse el análisis para que el Agente Analista revise el requerimiento.',
+      'Pulse «Analizar Requerimiento» para que el Agente Analista lo revise.',
       'Responda las preguntas que genere el agente, con la información que le dé Negocio.',
-      'Revise el borrador (Como / Quiero / Para) y los criterios de aceptación.',
-      'Guarde la historia. Quedará en la lista de Historias de Usuario.',
+      'Revise el impacto en otros módulos que encontró el Asesor Técnico y responda las decisiones pendientes.',
+      'Revise la historia (Como / Quiero / Para) y los criterios que redactó el Redactor-Revisor.',
+      'El Product Owner la aprueba y queda en el Repositorio de HU.',
     ],
   },
   {
@@ -65,10 +66,22 @@ export const PREGUNTAS_AYUDA = [
       'Para corregir redacción o datos mal escritos use Editar: se guarda en el lugar y queda registrado quién y cuándo. Si Negocio pide algo distinto, use Solicitar cambio (ícono de acciones del listado, en historias aprobadas): se vuelve a analizar y, si faltó una pregunta, se propone una lección aprendida (LEC-001, LEC-002…) para análisis futuros.',
   },
   {
+    id: 'retomar',
+    pregunta: '¿Puedo dejar una historia a medias y seguir otro día?',
+    texto:
+      'Sí. Cada vez que el flujo espera una respuesta, el avance se guarda. Vaya a Historias de Usuario: arriba, en «En proceso», pulse Retomar y se abre en el paso donde quedó. En las preguntas puede usar «Guardar sin enviar» para dejar respuestas a medias.',
+  },
+  {
+    id: 'impacto',
+    pregunta: '¿Qué es el impacto en otros módulos?',
+    texto:
+      'Es el paso 4. El Asesor Técnico revisa el código del sistema y le explica, sin detalle técnico, qué otras funciones afecta el cambio (por ejemplo, una carga masiva o un reporte) y qué reglas falta decidir. La historia se redacta después, ya con esos impactos.',
+  },
+  {
     id: 'datos',
     pregunta: '¿Puedo usar datos reales del negocio?',
     texto:
-      'No. Las fuentes del agente son simuladas o anonimizadas. Anonimice cualquier dato personal antes de escribirlo.',
+      'No. Las fuentes de los agentes y el código que revisa el Asesor Técnico son de ejemplo o anonimizados. Anonimice cualquier dato personal antes de escribirlo.',
   },
   {
     id: 'guardado',
@@ -79,7 +92,7 @@ export const PREGUNTAS_AYUDA = [
 ];
 
 // Preguntas que se ofrecen como botones al abrir el chat.
-export const SUGERENCIA_INICIAL = ['crear', 'codigo', 'criterios', 'reanalisis'];
+export const SUGERENCIA_INICIAL = ['crear', 'retomar', 'impacto', 'codigo'];
 
 export const TEXTO_SIN_COINCIDENCIA =
   'No tengo una respuesta fija para eso. Este asistente solo responde las preguntas de la lista; elija una de ellas.';

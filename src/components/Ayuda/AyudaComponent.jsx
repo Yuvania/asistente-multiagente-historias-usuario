@@ -16,7 +16,7 @@ const SECCIONES = [
     contenido: (
       <TarjetaItemsAyudaComponent
         title="¿Cómo funciona el Asistente IA?"
-        subtitle="Flujo principal de 5 pasos"
+        subtitle="Flujo principal de 6 pasos"
         items={PASOS_ASISTENTE}
       >
         <h5 className="ayuda-item__titulo ayuda-item__titulo--aparte">Cómo moverse entre pasos</h5>
@@ -37,7 +37,7 @@ const SECCIONES = [
       />
     ),
   },
-  { id: 'agente', titulo: 'El agente Analista', contenido: <AgenteAyudaComponent /> },
+  { id: 'agente', titulo: 'Los agentes', contenido: <AgenteAyudaComponent /> },
   { id: 'ejemplo', titulo: 'Ejemplo de HU generada', contenido: <EjemploHuAyudaComponent /> },
   {
     id: 'tecnologias',
@@ -50,7 +50,7 @@ const SECCIONES = [
     contenido: (
       <TarjetaItemsAyudaComponent
         title="Lo que falta definir"
-        subtitle="Propuestas y decisiones pendientes: aprobación, roles y usuarios, entre otras"
+        subtitle="Propuestas y decisiones pendientes: roles y permisos, usuarios y aviso al Product Owner, entre otras"
         items={PENDIENTES}
       />
     ),

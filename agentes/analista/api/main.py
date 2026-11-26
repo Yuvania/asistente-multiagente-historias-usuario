@@ -45,6 +45,8 @@ async def lifespan(app: FastAPI):
     app.state.workflow_runtime = WorkflowRuntime(
         observability=app.state.observability,
         repository=app.state.repositorio,
+        # Los flujos se guardan en la base de datos: se pueden retomar otro día o tras un reinicio.
+        persistencia=app.state.repositorio,
     )
     app.state.workflow_operation_guard = asyncio.Lock()
     app.state.workflow_active_operations = set()

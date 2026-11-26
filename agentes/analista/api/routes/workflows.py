@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Request, status
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from agentes.analista.api.errors import WorkflowApiError
 from agentes.analista.core.change_manager import ChangeManagerError
@@ -30,6 +30,9 @@ from agentes.analista.core.workflow_models import (
     ChangeRecommendation,
     DraftStory,
     FlowMode,
+    ImpactDecisionAnswer,
+    ImpactDecisionSubmission,
+    ImpactoNegocio,
     PersistenceResult,
     POApprovalSubmission,
     TechnicalAssessment,
@@ -50,6 +53,14 @@ class BusinessAnswersResume(BaseModel):
     response: BusinessAnswerSubmission
 
 
+class ImpactDecisionResume(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["impact_decisions"]
+    interrupt_id: str = Field(min_length=1, max_length=120)
+    response: ImpactDecisionSubmission
+
+
 class POApprovalResume(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -67,7 +78,7 @@ class ChangeDecisionResume(BaseModel):
 
 
 ResumeSubmission = Annotated[
-    BusinessAnswersResume | POApprovalResume | ChangeDecisionResume,
+    BusinessAnswersResume | ImpactDecisionResume | POApprovalResume | ChangeDecisionResume,
     Field(discriminator="kind"),
 ]
 
@@ -79,6 +90,7 @@ class WorkflowResults(BaseModel):
     story: DraftStory | None = None
     review_observations: list[str] = Field(default_factory=list)
     technical_assessment: TechnicalAssessment | None = None
+    impact_decisions: list[ImpactDecisionAnswer] = Field(default_factory=list)
     po_decision: POApprovalSubmission | None = None
     persistence_result: PersistenceResult | None = None
     change_recommendation: ChangeRecommendation | None = None
@@ -97,7 +109,8 @@ class WorkflowInterruptPayload(BaseModel):
     max_total_chars: int | None = None
     story: DraftStory | None = None
     review_observations: list[str] | None = None
-    technical_assessment: TechnicalAssessment | None = None
+    impacto_negocio: list[ImpactoNegocio] | None = None
+    decisiones_impacto: list[ImpactDecisionAnswer] | None = None
     supuesto_validar_po: list[str] | None = None
     change_recommendation: ChangeRecommendation | None = None
     decisions: list[str] | None = None
@@ -109,9 +122,23 @@ class WorkflowInterrupt(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     interrupt_id: str = Field(min_length=1, max_length=120)
-    kind: Literal["business_answers", "po_approval", "change_decision"]
+    kind: Literal["business_answers", "impact_decisions", "po_approval", "change_decision"]
     payload: WorkflowInterruptPayload
     response_schema: dict[str, Any]
+
+
+class WorkflowGuardado(BaseModel):
+    """Lo que hace falta para retomar el flujo: datos del formulario, respuestas sin enviar y estado."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    titulo: str | None = None
+    creado_por: str | None = None
+    formulario: dict[str, str] = Field(default_factory=dict)
+    borrador_respuestas: dict[str, str] = Field(default_factory=dict)
+    estado: str | None = None
+    reintentable: bool = False
+    persistente: bool = False
 
 
 class WorkflowApiResponse(BaseModel):
@@ -123,6 +150,33 @@ class WorkflowApiResponse(BaseModel):
     stage: WorkflowStage
     results: WorkflowResults
     interrupt: WorkflowInterrupt | None = None
+    guardado: WorkflowGuardado | None = None
+
+
+class WorkflowResumen(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workflow_id: str
+    modo: str
+    titulo: str
+    creado_por: str | None = None
+    estado: str
+    etapa: str
+    espera: str | None = None
+    creado_en: str
+    actualizado_en: str
+
+
+class BorradorRespuestas(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    respuestas: dict[str, str] = Field(default_factory=dict, max_length=60)
+
+    @model_validator(mode="after")
+    def validate_size(self) -> "BorradorRespuestas":
+        if any(len(key) > 80 or len(value) > 1000 for key, value in self.respuestas.items()):
+            raise ValueError("Cada respuesta guardada admite hasta 1.000 caracteres.")
+        return self
 
 
 def _runtime(request: Request) -> WorkflowRuntime:
@@ -162,6 +216,7 @@ def _interrupt_response(runtime: WorkflowRuntime, workflow_id: UUID) -> Workflow
         public_payload["change_recommendation"] = public_payload.pop("recommendation")
     schema_map = {
         "business_answers": BusinessAnswerSubmission,
+        "impact_decisions": ImpactDecisionSubmission,
         "po_approval": POApprovalSubmission,
         "change_decision": ChangeDecisionSubmission,
     }
@@ -201,6 +256,7 @@ def _serialize(runtime: WorkflowRuntime, snapshot: WorkflowSnapshot) -> Workflow
             story=snapshot.draft_story,
             review_observations=snapshot.review_observations,
             technical_assessment=snapshot.technical_assessment,
+            impact_decisions=snapshot.impact_decisions,
             po_decision=snapshot.po_decision,
             persistence_result=snapshot.persistence_result,
             change_recommendation=snapshot.change_recommendation,
@@ -209,6 +265,16 @@ def _serialize(runtime: WorkflowRuntime, snapshot: WorkflowSnapshot) -> Workflow
             completion_reason=snapshot.completion_reason,
         ),
         interrupt=_interrupt_response(runtime, snapshot.workflow_id),
+        guardado=_guardado(runtime, snapshot.workflow_id),
+    )
+
+
+def _guardado(runtime: WorkflowRuntime, workflow_id: UUID) -> WorkflowGuardado | None:
+    meta = runtime.metadatos(workflow_id)
+    return WorkflowGuardado(
+        titulo=meta.get("titulo"), creado_por=meta.get("creado_por"),
+        formulario=meta.get("formulario") or {}, borrador_respuestas=meta.get("borrador") or {},
+        estado=meta.get("estado"), reintentable=bool(meta.get("reintentable")), persistente=runtime.persiste,
     )
 
 
@@ -328,11 +394,53 @@ def _translate_runtime_error(exc: Exception) -> WorkflowApiError:
 def _expected_interrupt_kind(snapshot: WorkflowSnapshot) -> str | None:
     if snapshot.current_stage == WorkflowStage.BUSINESS_WAIT:
         return "business_answers"
+    if snapshot.current_stage == WorkflowStage.IMPACT_WAIT:
+        return "impact_decisions"
     if snapshot.current_stage == WorkflowStage.PO_APPROVAL:
         return "po_approval"
     if snapshot.current_stage == WorkflowStage.HUMAN_DECISION:
         return "change_decision"
     return None
+
+
+@router.get("", response_model=list[WorkflowResumen])
+def list_workflows(request: Request) -> list[WorkflowResumen]:
+    """Flujos guardados que se pueden retomar, del más reciente al más antiguo."""
+    runtime = _runtime(request)
+    try:
+        return [WorkflowResumen(workflow_id=item.pop("id"), **item) for item in runtime.listar()]
+    except Exception as exc:
+        raise _translate_runtime_error(exc) from exc
+
+
+@router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_workflow(workflow_id: UUID, request: Request) -> None:
+    runtime = _runtime(request)
+    try:
+        runtime.descartar(workflow_id)
+    except Exception as exc:
+        raise _translate_runtime_error(exc) from exc
+
+
+@router.put("/{workflow_id}/borrador", status_code=status.HTTP_204_NO_CONTENT)
+def save_workflow_draft(workflow_id: UUID, body: BorradorRespuestas, request: Request) -> None:
+    """Guarda respuestas escritas y todavía no enviadas, para terminarlas otro día."""
+    runtime = _runtime(request)
+    try:
+        runtime.guardar_borrador(workflow_id, body.respuestas)
+    except Exception as exc:
+        raise _translate_runtime_error(exc) from exc
+
+
+@router.post("/{workflow_id}/reintentar", response_model=WorkflowApiResponse)
+async def retry_workflow(workflow_id: UUID, request: Request) -> WorkflowApiResponse:
+    """Vuelve a ejecutar el paso que falló, desde el último punto guardado."""
+    runtime = _runtime(request)
+    async with _exclusive_operation(request, workflow_id):
+        try:
+            return _serialize(runtime, await runtime.reintentar(workflow_id))
+        except Exception as exc:
+            raise _translate_runtime_error(exc) from exc
 
 
 @router.post("", response_model=WorkflowApiResponse, status_code=status.HTTP_201_CREATED)

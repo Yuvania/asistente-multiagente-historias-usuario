@@ -23,6 +23,7 @@ class WorkflowStage(StrEnum):
     WRITER = "redactor"
     REVIEW = "revision"
     TECHNICAL_ADVISOR = "asesor_tecnico"
+    IMPACT_WAIT = "espera_impacto"
     PO_APPROVAL = "aprobacion_po"
     REPOSITORY = "repositorio"
     CHANGE_MANAGER = "gestor_cambios"
@@ -178,6 +179,34 @@ class BusinessAnswerSubmission(BaseModel):
         return self
 
 
+class ImpactDecisionSubmission(BaseModel):
+    """Respuestas de la persona que redacta la HU a las decisiones pendientes del paso de impacto.
+
+    Puede ir vacía cuando el Asesor no dejó decisiones: entonces solo confirma que revisó el impacto.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    answers: list[BusinessAnswer] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_submission(self) -> "ImpactDecisionSubmission":
+        ids = [item.question_id for item in self.answers]
+        if len(ids) != len(set(ids)):
+            raise ValueError("No se puede responder dos veces la misma decisión.")
+        if sum(len(item.answer) for item in self.answers) > 3500:
+            raise ValueError("Las respuestas exceden el límite total permitido.")
+        return self
+
+
+class ImpactDecisionAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    question_id: str = Field(min_length=1, max_length=80)
+    pregunta: str = Field(min_length=1, max_length=500)
+    respuesta: str = Field(min_length=1, max_length=1000)
+
+
 class EvidenceReference(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -218,10 +247,27 @@ class SourceCitation(BaseModel):
         return self
 
 
-class TechnicalAssessment(BaseModel):
-    """Technical observations constrained to sources consulted for this turn."""
+class ImpactoNegocio(BaseModel):
+    """Qué otra parte del sistema cambia, en lenguaje de negocio: sin archivos, líneas ni código."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    area: str = Field(min_length=1, max_length=120)
+    hoy: str = Field(min_length=1, max_length=500)
+    debe: str = Field(min_length=1, max_length=500)
+
+
+class TechnicalAssessment(BaseModel):
+    """Technical observations constrained to sources consulted for this turn.
+
+    ``impacto_negocio`` y ``decision_pendiente`` son lo único que ve la persona usuaria. La evidencia técnica
+    (módulos, dependencias, riesgos, procesos y fuentes) se guarda para Desarrollo y no se muestra.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    impacto_negocio: list[ImpactoNegocio] = Field(default_factory=list, max_length=15)
+    decision_pendiente: list[str] = Field(default_factory=list, max_length=10)
 
     affected_modules: list[EvidenceReference] = Field(default_factory=list, max_length=30)
     dependencies: list[EvidenceReference] = Field(default_factory=list, max_length=30)
@@ -229,6 +275,13 @@ class TechnicalAssessment(BaseModel):
     critical_processes: list[EvidenceReference] = Field(default_factory=list, max_length=30)
     consulted_sources: list[SourceCitation] = Field(default_factory=list, max_length=30)
     uncertainties: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("decision_pendiente")
+    @classmethod
+    def validate_decisions(cls, items: list[str]) -> list[str]:
+        if any(not item.strip() or len(item) > 500 for item in items):
+            raise ValueError("Cada decisión pendiente debe tener entre 1 y 500 caracteres.")
+        return [item.strip() for item in items]
 
     @model_validator(mode="after")
     def findings_must_cite_consulted_sources(self) -> "TechnicalAssessment":
@@ -324,6 +377,19 @@ class WorkflowCreateRequest(BaseModel):
     requirement: str | None = Field(default=None, min_length=1, max_length=4000)
     approved_story_id: str | None = Field(default=None, min_length=1, max_length=100)
     change_request: str | None = Field(default=None, min_length=1, max_length=2000)
+    # Solo para guardar y retomar el flujo: no llegan al grafo ni a los agentes.
+    titulo: str | None = Field(default=None, max_length=200)
+    creado_por: str | None = Field(default=None, max_length=120)
+    formulario: dict[str, str] | None = Field(default=None, max_length=20)
+
+    @field_validator("formulario")
+    @classmethod
+    def validate_form(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        if value is None:
+            return None
+        if any(len(key) > 60 or len(item) > 4000 for key, item in value.items()):
+            raise ValueError("El formulario guardado excede los límites permitidos.")
+        return value
 
     @model_validator(mode="after")
     def validate_mode_contract(self) -> "WorkflowCreateRequest":
@@ -397,6 +463,7 @@ class WorkflowState(TypedDict, total=False):
     business_clarifications: list[dict]
     draft_story: dict
     technical_assessment: dict
+    impact_decisions: list[dict]
     review_observations: list[str]
     po_feedback: str
     po_decision: dict
@@ -424,6 +491,7 @@ class WorkflowSnapshot(BaseModel):
     analyst_response: AgentTurnResponse | None = None
     draft_story: DraftStory | None = None
     technical_assessment: TechnicalAssessment | None = None
+    impact_decisions: list[ImpactDecisionAnswer] = Field(default_factory=list)
     review_observations: list[str] = Field(default_factory=list)
     po_decision: POApprovalSubmission | None = None
     persistence_result: PersistenceResult | None = None

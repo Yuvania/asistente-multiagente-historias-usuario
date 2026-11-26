@@ -34,14 +34,15 @@ Cada agente cumple las cuatro propiedades de un agente y trabaja con el mismo ci
 
 | Agente | Autonomía | Razonamiento | Herramientas (servidor MCP propio) | Memoria |
 |---|---|---|---|---|
-| Analista de Requerimientos | Elige fuentes y consultas; puede pedir criterio al Asesor; se detiene al entregar preguntas | Clasifica en conocida, faltante, supuesta y ambigua | Glosario, HU similares, estándares, checklist de vacíos | Historial de la sesión; Repositorio de HU |
+| Analista de Requerimientos | Elige fuentes y consultas; se detiene al entregar preguntas | Clasifica en conocida, faltante, supuesta y ambigua | Glosario, HU similares, estándares, checklist de vacíos | Historial de la sesión; Repositorio de HU |
 | Redactor-Revisor | Redacta, revisa y corrige (máx. dos rondas) | Evalúa la HU contra estándares y checklist | Estándares, checklist, HU similares | Análisis aclarado y ronda previa; Repositorio de HU |
-| Asesor Técnico | Decide qué campos buscar y qué archivos abrir (hasta tres rondas) | Encuentra los otros lugares que afecta el cambio y lo explica en lenguaje de negocio | Referencias en el código, búsqueda por significado, lectura de archivos, estándares, HU similares | Contexto de la HU; Repositorio de HU |
+| Asesor Técnico | Decide qué campos buscar y qué archivos abrir (hasta tres rondas) | Encuentra los otros lugares que afecta el cambio; separa el impacto en lenguaje de negocio (lo que ve la persona) de la evidencia técnica (para Desarrollo) | Referencias en el código, búsqueda por significado, lectura de archivos, estándares, HU similares | Contexto de la HU; Repositorio de HU |
 | Gestor de Cambios | Elige fuentes; puede pedir criterio al Asesor; el PO decide | Compara con la HU aprobada, clasifica y determina la causa raíz | HU aprobadas, lecciones aprendidas, checklist | HU aprobadas e historial de causas raíz |
 
 - **Mínimo privilegio:** cada agente tiene su propio servidor MCP (`agentes/analista/mcp/`) que solo expone sus herramientas; al conectarse se verifica que el servidor exponga exactamente ese conjunto. La recuperación también filtra por rol (por ejemplo, el Gestor solo ve HU y lecciones aprobadas).
 - **Asesor Técnico y repositorio de código:** su meta principal es encontrar todos los lugares que afecta un cambio. Busca cada campo en todo el repositorio (`buscar_referencias_codigo`, con archivo y línea), abre los archivos donde aparece y revisa el mapa de dependencias. Escenarios de evaluación: [docs/evaluacion-asesor-tecnico.md](docs/evaluacion-asesor-tecnico.md). Revisa un repositorio aparte, con acceso de solo lectura, indicado en `ASESOR_REPOSITORIO_URL` (por defecto, un repositorio ficticio de pólizas). Al arrancar se descarga con un clon superficial, se conservan solo archivos `.py` y `.md`, se elimina el historial y nada se ejecuta. Si no está configurado o falla, usa el ejemplo incluido en `ejemplos/polizas_demo`.
-- **Colaboración:** el Analista y el Gestor pueden consultar al Asesor durante su ciclo; el Redactor-Revisor lo recibe en el flujo, justo después de su borrador.
+- **Orden del flujo antes del grooming:** Analista ⇄ Negocio → Asesor Técnico (impacto en otros módulos y decisiones pendientes, que responde la persona que redacta la HU) → Redactor-Revisor → aprobación del Product Owner. El Redactor recibe el impacto y las decisiones; la persona usuaria nunca ve archivos, líneas ni código.
+- **Colaboración:** el Gestor de Cambios puede consultar al Asesor durante su ciclo.
 - **Autonomía visible:** en el paso de análisis, «Cómo trabajó el agente» muestra qué decidió consultar y por qué.
 
 ## Qué está desplegado
@@ -50,9 +51,9 @@ La aplicación completa (interfaz + backend + OpenCode) corre como **un solo ser
 
 ### Flujos antes y después del grooming
 
-Endpoints: `POST /api/workflows`, `GET /api/workflows/{workflow_id}` y `POST /api/workflows/{workflow_id}/resume` (LangGraph con interrupciones humanas). T001 y T002 siguen pendientes de ratificación formal.
+Endpoints: `POST /api/workflows`, `GET /api/workflows` (HU en proceso), `GET /api/workflows/{workflow_id}`, `POST /api/workflows/{workflow_id}/resume`, `PUT /api/workflows/{workflow_id}/borrador` (respuestas sin enviar), `POST /api/workflows/{workflow_id}/reintentar` y `DELETE /api/workflows/{workflow_id}` (LangGraph con interrupciones humanas).
 
-El runtime conserva los checkpoints en memoria: al reiniciar FastAPI se pierden y la interfaz pide iniciar un workflow nuevo. La interfaz no guarda `workflow_id` en `localStorage`. Las fuentes de demostración son ficticias; Pinecone y las credenciales se usan solo desde el backend. La configuración del índice, los namespaces y los comandos de ingesta están en la [guía PowerShell](docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md) y el [README del paquete de conocimiento](agentes/conocimiento/README.md). Ningún secreto se envía al navegador.
+**Guardar y retomar:** cada vez que el flujo espera a una persona, o falla, el último punto de control se guarda en la tabla `workflow_guardado` (TiDB). Si el servicio se reinicia (Render duerme el plan gratuito), el flujo se recupera al consultarlo: se retoma desde Historias de Usuario → En proceso, y un paso que falló se puede reintentar sin perder lo anterior. La conversación del Analista se restaura con el último análisis guardado. Las fuentes de demostración son ficticias; Pinecone y las credenciales se usan solo desde el backend. La configuración del índice, los namespaces y los comandos de ingesta están en la [guía PowerShell](docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md) y el [README del paquete de conocimiento](agentes/conocimiento/README.md). Ningún secreto se envía al navegador.
 
 Para probarlo en local, sigue los pasos de instalación y ejecuta:
 

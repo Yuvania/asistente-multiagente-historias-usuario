@@ -1,8 +1,10 @@
 """LangGraph workflow with Analyst business interrupts and a bounded writer loop."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 from uuid import UUID, uuid4
@@ -14,7 +16,7 @@ from langgraph.types import Command, interrupt
 
 from agentes.analista.core.agent_registry import AgentId
 from agentes.analista.core.change_manager import ChangeManager
-from agentes.analista.core.conversation_store import ConversationStore
+from agentes.analista.core.conversation_store import ConversationStore, StoreError
 from agentes.analista.core.models import AgentTurnResponse, SendMessageRequest, QuestionState
 from agentes.analista.core.observability import Observability
 from agentes.analista.core.prompt_loader import load_prompt
@@ -23,6 +25,7 @@ from agentes.analista.core.technical_advisor import TechnicalAdvisor
 from agentes.analista.core.workflow_models import (
     BusinessAnswerSubmission,
     ChangeDecision,
+    ImpactDecisionSubmission,
     ChangeDecisionSubmission,
     ChangePersistenceResult,
     ChangeRecommendation,
@@ -67,7 +70,7 @@ def _public_snapshot(state: Mapping[str, Any]) -> WorkflowSnapshot:
     allowed = {
         "workflow_id", "mode", "status", "current_stage", "active_agent",
         "pending_questions", "analyst_response", "draft_story", "review_observations",
-        "technical_assessment", "completion_reason",
+        "technical_assessment", "impact_decisions", "completion_reason",
         "po_decision", "persistence_result",
         "change_recommendation", "change_decision", "change_persistence_result",
     }
@@ -150,13 +153,25 @@ def build_workflow_graph(
             raise RuntimeError("El nodo Analista requiere el adaptador de run_turn.")
         return await analyst(state)
 
+    def analysis_with_impact(state: WorkflowState) -> dict[str, Any]:
+        """Lo que el Redactor recibe: el análisis, el impacto en otros módulos y las decisiones tomadas."""
+        assessment = state.get("technical_assessment") or {}
+        return {
+            **dict(state["analyst_response"]),
+            "impacto_en_otros_modulos": assessment.get("impacto_negocio", []),
+            "decisiones_de_impacto": [
+                {"pregunta": item["pregunta"], "respuesta": item["respuesta"]}
+                for item in state.get("impact_decisions", [])
+            ],
+        }
+
     async def call_draft(state: WorkflowState) -> StoryDraftContent | Mapping[str, Any]:
         if draft is not None:
             return await draft(state)
         # El Redactor-Revisor decide qué consultar en su servidor MCP (RAG detrás).
         return await writer.draft(
             requirement=state["requirement_input"] or "",
-            analyst_response=state["analyst_response"],
+            analyst_response=analysis_with_impact(state),
             previous_story=state.get("draft_story"),
             observations=state.get("review_observations", []),
         )
@@ -166,17 +181,23 @@ def build_workflow_graph(
             return await review(state)
         return await writer.review(
             requirement=state["requirement_input"] or "",
-            analyst_response=state["analyst_response"],
+            analyst_response=analysis_with_impact(state),
             story=state["draft_story"],
         )
 
     async def call_advisor(state: WorkflowState) -> TechnicalAssessment | Mapping[str, Any]:
         if advisor is not None:
             return await advisor(state)
+        analysis = (state.get("analyst_response") or {}).get("analisis", {})
         return await technical_advisor.assess(
             requirement=state.get("requirement_input") or "",
             story={
-                **state.get("draft_story", {}),
+                "analisis_validado": analysis,
+                "aclaraciones_de_negocio": [
+                    {"pregunta": item.get("question", ""), "respuesta": item.get("answer", "")}
+                    for item in state.get("business_clarifications", [])
+                ],
+                **({"historia_en_borrador": state["draft_story"]} if state.get("draft_story") else {}),
                 **({"product_owner_feedback": state["po_feedback"]} if state.get("po_feedback") else {}),
             },
         )
@@ -370,7 +391,7 @@ def build_workflow_graph(
         if pending:
             stage, agent, status = WorkflowStage.BUSINESS_WAIT, AgentId.ANALYST, WorkflowStatus.INTERRUPTED
         elif ready:
-            stage, agent, status = WorkflowStage.WRITER, AgentId.WRITER_REVIEWER, WorkflowStatus.RUNNING
+            stage, agent, status = WorkflowStage.TECHNICAL_ADVISOR, AgentId.TECHNICAL_ADVISOR, WorkflowStatus.RUNNING
         else:
             # Fail closed: without an open question there is no valid Business interrupt to resume.
             stage, agent, status = WorkflowStage.ANALYST, AgentId.ANALYST, WorkflowStatus.FAILED
@@ -419,6 +440,9 @@ def build_workflow_graph(
 
     async def writer_node(state: WorkflowState) -> dict[str, Any]:
         content = StoryDraftContent.model_validate(await call_draft(state))
+        # La plantilla ya muestra «Como»: se quita si el modelo lo repitió al inicio del rol.
+        rol = re.sub(r"^\s*como\s+", "", content.como, flags=re.IGNORECASE).strip() or content.como
+        content = content.model_copy(update={"como": rol})
         previous = DraftStory.model_validate(state["draft_story"]) if state.get("draft_story") else None
         round_number = min(previous.review_round + 1, 2) if previous else 0
         story = DraftStory(
@@ -447,8 +471,8 @@ def build_workflow_graph(
         )
         revised_story = story.model_copy(update={"review_status": status, "observations": observations})
         should_correct = result.requires_correction and not at_limit
-        stage = WorkflowStage.WRITER if should_correct else WorkflowStage.TECHNICAL_ADVISOR
-        workflow_status = WorkflowStatus.RUNNING if should_correct else WorkflowStatus.READY
+        stage = WorkflowStage.WRITER if should_correct else WorkflowStage.PO_APPROVAL
+        workflow_status = WorkflowStatus.RUNNING if should_correct else WorkflowStatus.INTERRUPTED
         _trace_stage(observability, state, stage=WorkflowStage.REVIEW, agent=AgentId.WRITER_REVIEWER)
         return {
             "draft_story": revised_story.model_dump(mode="json"),
@@ -456,7 +480,7 @@ def build_workflow_graph(
             "review_requires_correction": should_correct,
             "completion_reason": "La revisión agotó dos rondas; requiere revisión del PO." if needs_attention else None,
             "current_stage": stage,
-            "active_agent": AgentId.WRITER_REVIEWER if should_correct else AgentId.TECHNICAL_ADVISOR,
+            "active_agent": AgentId.WRITER_REVIEWER,
             "status": workflow_status,
         }
 
@@ -466,9 +490,40 @@ def build_workflow_graph(
                      agent=AgentId.TECHNICAL_ADVISOR)
         return {
             "technical_assessment": assessment.model_dump(mode="json"),
-            "current_stage": WorkflowStage.PO_APPROVAL,
+            "impact_decisions": [],
+            "current_stage": WorkflowStage.IMPACT_WAIT,
             "active_agent": AgentId.TECHNICAL_ADVISOR,
             "status": WorkflowStatus.INTERRUPTED,
+        }
+
+    def impact_wait_node(state: WorkflowState) -> dict[str, Any]:
+        """La persona que redacta la HU revisa el impacto y responde las decisiones pendientes."""
+        assessment = TechnicalAssessment.model_validate(state.get("technical_assessment"))
+        questions = [
+            {"question_id": f"decision-{index + 1}", "pregunta": text}
+            for index, text in enumerate(assessment.decision_pendiente)
+        ]
+        raw = interrupt({
+            "kind": "impact_decisions",
+            "impacto_negocio": [item.model_dump(mode="json") for item in assessment.impacto_negocio],
+            "questions": questions,
+            "max_answer_chars": 1000,
+            "max_total_chars": 3500,
+        })
+        submission = ImpactDecisionSubmission.model_validate(raw)
+        by_id = {item["question_id"]: item["pregunta"] for item in questions}
+        supplied = {item.question_id for item in submission.answers}
+        if supplied != set(by_id):
+            raise ValueError("Se deben responder todas las decisiones pendientes, y solo esas.")
+        _trace_stage(observability, state, stage=WorkflowStage.IMPACT_WAIT, agent=AgentId.TECHNICAL_ADVISOR)
+        return {
+            "impact_decisions": [
+                {"question_id": item.question_id, "pregunta": by_id[item.question_id], "respuesta": item.answer}
+                for item in submission.answers
+            ],
+            "current_stage": WorkflowStage.WRITER,
+            "active_agent": AgentId.WRITER_REVIEWER,
+            "status": WorkflowStatus.RUNNING,
         }
 
     def po_approval_node(state: WorkflowState) -> dict[str, Any]:
@@ -477,7 +532,8 @@ def build_workflow_graph(
             "kind": "product_owner_approval",
             "story": state.get("draft_story"),
             "review_observations": state.get("review_observations", []),
-            "technical_assessment": state.get("technical_assessment"),
+            "impacto_negocio": (state.get("technical_assessment") or {}).get("impacto_negocio", []),
+            "decisiones_impacto": state.get("impact_decisions", []),
             "supuesto_validar_po": (state.get("analyst_response") or {}).get("supuesto_validar_po", []),
             "decisions": [item.value for item in POApprovalDecision],
             "return_requires_reason": True,
@@ -643,6 +699,7 @@ def build_workflow_graph(
     builder.add_node("writer", writer_node)
     builder.add_node("reviewer", reviewer_node)
     builder.add_node("technical_advisor", technical_advisor_node)
+    builder.add_node("impact_wait", impact_wait_node)
     builder.add_node("aprobacion_po", po_approval_node)
     builder.add_node("repositorio", repository_node)
     builder.add_node("hold_for_unresolved_gaps", hold_for_unresolved_gaps)
@@ -679,18 +736,20 @@ def build_workflow_graph(
         "analyst",
         lambda state: (
             "business_wait" if state.get("pending_questions") else
-            "writer" if state.get("analyst_ready") else "hold_for_unresolved_gaps"
+            "technical_advisor" if state.get("analyst_ready") else "hold_for_unresolved_gaps"
         ),
-        {"business_wait": "business_wait", "writer": "writer", "hold_for_unresolved_gaps": "hold_for_unresolved_gaps"},
+        {"business_wait": "business_wait", "technical_advisor": "technical_advisor",
+         "hold_for_unresolved_gaps": "hold_for_unresolved_gaps"},
     )
     builder.add_edge("business_wait", "analyst")
     builder.add_edge("writer", "reviewer")
     builder.add_conditional_edges(
         "reviewer",
-        lambda state: "writer" if state.get("review_requires_correction") else "technical_advisor",
-        {"writer": "writer", "technical_advisor": "technical_advisor"},
+        lambda state: "writer" if state.get("review_requires_correction") else "aprobacion_po",
+        {"writer": "writer", "aprobacion_po": "aprobacion_po"},
     )
-    builder.add_edge("technical_advisor", "aprobacion_po")
+    builder.add_edge("technical_advisor", "impact_wait")
+    builder.add_edge("impact_wait", "writer")
     builder.add_conditional_edges(
         "aprobacion_po",
         lambda state: state["po_route"],
@@ -702,8 +761,23 @@ def build_workflow_graph(
     return builder.compile(checkpointer=checkpointer or InMemorySaver())
 
 
+_ESTADO_GUARDADO = {
+    WorkflowStatus.INTERRUPTED: "esperando",
+    WorkflowStatus.COMPLETED: "completado",
+    WorkflowStatus.CANCELLED: "cancelado",
+    WorkflowStatus.FAILED: "fallido",
+    WorkflowStatus.RUNNING: "en_ejecucion",
+    WorkflowStatus.READY: "en_ejecucion",
+}
+
+
 class WorkflowRuntime:
-    """Own graph checkpoints, Analyst conversations, and private thread IDs per process."""
+    """Own graph checkpoints, Analyst conversations, and private thread IDs.
+
+    Con ``persistencia`` (el Repositorio en la aplicación real) cada flujo se guarda en la base de datos al
+    detenerse para esperar a una persona o al fallar, y se recupera si el proceso se reinició. Sin ella
+    (pruebas), los flujos viven solo en memoria.
+    """
 
     def __init__(
         self,
@@ -716,6 +790,7 @@ class WorkflowRuntime:
         change_manager: ChangeManagerNode | None = None,
         repository: Any | None = None,
         knowledge_retriever: Any | None = None,
+        persistencia: Any | None = None,
     ) -> None:
         self.observability = observability or Observability()
         self._checkpointer = InMemorySaver(
@@ -727,6 +802,8 @@ class WorkflowRuntime:
         )
         self._threads: dict[UUID, str] = {}
         self._conversation_ids: dict[UUID, UUID] = {}
+        self._meta: dict[UUID, dict[str, Any]] = {}
+        self._persistencia = persistencia
         self._injected_analyst = analyst
         prompt = load_prompt()
         self._analyst_store = ConversationStore(
@@ -751,57 +828,200 @@ class WorkflowRuntime:
     def active_thread_count(self) -> int:
         return len(self._threads)
 
+    @property
+    def persiste(self) -> bool:
+        return self._persistencia is not None
+
     def _thread_config(self, workflow_id: UUID) -> dict[str, Any]:
         return {"configurable": {"thread_id": self._threads[workflow_id]}}
 
-    def _register(self) -> UUID:
+    def _register(self, request: WorkflowCreateRequest | None = None) -> UUID:
         workflow_id = uuid4()
         thread_id = uuid4().hex
         self._threads[workflow_id] = thread_id
+        titulo = (request.titulo if request else None) or (
+            (request.requirement or request.change_request or "") if request else ""
+        )
+        self._meta[workflow_id] = {
+            "titulo": " ".join(titulo.split())[:200] or "Sin título",
+            "creado_por": request.creado_por if request else None,
+            "formulario": dict(request.formulario or {}) if request else {},
+            "borrador": {},
+            "estado": "en_ejecucion",
+            "creado_en": None,
+            "actualizado_en": None,
+        }
         return workflow_id
 
+    def _forget(self, workflow_id: UUID) -> None:
+        thread_id = self._threads.pop(workflow_id, None)
+        self._meta.pop(workflow_id, None)
+        if thread_id is not None:
+            self._checkpointer.delete_thread(thread_id)
+
+    # --- Guardar y recuperar ------------------------------------------------
+    def _persistir(self, workflow_id: UUID, *, error: bool = False) -> None:
+        """Guarda el último punto de control y el estado del flujo. Un fallo aquí no detiene el flujo."""
+        if self._persistencia is None or workflow_id not in self._threads:
+            return
+        from agentes.analista.core.workflow_persistencia import exportar_hilo
+
+        try:
+            thread_id = self._threads[workflow_id]
+            punto = exportar_hilo(self._checkpointer, thread_id)
+            if punto is None:
+                return
+            snapshot = self._graph.get_state(self._thread_config(workflow_id))
+            values = snapshot.values
+            pendiente = self._pending_interrupt_from(snapshot)
+            if pendiente is not None:
+                # Sigue esperando a una persona (por ejemplo, la respuesta enviada no era válida).
+                estado = "esperando"
+            elif error:
+                estado = "error"
+            else:
+                estado = _ESTADO_GUARDADO.get(WorkflowStatus(values.get("status", "running")), "en_ejecucion")
+            meta = self._meta.setdefault(workflow_id, {})
+            meta["estado"] = estado
+            self._persistencia.guardar_workflow({
+                "id": str(workflow_id), "hilo": thread_id, "modo": str(values.get("mode", "pre_grooming")),
+                "titulo": meta.get("titulo"), "creado_por": meta.get("creado_por"),
+                "estado": estado, "etapa": str(values.get("current_stage", "analista")),
+                "espera": pendiente["payload"].get("kind") if pendiente else None,
+                "formulario": meta.get("formulario") or {}, "punto_control": punto,
+            })
+        except Exception as exc:
+            logger.warning("No se pudo guardar el flujo %s: %s", workflow_id, type(exc).__name__)
+
+    def _recuperar(self, workflow_id: UUID) -> bool:
+        """Carga en memoria un flujo guardado (por ejemplo, después de que el servicio se reinició)."""
+        if self._persistencia is None:
+            return False
+        from agentes.analista.core.workflow_persistencia import importar_hilo
+
+        try:
+            registro = self._persistencia.obtener_workflow(str(workflow_id))
+        except Exception as exc:
+            logger.warning("No se pudo leer el flujo guardado %s: %s", workflow_id, type(exc).__name__)
+            raise WorkflowDependencyError("No fue posible leer el flujo guardado.") from exc
+        if not registro or not registro.get("punto_control"):
+            return False
+        importar_hilo(self._checkpointer, registro["hilo"], registro["punto_control"])
+        self._threads[workflow_id] = registro["hilo"]
+        self._meta[workflow_id] = {
+            "titulo": registro.get("titulo"), "creado_por": registro.get("creado_por"),
+            "formulario": registro.get("formulario") or {}, "borrador": registro.get("borrador") or {},
+            "estado": registro.get("estado"), "creado_en": registro.get("creado_en"),
+            "actualizado_en": registro.get("actualizado_en"),
+        }
+        return True
+
+    def metadatos(self, workflow_id: UUID | str) -> dict[str, Any]:
+        """Datos para retomar el flujo: título, quién lo inició, formulario, respuestas sin enviar y estado."""
+        identifier = self._resolve_workflow_id(workflow_id)
+        meta = dict(self._meta.get(identifier, {}))
+        meta["reintentable"] = meta.get("estado") == "error" and self._puede_reintentar(identifier)
+        return meta
+
+    def listar(self) -> list[dict[str, Any]]:
+        if self._persistencia is None:
+            return []
+        return self._persistencia.listar_workflow()
+
+    def guardar_borrador(self, workflow_id: UUID | str, respuestas: Mapping[str, str]) -> None:
+        identifier = self._resolve_workflow_id(workflow_id)
+        borrador = {str(key): str(value) for key, value in respuestas.items()}
+        self._meta.setdefault(identifier, {})["borrador"] = borrador
+        if self._persistencia is not None:
+            self._persistencia.guardar_borrador_workflow(str(identifier), borrador)
+
+    def descartar(self, workflow_id: UUID | str) -> None:
+        identifier = self._resolve_workflow_id(workflow_id)
+        self._forget(identifier)
+        if self._persistencia is not None:
+            self._persistencia.eliminar_workflow(str(identifier))
+
+    def _puede_reintentar(self, workflow_id: UUID) -> bool:
+        snapshot = self._graph.get_state(self._thread_config(workflow_id))
+        return bool(snapshot.next) and self._pending_interrupt_from(snapshot) is None
+
+    async def reintentar(self, workflow_id: UUID | str) -> WorkflowSnapshot:
+        """Vuelve a ejecutar el paso que falló, desde el último punto guardado."""
+        identifier = self._resolve_workflow_id(workflow_id)
+        if not self._puede_reintentar(identifier):
+            raise WorkflowNotInterruptedError("El flujo no tiene un paso pendiente para reintentar.")
+        return await self._ejecutar(identifier, None)
+
+    async def _ejecutar(self, workflow_id: UUID, entrada: Any) -> WorkflowSnapshot:
+        """Ejecuta el grafo y guarda el resultado; si falla, lo guarda como error para poder reintentar."""
+        try:
+            result = await self._graph.ainvoke(entrada, config=self._thread_config(workflow_id))
+        except Exception:
+            await asyncio.to_thread(self._persistir, workflow_id, error=True)
+            raise
+        await asyncio.to_thread(self._persistir, workflow_id)
+        return _public_snapshot(result)
+
+    # --- Ciclo de vida --------------------------------------------------------
     def start(self, request: WorkflowCreateRequest) -> WorkflowSnapshot:
         """Validate and checkpoint the selected initial role without executing agents."""
         request = WorkflowCreateRequest.model_validate(request)
-        workflow_id = self._register()
+        workflow_id = self._register(request)
         try:
             state = request.to_graph_state(workflow_id)
             state["execute_agents"] = False
             result = self._graph.invoke(state, config=self._thread_config(workflow_id))
             return _public_snapshot(result)
         except Exception:
-            self._threads.pop(workflow_id, None)
+            self._forget(workflow_id)
             raise
 
     async def execute(self, request: WorkflowCreateRequest) -> WorkflowSnapshot:
         """Run pre-grooming through Analyst, Business interrupt, and writer/reviewer nodes."""
         request = WorkflowCreateRequest.model_validate(request)
-        workflow_id = self._register()
+        workflow_id = self._register(request)
         try:
             if self._injected_analyst is None and request.mode == FlowMode.PRE_GROOMING:
                 conversation = await self._analyst_store.create()
                 self._conversation_ids[workflow_id] = conversation.conversation_id
             state = request.to_graph_state(workflow_id)
             state["execute_agents"] = True
-            result = await self._graph.ainvoke(state, config=self._thread_config(workflow_id))
-            return _public_snapshot(result)
+            return await self._ejecutar(workflow_id, state)
         except Exception:
+            if self._persistencia is not None and self._graph.get_state(self._thread_config(workflow_id)).values:
+                # Queda guardado como error: se puede reintentar desde la lista de HU en proceso.
+                raise
             if self._injected_analyst is None:
                 conversation_id_forget = self._conversation_ids.pop(workflow_id, None)
                 if conversation_id_forget is not None:
                     await self._analyst_store.delete(conversation_id_forget)
-            self._threads.pop(workflow_id, None)
+            self._forget(workflow_id)
             raise
+
+    async def _analyst_conversation(self, workflow_id: UUID, state: WorkflowState) -> UUID:
+        """La conversación del Analista para este flujo; si expiró o el proceso se reinició, se restaura."""
+        conversation_id = self._conversation_ids.get(workflow_id)
+        if conversation_id is not None:
+            try:
+                await self._analyst_store.get(conversation_id)
+                return conversation_id
+            except StoreError:
+                logger.info("La conversación del Analista expiró; se restaura desde el flujo guardado.")
+        conversation = await self._analyst_store.create()
+        conversation_id = conversation.conversation_id
+        self._conversation_ids[workflow_id] = conversation_id
+        previous = state.get("analyst_response")
+        if previous:
+            await self._analyst_store.restaurar(
+                conversation_id, state.get("requirement_input") or "", AgentTurnResponse.model_validate(previous),
+            )
+        return conversation_id
 
     async def _run_analyst(self, state: WorkflowState) -> AgentTurnResponse:
         from agentes.analista.core.orchestrator import run_turn
 
         workflow_id = UUID(state["workflow_id"])
-        conversation_id = self._conversation_ids.get(workflow_id)
-        if conversation_id is None:
-            conversation = await self._analyst_store.create()
-            conversation_id = conversation.conversation_id
-            self._conversation_ids[workflow_id] = conversation_id
+        conversation_id = await self._analyst_conversation(workflow_id, state)
         answers = state.get("latest_business_answers", [])
         if answers:
             # Se envía la pregunta junto con su respuesta: el modelo no debe adivinar a qué id corresponde.
@@ -829,7 +1049,7 @@ class WorkflowRuntime:
         workflow_id: UUID | str,
         answers: BusinessAnswerSubmission | POApprovalSubmission | Mapping[str, Any],
     ) -> WorkflowSnapshot:
-        """Resume a Business or PO interrupt on its existing thread checkpoint."""
+        """Resume a human interrupt on its existing thread checkpoint."""
         identifier = self._resolve_workflow_id(workflow_id)
         current = self._graph.get_state(self._thread_config(identifier))
         if not any(getattr(task, "interrupts", ()) for task in current.tasks):
@@ -837,39 +1057,40 @@ class WorkflowRuntime:
         current_stage = current.values.get("current_stage")
         if current_stage == WorkflowStage.PO_APPROVAL:
             submission = POApprovalSubmission.model_validate(answers)
+        elif current_stage == WorkflowStage.IMPACT_WAIT:
+            submission = ImpactDecisionSubmission.model_validate(answers)
         elif current_stage == WorkflowStage.HUMAN_DECISION:
             submission = ChangeDecisionSubmission.model_validate(answers)
         else:
             submission = BusinessAnswerSubmission.model_validate(answers)
-        result = await self._graph.ainvoke(
-            Command(resume=submission.model_dump(mode="json")),
-            config=self._thread_config(identifier),
-        )
-        return _public_snapshot(result)
+        # Lo que estaba escrito sin enviar ya se envió.
+        self._meta.setdefault(identifier, {})["borrador"] = {}
+        if self._persistencia is not None:
+            try:
+                await asyncio.to_thread(self._persistencia.guardar_borrador_workflow, str(identifier), {})
+            except Exception as exc:
+                logger.warning("No se pudo limpiar el borrador del flujo: %s", type(exc).__name__)
+        return await self._ejecutar(identifier, Command(resume=submission.model_dump(mode="json")))
 
     def _resolve_workflow_id(self, workflow_id: UUID | str) -> UUID:
         try:
             identifier = workflow_id if isinstance(workflow_id, UUID) else UUID(str(workflow_id))
-            if identifier not in self._threads:
-                raise KeyError(identifier)
+        except ValueError as exc:
+            raise WorkflowNotFoundError("El workflow no existe.") from exc
+        if identifier in self._threads or self._recuperar(identifier):
             return identifier
-        except (ValueError, KeyError) as exc:
-            raise WorkflowNotFoundError("El workflow no existe en este proceso.") from exc
+        raise WorkflowNotFoundError("El workflow no existe o no se guardó.")
 
     def get(self, workflow_id: UUID | str) -> WorkflowSnapshot:
-        """Read the latest safe checkpoint while its owning process is alive."""
+        """Read the latest safe checkpoint, from memory or from the saved workflow."""
         identifier = self._resolve_workflow_id(workflow_id)
         snapshot = self._graph.get_state(self._thread_config(identifier))
         if not snapshot.values:
             raise WorkflowNotFoundError("El workflow no existe en este proceso.")
         return _public_snapshot(snapshot.values)
 
-    def pending_interrupt(self, workflow_id: UUID | str) -> dict[str, Any] | None:
-        """Return the active LangGraph interrupt identifier and its bounded public payload."""
-        identifier = self._resolve_workflow_id(workflow_id)
-        snapshot = self._graph.get_state(self._thread_config(identifier))
-        if not snapshot.values:
-            raise WorkflowNotFoundError("El workflow no existe en este proceso.")
+    @staticmethod
+    def _pending_interrupt_from(snapshot: Any) -> dict[str, Any] | None:
         for task in snapshot.tasks:
             for item in getattr(task, "interrupts", ()):
                 value = getattr(item, "value", None)
@@ -877,3 +1098,11 @@ class WorkflowRuntime:
                 if isinstance(value, Mapping) and isinstance(value.get("kind"), str) and interrupt_id:
                     return {"interrupt_id": str(interrupt_id), "payload": dict(value)}
         return None
+
+    def pending_interrupt(self, workflow_id: UUID | str) -> dict[str, Any] | None:
+        """Return the active LangGraph interrupt identifier and its bounded public payload."""
+        identifier = self._resolve_workflow_id(workflow_id)
+        snapshot = self._graph.get_state(self._thread_config(identifier))
+        if not snapshot.values:
+            raise WorkflowNotFoundError("El workflow no existe en este proceso.")
+        return self._pending_interrupt_from(snapshot)
