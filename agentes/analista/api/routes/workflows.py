@@ -32,7 +32,6 @@ from agentes.analista.core.workflow_models import (
     DraftStory,
     FlowMode,
     ImpactDecisionAnswer,
-    ImpactDecisionSubmission,
     ImpactoNegocio,
     NotaHu,
     PersistenceResult,
@@ -55,14 +54,6 @@ class BusinessAnswersResume(BaseModel):
     response: BusinessAnswerSubmission
 
 
-class ImpactDecisionResume(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    kind: Literal["impact_decisions"]
-    interrupt_id: str = Field(min_length=1, max_length=120)
-    response: ImpactDecisionSubmission
-
-
 class POApprovalResume(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -80,7 +71,7 @@ class ChangeDecisionResume(BaseModel):
 
 
 ResumeSubmission = Annotated[
-    BusinessAnswersResume | ImpactDecisionResume | POApprovalResume | ChangeDecisionResume,
+    BusinessAnswersResume | POApprovalResume | ChangeDecisionResume,
     Field(discriminator="kind"),
 ]
 
@@ -130,7 +121,7 @@ class WorkflowInterrupt(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     interrupt_id: str = Field(min_length=1, max_length=120)
-    kind: Literal["business_answers", "impact_decisions", "po_approval", "change_decision"]
+    kind: Literal["business_answers", "po_approval", "change_decision"]
     payload: WorkflowInterruptPayload
     response_schema: dict[str, Any]
 
@@ -224,7 +215,6 @@ def _interrupt_response(runtime: WorkflowRuntime, workflow_id: UUID) -> Workflow
         public_payload["change_recommendation"] = public_payload.pop("recommendation")
     schema_map = {
         "business_answers": BusinessAnswerSubmission,
-        "impact_decisions": ImpactDecisionSubmission,
         "po_approval": POApprovalSubmission,
         "change_decision": ChangeDecisionSubmission,
     }
@@ -405,8 +395,6 @@ def _translate_runtime_error(exc: Exception) -> WorkflowApiError:
 def _expected_interrupt_kind(snapshot: WorkflowSnapshot) -> str | None:
     if snapshot.current_stage == WorkflowStage.BUSINESS_WAIT:
         return "business_answers"
-    if snapshot.current_stage == WorkflowStage.IMPACT_WAIT:
-        return "impact_decisions"
     if snapshot.current_stage == WorkflowStage.PO_APPROVAL:
         return "po_approval"
     if snapshot.current_stage == WorkflowStage.HUMAN_DECISION:

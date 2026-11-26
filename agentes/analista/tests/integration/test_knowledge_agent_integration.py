@@ -134,10 +134,9 @@ async def test_redactor_plans_and_gets_its_evidence_only_through_its_mcp_server(
         return _ready_analysis()
 
     runtime = WorkflowRuntime(analyst=analyst, advisor=_assessment, knowledge_retriever=retriever)
-    impact = await runtime.execute(WorkflowCreateRequest(
+    result = await runtime.execute(WorkflowCreateRequest(
         mode=FlowMode.PRE_GROOMING, requirement="Consultar vigencia de póliza",
     ))
-    result = await runtime.resume(impact.workflow_id, {"answers": []})
 
     assert result.current_stage == WorkflowStage.PO_APPROVAL
     assert result.status == WorkflowStatus.INTERRUPTED

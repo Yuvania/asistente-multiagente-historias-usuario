@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import os
 from datetime import datetime
 from collections.abc import Collection
@@ -215,6 +216,27 @@ def _resolver_vacio(
     return nuevo, generada, supuesto_po[:50]
 
 
+# Un vacío o una pregunta que el propio Analista atribuye al Asesor Técnico no se le pregunta a Negocio.
+_ES_PARA_ASESOR = re.compile(r"asesor\s+t[eé]cnico", re.IGNORECASE)
+
+
+def _separar_para_asesor(analisis: Analysis, lista_tema: list[str], question_key: Any) -> tuple[Analysis, list[str]]:
+    """Saca del análisis los vacíos que solo se resuelven revisando el sistema; quedan para el Asesor."""
+    clave = {question_key(tema) for tema in lista_tema}
+    para_asesor = list(dict.fromkeys(tema.strip() for tema in lista_tema if tema.strip()))
+    cambio: dict[str, list[str]] = {}
+    for campo in ("faltante", "supuesta", "ambigua"):
+        queda: list[str] = []
+        for item in getattr(analisis, campo):
+            if question_key(item) in clave or _ES_PARA_ASESOR.search(item):
+                if item.strip() not in para_asesor:
+                    para_asesor.append(item.strip()[:500])
+            else:
+                queda.append(item)
+        cambio[campo] = queda
+    return analisis.model_copy(update=cambio), para_asesor[:20]
+
+
 def _to_response(
     output: AgentOutput,
     *,
@@ -241,9 +263,15 @@ def _to_response(
     prior_by_text = {question_key(item.pregunta): item for item in prior_questions}
     questions: list[Question] = []
     seen: set[str] = set()
+    para_asesor_pregunta: list[str] = []
     for item in output.preguntas:
         key = question_key(item.pregunta)
         if key in seen:
+            continue
+        if key not in prior_by_text and _ES_PARA_ASESOR.search(item.pregunta):
+            # Pregunta que el propio Analista atribuye al Asesor: la verifica el Asesor, no Negocio.
+            para_asesor_pregunta.append(item.pregunta.strip()[:500])
+            seen.add(key)
             continue
         seen.add(key)
         previous = prior_by_text.get(key)
@@ -282,8 +310,11 @@ def _to_response(
     ]
     # The readiness gate is derived from validated facts, never trusted to the model.
     # Los vacíos que el modelo dejó sin preguntar se resuelven aquí; el ciclo siempre avanza o termina.
+    analisis_propio, para_asesor = _separar_para_asesor(
+        output.analisis, [*output.para_asesor, *para_asesor_pregunta], question_key,
+    )
     analisis, generadas, supuesto_po = _resolver_vacio(
-        output.analisis, questions, question_key, turn_id, output.vinculos,
+        analisis_propio, questions, question_key, turn_id, output.vinculos,
     )
     questions.extend(generadas[:50 - len(questions)])
     ready = not (analisis.faltante or analisis.supuesta or analisis.ambigua)
@@ -299,6 +330,7 @@ def _to_response(
         fuentes_consultadas=sources[:4],
         listo_para_redactor=ready,
         supuesto_validar_po=supuesto_po,
+        para_asesor=para_asesor,
         beneficios=output.beneficios,
         limitaciones=limitations[:10],
         duracion_ms=duration_ms,

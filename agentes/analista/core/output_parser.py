@@ -40,6 +40,14 @@ class AgentOutput(BaseModel):
     listo_para_redactor: bool
     beneficios: list[str] = Field(default_factory=list, max_length=5)
     vinculos: list[VinculoVacio] = Field(default_factory=list, max_length=50)
+    # Temas que solo se resuelven revisando el sistema (dónde más aparece un dato, qué módulos lo usan):
+    # no se le preguntan a Negocio, los verifica el Asesor Técnico.
+    para_asesor: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("para_asesor")
+    @classmethod
+    def clean_para_asesor(cls, items: list[str]) -> list[str]:
+        return [item.strip()[:500] for item in items if isinstance(item, str) and item.strip()]
 
     @field_validator("beneficios")
     @classmethod

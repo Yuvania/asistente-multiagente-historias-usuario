@@ -15,6 +15,6 @@ describe('registro de pasos del asistente', () => {
 
   it('un paso inexistente no tiene vista', () => {
     expect(pasoPorId(99)).toBeNull();
-    expect(pasoPorId(PASO.IMPACTO).etiqueta).toBe('Impacto en otros módulos');
+    expect(pasoPorId(PASO.PREGUNTAS).etiqueta).toBe('Preguntas a Negocio');
   });
 });

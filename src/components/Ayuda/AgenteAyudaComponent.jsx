@@ -15,9 +15,10 @@ export const AgenteAyudaComponent = () => (
   <>
     <TarjetaComponent title="Los agentes del sistema" subtitle="Cuatro agentes, cada uno con su rol, sus herramientas y su memoria">
       <p className="ayuda-item__texto">
-        Los agentes trabajan en orden: el Analista aclara el requerimiento con Negocio, el Asesor Técnico revisa qué
-        otras funciones afecta el cambio, el Redactor-Revisor escribe la historia y el Product Owner la aprueba. El
-        Gestor de Cambios entra después, cuando llega una solicitud de cambio sobre una HU aprobada.
+        El Analista y el Asesor Técnico trabajan en equipo: después del primer análisis, el Asesor revisa qué otras
+        funciones afecta el cambio y las preguntas de los dos llegan a Negocio en una sola ronda. Luego el
+        Redactor-Revisor escribe la historia y el Product Owner la aprueba. El Gestor de Cambios entra después,
+        cuando llega una solicitud de cambio sobre una HU aprobada.
       </p>
       <div className="ayuda-lista">
         {AGENTES.map((agente) => (

@@ -68,10 +68,6 @@ const CrearHistoriaUsuarioContenido = () => {
               setFormError('No avance con preguntas de Negocio pendientes; respóndalas y reanude el flujo.');
               return;
             }
-            if (workflowResponse?.interrupt?.kind === 'impact_decisions' && step > PASO.IMPACTO) {
-              setFormError('Revise el impacto en otros módulos y confirme para que se redacte la historia.');
-              return;
-            }
             if (workflowResponse && step >= PASO.HISTORIA && !workflowResponse.results?.story) {
               setFormError('El flujo todavía no ha generado la historia.');
               return;
@@ -130,7 +126,7 @@ const CrearHistoriaUsuarioContenido = () => {
           </AlertaComponent>
         )}
 
-        {/* Carga: el Agente Analista (pasos 1-3) o el borrador simulado (paso 4) */}
+        {/* Carga: el Analista y el Asesor (pasos 1-3), el Redactor-Revisor o el borrador del modo manual */}
         {isProcessing && (
           <div className="ai-loader" role="status" aria-live="polite">
             <div className="ai-loader__spinner"></div>
@@ -138,11 +134,11 @@ const CrearHistoriaUsuarioContenido = () => {
               {isGeneratingStory
                 ? 'Generando el borrador de la Historia de Usuario...'
                 : activeStep === PASO.PREGUNTAS
-                  ? 'El Analista revisa las respuestas; si ya no quedan vacíos, el Asesor Técnico busca qué otras funciones afecta el cambio...'
-                  : activeStep === PASO.IMPACTO
-                    ? 'El Redactor-Revisor escribe y revisa la historia de usuario...'
-                    : activeStep >= PASO.HISTORIA
-                      ? 'El flujo continúa con la decisión indicada...'
+                  ? 'El Analista revisa las respuestas; si ya no quedan vacíos, el Redactor-Revisor escribe y revisa la historia...'
+                  : activeStep >= PASO.HISTORIA
+                    ? 'El flujo continúa con la decisión indicada...'
+                    : workflowResponse || activeStep === PASO.REQUERIMIENTO
+                      ? 'El Agente Analista analiza el requerimiento y el Asesor Técnico revisa qué otras funciones afecta el cambio...'
                       : 'El Agente Analista está analizando el requerimiento...'}
             </p>
             <p className="ai-loader__subtext">

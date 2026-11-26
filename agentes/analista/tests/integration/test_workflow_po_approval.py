@@ -64,11 +64,10 @@ async def _runtime(repository):
         advisor=_advisor,
         repository=repository,
     )
-    impact = await runtime.execute(WorkflowCreateRequest(
+    # Sin preguntas de Negocio ni decisiones del Asesor, el flujo llega directo a la aprobación del PO.
+    paused = await runtime.execute(WorkflowCreateRequest(
         mode=FlowMode.PRE_GROOMING, requirement="Consultar el saldo de cuentas activas",
     ))
-    assert impact.current_stage == WorkflowStage.IMPACT_WAIT
-    paused = await runtime.resume(impact.workflow_id, {"answers": []})
     return runtime, paused
 
 
@@ -124,9 +123,9 @@ async def test_explicit_approval_persists_structured_story_once_and_reuses_threa
 @pytest.mark.parametrize(
     ("decision", "expected_stage", "expected_counter"),
     [
-        ("devolver_analista", WorkflowStage.IMPACT_WAIT, "analyst"),
+        ("devolver_analista", WorkflowStage.PO_APPROVAL, "analyst"),
         ("devolver_redactor", WorkflowStage.PO_APPROVAL, "draft"),
-        ("devolver_asesor", WorkflowStage.IMPACT_WAIT, "advisor"),
+        ("devolver_asesor", WorkflowStage.PO_APPROVAL, "advisor"),
     ],
 )
 async def test_po_can_return_story_to_requested_stage_with_reason(decision, expected_stage, expected_counter):
@@ -153,10 +152,9 @@ async def test_po_can_return_story_to_requested_stage_with_reason(decision, expe
 
     runtime = WorkflowRuntime(analyst=analyst, draft=draft, review=_review, advisor=advisor,
                               repository=repository)
-    impact = await runtime.execute(WorkflowCreateRequest(
+    paused = await runtime.execute(WorkflowCreateRequest(
         mode=FlowMode.PRE_GROOMING, requirement="Consultar el saldo de cuentas activas",
     ))
-    paused = await runtime.resume(impact.workflow_id, {"answers": []})
     assert paused.current_stage == WorkflowStage.PO_APPROVAL
     before = counts[expected_counter]
 

@@ -70,11 +70,15 @@ const impactoNegocio = [{
   debe: 'Usar el mismo plazo que la consulta.',
 }];
 const decisionImpacto = '¿La carga masiva usa el mismo plazo que la consulta?';
+// El Analista y el Asesor trabajan en equipo: una sola ronda con la pregunta y la decisión del impacto.
 const impactInterrupt = {
-  interrupt_id: 'interrupt-impact-2', kind: 'impact_decisions',
+  interrupt_id: 'interrupt-business-1', kind: 'business_answers',
   payload: {
     impacto_negocio: impactoNegocio,
-    questions: [{ question_id: 'decision-1', pregunta: decisionImpacto }],
+    questions: [
+      { question_id: 'q-plazo', categoria: 'Reglas de negocio', pregunta: '¿Cuál es el plazo?', estado: 'pendiente', origen: 'analista' },
+      { question_id: 'decision-1', categoria: 'Decisión de impacto', pregunta: decisionImpacto, origen: 'asesor_tecnico' },
+    ],
     max_answer_chars: 1000, max_total_chars: 3500,
   },
   response_schema: { type: 'object' },
@@ -141,10 +145,10 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     expect(screen.queryByText(/Queda(n)? \d+ pregunta/i)).not.toBeInTheDocument();
   });
 
-  it('retoma una HU en proceso en el paso de impacto con el formulario y las respuestas guardadas', async () => {
+  it('retoma una HU en proceso en el paso de preguntas con el formulario y las respuestas guardadas', async () => {
     const user = userEvent.setup();
     getWorkflow.mockResolvedValue({
-      workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_impacto',
+      workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_negocio',
       results: impactResults, interrupt: impactInterrupt,
       guardado: {
         titulo: 'Consultar vigencia', creado_por: 'Analista', persistente: true, reintentable: false, estado: 'esperando',
@@ -156,7 +160,7 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
 
     renderAt(`/historias/nueva?flujo=${WORKFLOW_ID}`);
 
-    expect(await screen.findByText(/Paso 4 — Impacto en otros módulos/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Paso 3 — Preguntas para Negocio/i)).toBeInTheDocument();
     expect(getWorkflow).toHaveBeenCalledWith(WORKFLOW_ID, expect.anything());
     expect(screen.getByText(/El avance se guarda automáticamente/i)).toBeInTheDocument();
     const respuesta = screen.getByLabelText(/La carga masiva usa el mismo plazo/);
@@ -180,7 +184,7 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
       guardado: { titulo: 'Consultar vigencia', persistente: true, reintentable: true, estado: 'error', formulario: {}, borrador_respuestas: {} },
     });
     retryWorkflow.mockResolvedValue({
-      workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_impacto',
+      workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_negocio',
       results: impactResults, interrupt: impactInterrupt,
       guardado: { persistente: true, reintentable: false, estado: 'esperando', formulario: {}, borrador_respuestas: {} },
     });
@@ -189,14 +193,15 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     await user.click(await screen.findByRole('button', { name: /Reintentar el paso que falló/i }));
 
     expect(retryWorkflow).toHaveBeenCalledWith(WORKFLOW_ID, expect.anything());
-    expect(await screen.findByText(/Paso 4 — Impacto en otros módulos/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Paso 3 — Preguntas para Negocio/i)).toBeInTheDocument();
+    expect(screen.getByText('Lo que encontró el Asesor Técnico')).toBeInTheDocument();
   });
 
   it('lista las HU en proceso para retomarlas o descartarlas', async () => {
     const user = userEvent.setup();
     listWorkflows.mockResolvedValue([
       { workflow_id: WORKFLOW_ID, modo: 'pre_grooming', titulo: 'Teléfono opcional', creado_por: 'Analista',
-        estado: 'esperando', etapa: 'espera_impacto', espera: 'impact_decisions',
+        estado: 'esperando', etapa: 'espera_negocio', espera: 'business_answers',
         creado_en: '2026-11-26T10:00:00+00:00', actualizado_en: '2026-11-26T11:00:00+00:00' },
       { workflow_id: 'otro', modo: 'pre_grooming', titulo: 'Ya terminada', estado: 'completado', etapa: 'repositorio',
         espera: null, creado_en: '2026-11-26T10:00:00+00:00', actualizado_en: '2026-11-26T11:00:00+00:00' },
@@ -207,21 +212,20 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     renderAt('/historias');
 
     expect(await screen.findByText('Teléfono opcional')).toBeInTheDocument();
-    expect(screen.getByText(/Esperando decisiones del impacto en otros módulos/i)).toBeInTheDocument();
+    expect(screen.getByText(/Esperando respuestas de Negocio/i)).toBeInTheDocument();
     expect(screen.queryByText('Ya terminada')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Descartar/i }));
     await waitFor(() => expect(deleteWorkflow).toHaveBeenCalledWith(WORKFLOW_ID));
     await waitFor(() => expect(screen.queryByText('Teléfono opcional')).not.toBeInTheDocument());
   });
 
-  it('answers Business, reviews the impact in business language, then saves only through backend PO approval', async () => {
+  it('answers the Analyst and the Advisor in one round, shows the impact in business language, then saves only through backend PO approval', async () => {
     const user = userEvent.setup();
     startWorkflow.mockResolvedValue({
       workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_negocio',
-      results: baseResults, interrupt: analystInterrupt,
+      results: impactResults, interrupt: impactInterrupt,
     });
     resumeWorkflow
-      .mockResolvedValueOnce({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_impacto', results: impactResults, interrupt: impactInterrupt })
       .mockResolvedValueOnce({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'aprobacion_po', results: poResults, interrupt: poInterrupt })
       .mockResolvedValueOnce({ workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'completed', stage: 'repositorio', results: { ...poResults, po_decision: { decision: 'aprobar' }, persistence_result: { status: 'saved', story_id: WORKFLOW_ID, title: draftStory.quiero, approved_at: '2026-11-21T12:00:00Z' }, completion_reason: 'HU aprobada por el Product Owner y guardada en el Repositorio.' }, interrupt: null });
     vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -229,14 +233,13 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
     renderAt();
     await fillRequirement(user);
     await user.click(screen.getByRole('button', { name: /Analizar Requerimiento/i }));
+    // Paso 3: el impacto sin detalle técnico y una sola ronda con la pregunta del Analista y la decisión del Asesor.
     expect(await screen.findByLabelText(/¿Cuál es el plazo\?/i)).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/¿Cuál es el plazo\?/i), '12 meses');
-    await user.click(screen.getByRole('button', { name: /Confirmar y continuar/i }));
-
-    // Paso 4: el impacto en otros módulos, sin detalle técnico, y la decisión pendiente.
-    expect(await screen.findByText(/Paso 4 — Impacto en otros módulos/i)).toBeInTheDocument();
+    expect(screen.getByText('Lo que encontró el Asesor Técnico')).toBeInTheDocument();
     expect(screen.getByText('Carga masiva de pólizas')).toBeInTheDocument();
+    expect(screen.getByText(/Decisiones sobre el impacto en otros módulos/)).toBeInTheDocument();
     expect(screen.queryByText(/polizas\.py/i)).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText(/¿Cuál es el plazo\?/i), '12 meses');
     await user.type(screen.getByLabelText(/La carga masiva usa el mismo plazo/), 'Sí, el mismo plazo.');
     await user.click(screen.getByRole('button', { name: /Confirmar y continuar/i }));
 
@@ -261,13 +264,12 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
 
     expect(resumeWorkflow).toHaveBeenNthCalledWith(1, WORKFLOW_ID, {
       kind: 'business_answers', interrupt_id: 'interrupt-business-1',
-      response: { answers: [{ question_id: 'q-plazo', answer: '12 meses' }] },
+      response: { answers: [
+        { question_id: 'q-plazo', answer: '12 meses' },
+        { question_id: 'decision-1', answer: 'Sí, el mismo plazo.' },
+      ] },
     }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(resumeWorkflow).toHaveBeenNthCalledWith(2, WORKFLOW_ID, {
-      kind: 'impact_decisions', interrupt_id: 'interrupt-impact-2',
-      response: { answers: [{ question_id: 'decision-1', answer: 'Sí, el mismo plazo.' }] },
-    }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
-    expect(resumeWorkflow).toHaveBeenNthCalledWith(3, WORKFLOW_ID, {
       kind: 'po_approval', interrupt_id: 'interrupt-po-2', response: { decision: 'aprobar' },
     }, expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(repositorioApi.saveStory).not.toHaveBeenCalled();

@@ -56,8 +56,8 @@ describe('página de Ayuda', () => {
     const user = userEvent.setup();
     render(<MemoryRouter><AyudaComponent /></MemoryRouter>);
     expect(screen.getByText('¿Cómo funciona el Asistente IA?')).toBeInTheDocument();
-    expect(screen.getByText(/Paso 4 — Impacto en otros módulos/)).toBeInTheDocument();
-    expect(screen.getByText(/Paso 6 — Aprobación del Product Owner/)).toBeInTheDocument();
+    expect(screen.getByText(/Paso 3 — Preguntas para Negocio/)).toBeInTheDocument();
+    expect(screen.getByText(/Paso 5 — Aprobación del Product Owner/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /Acciones sobre una HU/ }));
     ['Retomar o descartar (HU en proceso)', 'Ver detalle', 'Editar', 'Solicitar cambio (solo HU aprobada)', 'Descargar', 'Eliminar'].forEach((titulo) => {

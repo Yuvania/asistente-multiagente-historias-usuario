@@ -54,6 +54,8 @@ La clase base `AgenteOpenCodeService` hace el ciclo común: abre OpenCode, verif
 
 El grafo de LangGraph no se arma con llamadas sueltas: se declara como una lista de `Paso(nombre, nodo, siguiente, descripción)`, donde `siguiente` es un paso fijo, `FIN` o una `Ruta` que decide según el estado. `construir_flujo` (en `agentes/analista/core/flujo.py`) valida la tabla antes de compilar: pasos repetidos, destinos inexistentes o pasos a los que nunca se llega detienen el arranque con un mensaje claro.
 
+**Analista y Asesor en equipo.** Después del primer análisis del Analista, el Asesor Técnico revisa el sistema (con los temas que el Analista le pasa en `para_asesor`) y sus decisiones se suman a las preguntas del Analista en una sola ronda para Negocio (`business_wait`). Lo que solo se sabe revisando el código nunca se le pregunta a Negocio.
+
 ## Frontend
 
 ```

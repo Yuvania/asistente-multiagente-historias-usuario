@@ -26,7 +26,6 @@ from agentes.equipo.asesor_tecnico.asesor_tecnico_service import AsesorTecnicoSe
 from agentes.analista.core.workflow_models import (
     BusinessAnswerSubmission,
     ChangeDecision,
-    ImpactDecisionSubmission,
     ChangeDecisionSubmission,
     ChangePersistenceResult,
     ChangeRecommendation,
@@ -59,6 +58,22 @@ ChangeManagerNode = Callable[[WorkflowState, Any], Awaitable[ChangeRecommendatio
 
 class WorkflowNotFoundError(LookupError):
     """The workflow has no checkpoint in this process."""
+
+
+def _siguiente_del_analista(state: Mapping[str, Any]) -> str:
+    pendiente = bool(state.get("pending_questions"))
+    listo = bool(state.get("analyst_ready"))
+    if (pendiente or listo) and not state.get("asesor_ejecutado"):
+        return "asesor"
+    if pendiente or state.get("decisiones_pendientes"):
+        return "negocio"
+    return "redactor" if listo else "vacios"
+
+
+def _siguiente_del_asesor(state: Mapping[str, Any]) -> str:
+    if state.get("pending_questions") or state.get("decisiones_pendientes"):
+        return "negocio"
+    return "redactor" if state.get("analyst_ready") else "vacios"
 
 
 def _hoy() -> str:
@@ -232,6 +247,8 @@ def build_workflow_graph(
             requirement=state.get("requirement_input") or "",
             story={
                 "analisis_validado": analysis,
+                # Lo que el Analista no le pregunta a Negocio porque solo se sabe revisando el sistema.
+                "temas_para_verificar": (state.get("analyst_response") or {}).get("para_asesor", []),
                 "aclaraciones_de_negocio": [
                     {"pregunta": item.get("question", ""), "respuesta": item.get("answer", "")}
                     for item in state.get("business_clarifications", [])
@@ -427,10 +444,14 @@ def build_workflow_graph(
         pending = [question.model_dump(mode="json") for question in response.preguntas
                    if question.estado == QuestionState.PENDING]
         ready = response.listo_para_redactor and not pending
-        if pending:
+        decision_abierta = bool(state.get("decisiones_pendientes"))
+        if (pending or ready) and not state.get("asesor_ejecutado"):
+            # Trabajo en equipo: el Asesor revisa el sistema después del primer análisis, antes de ir a Negocio.
+            stage, agent, status = WorkflowStage.TECHNICAL_ADVISOR, AgentId.TECHNICAL_ADVISOR, WorkflowStatus.RUNNING
+        elif pending or decision_abierta:
             stage, agent, status = WorkflowStage.BUSINESS_WAIT, AgentId.ANALYST, WorkflowStatus.INTERRUPTED
         elif ready:
-            stage, agent, status = WorkflowStage.TECHNICAL_ADVISOR, AgentId.TECHNICAL_ADVISOR, WorkflowStatus.RUNNING
+            stage, agent, status = WorkflowStage.WRITER, AgentId.WRITER_REVIEWER, WorkflowStatus.RUNNING
         else:
             # Fail closed: without an open question there is no valid Business interrupt to resume.
             stage, agent, status = WorkflowStage.ANALYST, AgentId.ANALYST, WorkflowStatus.FAILED
@@ -446,36 +467,58 @@ def build_workflow_graph(
         }
 
     def wait_for_business(state: WorkflowState) -> dict[str, Any]:
+        """Una sola ronda para Negocio: las preguntas del Analista y las decisiones del Asesor, juntas."""
+        lista_analista = [{**item, "origen": "analista"} for item in state.get("pending_questions", [])]
+        lista_decision = list(state.get("decisiones_pendientes", []))
         payload = {
             "kind": "business_answers",
-            "questions": state.get("pending_questions", []),
+            "questions": [*lista_analista, *lista_decision],
+            "impacto_negocio": (state.get("technical_assessment") or {}).get("impacto_negocio", []),
             "max_answer_chars": 1000,
-            "max_total_chars": 3500,
+            "max_total_chars": 6000,
         }
         raw_answers = interrupt(payload)
         answers = BusinessAnswerSubmission.model_validate(raw_answers)
-        allowed_ids = {item["question_id"] for item in state.get("pending_questions", [])}
+        id_analista = {item["question_id"] for item in lista_analista}
+        decision_por_id = {item["question_id"]: item["pregunta"] for item in lista_decision}
         supplied_ids = {item.question_id for item in answers.answers}
-        if not supplied_ids or not supplied_ids <= allowed_ids:
+        if not supplied_ids or not supplied_ids <= id_analista | set(decision_por_id):
             raise ValueError("La respuesta incluye preguntas que no están pendientes en este workflow.")
         _trace_stage(observability, state, stage=WorkflowStage.BUSINESS_WAIT, agent=AgentId.ANALYST)
-        questions_by_id = {item["question_id"]: item.get("pregunta", "")
-                           for item in state.get("pending_questions", [])}
-        enriched_answers = [
-            {**item.model_dump(mode="json"), "question": questions_by_id.get(item.question_id, item.question_id)}
-            for item in answers.answers
+
+        respuesta_decision = [item for item in answers.answers if item.question_id in decision_por_id]
+        decision_tomada = [
+            *state.get("impact_decisions", []),
+            *({"question_id": item.question_id, "pregunta": decision_por_id[item.question_id], "respuesta": item.answer}
+              for item in respuesta_decision),
         ]
-        clarification_by_id = {
-            item["question_id"]: item for item in state.get("business_clarifications", [])
-        }
-        clarification_by_id.update({item["question_id"]: item for item in enriched_answers})
-        return {
-            "latest_business_answers": enriched_answers,
-            "business_clarifications": list(clarification_by_id.values()),
-            "current_stage": WorkflowStage.ANALYST,
-            "active_agent": AgentId.ANALYST,
+        decision_restante = [item for item in lista_decision if item["question_id"] not in supplied_ids]
+        updates: dict[str, Any] = {
+            "impact_decisions": decision_tomada,
+            "decisiones_pendientes": decision_restante,
             "status": WorkflowStatus.RUNNING,
         }
+        respuesta_analista = [item for item in answers.answers if item.question_id in id_analista]
+        if respuesta_analista:
+            questions_by_id = {item["question_id"]: item.get("pregunta", "") for item in lista_analista}
+            enriched_answers = [
+                {**item.model_dump(mode="json"), "question": questions_by_id.get(item.question_id, item.question_id)}
+                for item in respuesta_analista
+            ]
+            clarification_by_id = {
+                item["question_id"]: item for item in state.get("business_clarifications", [])
+            }
+            clarification_by_id.update({item["question_id"]: item for item in enriched_answers})
+            updates.update({
+                "latest_business_answers": enriched_answers,
+                "business_clarifications": list(clarification_by_id.values()),
+                "current_stage": WorkflowStage.ANALYST,
+                "active_agent": AgentId.ANALYST,
+            })
+        else:
+            # Solo se respondieron decisiones del Asesor: el Analista no tiene nada nuevo que analizar.
+            updates.update({"current_stage": WorkflowStage.WRITER, "active_agent": AgentId.WRITER_REVIEWER})
+        return updates
 
     async def writer_node(state: WorkflowState) -> dict[str, Any]:
         content = StoryDraftContent.model_validate(await call_draft(state))
@@ -539,45 +582,30 @@ def build_workflow_graph(
         }
 
     async def technical_advisor_node(state: WorkflowState) -> dict[str, Any]:
+        """El Asesor revisa el sistema; sus decisiones se suman a las preguntas de Negocio en la misma ronda."""
         assessment = TechnicalAssessment.model_validate(await call_advisor(state))
         _trace_stage(observability, state, stage=WorkflowStage.TECHNICAL_ADVISOR,
                      agent=AgentId.TECHNICAL_ADVISOR)
+        decision = [
+            {"question_id": f"decision-{index + 1}", "categoria": "Decisión de impacto", "pregunta": texto,
+             "origen": "asesor_tecnico"}
+            for index, texto in enumerate(assessment.decision_pendiente)
+        ]
+        hay_pregunta = bool(state.get("pending_questions")) or bool(decision)
+        if hay_pregunta:
+            stage, agent, status = WorkflowStage.BUSINESS_WAIT, AgentId.ANALYST, WorkflowStatus.INTERRUPTED
+        elif state.get("analyst_ready"):
+            stage, agent, status = WorkflowStage.WRITER, AgentId.WRITER_REVIEWER, WorkflowStatus.RUNNING
+        else:
+            stage, agent, status = WorkflowStage.ANALYST, AgentId.ANALYST, WorkflowStatus.FAILED
         return {
             "technical_assessment": assessment.model_dump(mode="json"),
+            "asesor_ejecutado": True,
             "impact_decisions": [],
-            "current_stage": WorkflowStage.IMPACT_WAIT,
-            "active_agent": AgentId.TECHNICAL_ADVISOR,
-            "status": WorkflowStatus.INTERRUPTED,
-        }
-
-    def impact_wait_node(state: WorkflowState) -> dict[str, Any]:
-        """La persona que redacta la HU revisa el impacto y responde las decisiones pendientes."""
-        assessment = TechnicalAssessment.model_validate(state.get("technical_assessment"))
-        questions = [
-            {"question_id": f"decision-{index + 1}", "pregunta": text}
-            for index, text in enumerate(assessment.decision_pendiente)
-        ]
-        raw = interrupt({
-            "kind": "impact_decisions",
-            "impacto_negocio": [item.model_dump(mode="json") for item in assessment.impacto_negocio],
-            "questions": questions,
-            "max_answer_chars": 1000,
-            "max_total_chars": 3500,
-        })
-        submission = ImpactDecisionSubmission.model_validate(raw)
-        by_id = {item["question_id"]: item["pregunta"] for item in questions}
-        supplied = {item.question_id for item in submission.answers}
-        if supplied != set(by_id):
-            raise ValueError("Se deben responder todas las decisiones pendientes, y solo esas.")
-        _trace_stage(observability, state, stage=WorkflowStage.IMPACT_WAIT, agent=AgentId.TECHNICAL_ADVISOR)
-        return {
-            "impact_decisions": [
-                {"question_id": item.question_id, "pregunta": by_id[item.question_id], "respuesta": item.answer}
-                for item in submission.answers
-            ],
-            "current_stage": WorkflowStage.WRITER,
-            "active_agent": AgentId.WRITER_REVIEWER,
-            "status": WorkflowStatus.RUNNING,
+            "decisiones_pendientes": decision,
+            "current_stage": stage,
+            "active_agent": agent,
+            "status": status,
         }
 
     def po_approval_node(state: WorkflowState) -> dict[str, Any]:
@@ -765,18 +793,17 @@ def build_workflow_graph(
              Ruta(lambda state: "analista" if state.get("execute_agents") else "fin",
                   {"analista": "analyst", "fin": FIN}),
              "Valida la solicitud de creación."),
-        Paso("analyst", analyst_node,
-             Ruta(lambda state: (
-                 "preguntas" if state.get("pending_questions") else
-                 "listo" if state.get("analyst_ready") else "vacios"
-             ), {"preguntas": "business_wait", "listo": "technical_advisor", "vacios": "hold_for_unresolved_gaps"}),
-             "Agente Analista: aclara los vacíos del requerimiento."),
-        Paso("business_wait", wait_for_business, "analyst",
-             "Pausa: Negocio responde las preguntas del Analista."),
-        Paso("technical_advisor", technical_advisor_node, "impact_wait",
-             "Asesor Técnico: impacto en otros módulos."),
-        Paso("impact_wait", impact_wait_node, "writer",
-             "Pausa: la persona que redacta la HU decide sobre el impacto."),
+        Paso("analyst", analyst_node, Ruta(_siguiente_del_analista, {
+            "asesor": "technical_advisor", "negocio": "business_wait", "redactor": "writer",
+            "vacios": "hold_for_unresolved_gaps",
+        }), "Agente Analista: aclara los vacíos del requerimiento; lo que es del sistema lo pasa al Asesor."),
+        Paso("technical_advisor", technical_advisor_node, Ruta(_siguiente_del_asesor, {
+            "negocio": "business_wait", "redactor": "writer", "vacios": "hold_for_unresolved_gaps",
+        }), "Asesor Técnico: revisa el sistema y agrega sus decisiones a las preguntas para Negocio."),
+        Paso("business_wait", wait_for_business, Ruta(
+            lambda state: "analista" if state.get("current_stage") == WorkflowStage.ANALYST else "redactor",
+            {"analista": "analyst", "redactor": "writer"},
+        ), "Pausa: Negocio responde en una sola ronda las preguntas del Analista y las decisiones del Asesor."),
         Paso("writer", writer_node, "reviewer",
              "Redactor-Revisor: redacta o corrige la historia."),
         Paso("reviewer", reviewer_node,
@@ -1106,12 +1133,18 @@ class WorkflowRuntime:
         current_stage = current.values.get("current_stage")
         if current_stage == WorkflowStage.PO_APPROVAL:
             submission = POApprovalSubmission.model_validate(answers)
-        elif current_stage == WorkflowStage.IMPACT_WAIT:
-            submission = ImpactDecisionSubmission.model_validate(answers)
         elif current_stage == WorkflowStage.HUMAN_DECISION:
             submission = ChangeDecisionSubmission.model_validate(answers)
         else:
             submission = BusinessAnswerSubmission.model_validate(answers)
+            # Se valida antes de reanudar: una respuesta rechazada no debe quedar registrada en el punto de control.
+            pendiente = {
+                str(item.get("question_id"))
+                for task in current.tasks for pausa in getattr(task, "interrupts", ())
+                for item in (getattr(pausa, "value", None) or {}).get("questions", [])
+            }
+            if not {item.question_id for item in submission.answers} <= pendiente:
+                raise ValueError("La respuesta incluye preguntas que no están pendientes en este workflow.")
         # Lo que estaba escrito sin enviar ya se envió.
         self._meta.setdefault(identifier, {})["borrador"] = {}
         if self._persistencia is not None:

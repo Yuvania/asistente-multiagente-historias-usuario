@@ -35,7 +35,7 @@ export const PasoHistoriaComponent = () => {
   return (
     <div>
       <TarjetaComponent
-        title="Paso 5 — Historia de Usuario Generada"
+        title="Paso 4 — Historia de Usuario Generada"
         subtitle="Visualización de la historia en formato estándar y criterios de aceptación."
       >
         {workflowResponse
@@ -98,7 +98,7 @@ export const PasoHistoriaComponent = () => {
         )}
 
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2rem', paddingTop: '1rem', borderTop: '1px solid var(--color-border)' }}>
-          <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(workflowResponse ? PASO.IMPACTO : PASO.PREGUNTAS)}>
+          <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(PASO.PREGUNTAS)}>
             Atrás
           </BotonComponent>
           <BotonComponent variant="primary" icon={ArrowRight} onClick={() => setActiveStep(PASO.APROBACION)} disabled={!storyIsComplete}>

@@ -40,7 +40,7 @@ export const PasoAprobacionComponent = () => {
   return (
     <div>
       <TarjetaComponent
-        title="Paso 6 — Aprobación del Product Owner"
+        title="Paso 5 — Aprobación del Product Owner"
         subtitle="Solo una persona aprueba. Al aprobar, la HU se guarda en el Repositorio de HU y queda lista para grooming."
       >
         <div className="grid-2" style={{ marginBottom: '1.5rem' }}>

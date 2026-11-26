@@ -17,7 +17,7 @@ const SECCIONES = [
     contenido: (
       <TarjetaItemsAyudaComponent
         title="¿Cómo funciona el Asistente IA?"
-        subtitle="Flujo principal de 6 pasos"
+        subtitle="Flujo principal de 5 pasos"
         items={PASOS_ASISTENTE}
       >
         <h5 className="ayuda-item__titulo ayuda-item__titulo--aparte">Cómo moverse entre pasos</h5>

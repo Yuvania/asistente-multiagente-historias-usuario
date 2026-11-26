@@ -76,9 +76,9 @@ Contexto de memoria (HU similares del Repositorio; no citable):
 
 Entrega dos partes:
 
-1. Para la persona que redacta la historia, que no es técnica:
+1. Para Negocio, que no es técnico (se le muestra junto con las preguntas del Analista):
    - `impacto_negocio`: cada otra función del sistema que este cambio afecta además de la pantalla mencionada. `area` es el nombre de la función como la conoce Negocio (por ejemplo «Carga masiva de clientes»), `hoy` qué hace hoy con este dato y `debe` qué tiene que pasar para que el cambio funcione. Una o dos frases cada una.
-   - `decision_pendiente`: solo preguntas de regla de negocio que la evidencia muestra sin resolver y que alguien tiene que decidir antes de escribir la historia (por ejemplo, dos funciones que hoy aplican reglas distintas). Si no hay, lista vacía.
+   - `decision_pendiente`: solo preguntas de regla de negocio que la evidencia muestra sin resolver y que Negocio puede decidir (por ejemplo, dos funciones que hoy aplican reglas distintas). Lo que no pudiste confirmar en el código no es una decisión: dilo en `impacto_negocio` y en `uncertainties`. Si no hay, lista vacía.
    En estas dos listas está prohibido el detalle técnico: nada de nombres de archivos, carpetas, funciones, variables, columnas técnicas, números de línea, código ni términos de programación.
 
 2. Para Desarrollo: módulos afectados, dependencias, riesgos y procesos críticos solo con evidencia de estas fuentes. Cada elemento debe citar exactamente `source_id` y `source_ref` de una fuente recibida. Si la evidencia no basta, no afirmes módulos ni procesos y explica la incertidumbre.

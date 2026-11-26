@@ -124,12 +124,9 @@ async def test_workflow_runs_advisor_before_the_story_and_surfaces_only_mocked_e
         )
 
     runtime = WorkflowRuntime(analyst=analyst, draft=draft, review=review, advisor=advisor)
-    impact = await runtime.execute(WorkflowCreateRequest(
+    result = await runtime.execute(WorkflowCreateRequest(
         mode=FlowMode.PRE_GROOMING, requirement="Calcular prima ficticia para una póliza demo."
     ))
-    assert impact.current_stage == WorkflowStage.IMPACT_WAIT
-    assert impact.draft_story is None
-    result = await runtime.resume(impact.workflow_id, {"answers": []})
 
     assert result.current_stage == WorkflowStage.PO_APPROVAL
     assert result.status == WorkflowStatus.INTERRUPTED

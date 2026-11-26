@@ -12,8 +12,7 @@ export const PREGUNTAS_AYUDA = [
       'Entre a "Nueva Historia" en el menú superior.',
       'Complete el requerimiento: título, tipo de información, sistema, área solicitante y descripción.',
       'Pulse «Analizar Requerimiento» para que el Agente Analista lo revise.',
-      'Responda las preguntas que genere el agente, con la información que le dé Negocio.',
-      'Revise el impacto en otros módulos que encontró el Asesor Técnico y responda las decisiones pendientes.',
+      'Lleve a Negocio, en una sola ronda, las preguntas del Analista y las decisiones del Asesor Técnico, y registre las respuestas.',
       'Revise la historia (Como / Quiero / Para) y los criterios que redactó el Redactor-Revisor.',
       'El Product Owner la aprueba y queda en el Repositorio de HU.',
     ],
@@ -75,7 +74,7 @@ export const PREGUNTAS_AYUDA = [
     id: 'impacto',
     pregunta: '¿Qué es el impacto en otros módulos?',
     texto:
-      'Es el paso 4. El Asesor Técnico revisa el código del sistema y le explica, sin detalle técnico, qué otras funciones afecta el cambio (por ejemplo, una carga masiva o un reporte) y qué reglas falta decidir. La historia se redacta después, ya con esos impactos.',
+      'El Asesor Técnico revisa el código del sistema justo después del primer análisis del Analista y explica, sin detalle técnico, qué otras funciones afecta el cambio (por ejemplo, una carga masiva o un reporte). Se muestra en el paso 3, junto con las decisiones que Negocio debe tomar, en la misma ronda que las preguntas del Analista. La historia se redacta después, ya con esos impactos como criterios.',
   },
   {
     id: 'datos',

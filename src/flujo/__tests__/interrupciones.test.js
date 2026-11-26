@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { registroInterrupcion } from '../interrupciones';
 
 // Cada tipo de intervención humana que manda el backend tiene su formulario y su respuesta.
-const TIPO_BACKEND = ['business_answers', 'impact_decisions', 'po_approval', 'change_decision'];
+const TIPO_BACKEND = ['business_answers', 'po_approval', 'change_decision'];
 
 describe('registro de intervenciones humanas', () => {
   it('cubre todos los tipos del backend con campos y respuesta', () => {

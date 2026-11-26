@@ -102,23 +102,23 @@ async def test_un_flujo_guardado_se_retoma_en_otro_proceso_hasta_la_aprobacion(r
     assert guardado["creado_por"] == "Analista de prueba"
     assert (guardado["estado"], guardado["espera"]) == ("esperando", "business_answers")
 
+    # El Analista y el Asesor trabajan en equipo: una sola ronda con la pregunta y la decisión del impacto.
+    payload = primero.pending_interrupt(negocio.workflow_id)["payload"]
+    assert payload["kind"] == "business_answers"
+    assert payload["impacto_negocio"][0]["area"] == "Carga masiva de clientes"
+    assert [(item["question_id"], item["origen"]) for item in payload["questions"]] == [
+        ("q-formato", "analista"), ("decision-1", "asesor_tecnico"),
+    ]
+
     # El proceso se reinicia: un runtime nuevo, sin nada en memoria, lo recupera de la base de datos.
     agentes = _Agentes()
     segundo = _runtime(repositorio, agentes)
     assert segundo.get(negocio.workflow_id).current_stage == WorkflowStage.BUSINESS_WAIT
     assert segundo.metadatos(negocio.workflow_id)["formulario"] == {"sistema": "Portal de Clientes", "codigoHu": "CLI-TEL"}
-    impacto = await segundo.resume(negocio.workflow_id, {"answers": [{"question_id": "q-formato", "answer": "8 dígitos"}]})
-
-    assert impacto.current_stage == WorkflowStage.IMPACT_WAIT
-    payload = segundo.pending_interrupt(negocio.workflow_id)["payload"]
-    assert payload["kind"] == "impact_decisions"
-    assert payload["impacto_negocio"][0]["area"] == "Carga masiva de clientes"
-    assert payload["questions"] == [{"question_id": "decision-1", "pregunta": DECISION}]
-    assert repositorio.listar_workflow()[0]["espera"] == "impact_decisions"
-
-    # Otra vez otro día: se retoma desde el paso de impacto.
-    tercero = _runtime(repositorio, agentes)
-    po = await tercero.resume(negocio.workflow_id, {"answers": [{"question_id": "decision-1", "answer": "Solo números en ambas."}]})
+    po = await segundo.resume(negocio.workflow_id, {"answers": [
+        {"question_id": "q-formato", "answer": "8 dígitos"},
+        {"question_id": "decision-1", "answer": "Solo números en ambas."},
+    ]})
 
     assert po.current_stage == WorkflowStage.PO_APPROVAL
     assert po.impact_decisions[0].respuesta == "Solo números en ambas."
@@ -146,31 +146,32 @@ async def test_las_respuestas_sin_enviar_se_guardan_y_se_limpian_al_enviar(repos
 async def test_un_paso_que_falla_queda_guardado_y_se_puede_reintentar(repositorio):
     agentes = _Agentes(asesor_falla=1)
     runtime = _runtime(repositorio, agentes)
-    negocio = await runtime.execute(_solicitud())
-
     with pytest.raises(ConnectionError):
-        await runtime.resume(negocio.workflow_id, {"answers": [{"question_id": "q-formato", "answer": "8 dígitos"}]})
+        await runtime.execute(_solicitud())
 
-    assert repositorio.listar_workflow()[0]["estado"] == "error"
+    [guardado] = repositorio.listar_workflow()
+    assert guardado["estado"] == "error"
     otro = _runtime(repositorio, agentes)
-    assert otro.metadatos(negocio.workflow_id)["reintentable"] is True
-    impacto = await otro.reintentar(negocio.workflow_id)
-    assert impacto.current_stage == WorkflowStage.IMPACT_WAIT
+    assert otro.metadatos(guardado["id"])["reintentable"] is True
+    negocio = await otro.reintentar(guardado["id"])
+    assert negocio.current_stage == WorkflowStage.BUSINESS_WAIT
     assert repositorio.listar_workflow()[0]["estado"] == "esperando"
 
 
 @pytest.mark.asyncio
-async def test_las_decisiones_de_impacto_deben_responderse_todas(repositorio):
+async def test_las_decisiones_sin_responder_vuelven_a_negocio_y_no_se_aceptan_ids_ajenos(repositorio):
     runtime = _runtime(repositorio, _Agentes())
     negocio = await runtime.execute(_solicitud())
-    await runtime.resume(negocio.workflow_id, {"answers": [{"question_id": "q-formato", "answer": "8 dígitos"}]})
 
     with pytest.raises(ValueError):
-        await runtime.resume(negocio.workflow_id, {"answers": []})
-    with pytest.raises(ValueError):
         await runtime.resume(negocio.workflow_id, {"answers": [{"question_id": "decision-9", "answer": "x"}]})
-    assert runtime.get(negocio.workflow_id).current_stage == WorkflowStage.IMPACT_WAIT
-    assert repositorio.listar_workflow()[0]["estado"] == "esperando"
+    # Si solo se responde la pregunta del Analista, la decisión del Asesor sigue pendiente para Negocio.
+    pendiente = await runtime.resume(negocio.workflow_id, {"answers": [{"question_id": "q-formato", "answer": "8 dígitos"}]})
+    assert pendiente.current_stage == WorkflowStage.BUSINESS_WAIT
+    assert [item["question_id"] for item in runtime.pending_interrupt(negocio.workflow_id)["payload"]["questions"]] == ["decision-1"]
+    # Con la decisión respondida se redacta sin volver a llamar al Analista.
+    po = await runtime.resume(negocio.workflow_id, {"answers": [{"question_id": "decision-1", "answer": "Solo números."}]})
+    assert po.current_stage == WorkflowStage.PO_APPROVAL
 
 
 @pytest.mark.asyncio

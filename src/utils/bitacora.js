@@ -19,7 +19,7 @@ export const ESTADO_NOTA = Object.freeze({ abierto: 'Abierto', atendido: 'Atendi
 // Solo lo que pide una acción tiene estado.
 const TIPO_CON_ESTADO = new Set(['dependencia', 'pendiente_tecnico']);
 
-export const ORIGEN = Object.freeze({ analista: 'Analista', redactor: 'Redactor-Revisor' });
+export const ORIGEN = Object.freeze({ analista: 'Analista', redactor: 'Redactor-Revisor', negocio: 'Negocio' });
 
 export const tipoDeNota = (nota) => (TIPO_NOTA[nota?.tipo] ? nota.tipo : 'nota');
 export const tieneEstado = (nota) => TIPO_CON_ESTADO.has(tipoDeNota(nota));
@@ -54,7 +54,8 @@ export function bitacoraDelFlujo(resultado = {}, { fecha = hoy(), persona = '', 
   const lista = [];
   (resultado.impact_decisions ?? []).forEach((item) => {
     if (limpio(item.respuesta)) {
-      lista.push({ fecha, autor: persona, tipo: 'decision', texto: `${limpio(item.pregunta)}\nDecisión: ${limpio(item.respuesta)}` });
+      // Las decisiones del Asesor las responde Negocio, en la misma ronda que las preguntas del Analista.
+      lista.push({ fecha, autor: ORIGEN.negocio, tipo: 'decision', texto: `${limpio(item.pregunta)}\nDecisión: ${limpio(item.respuesta)}` });
     }
   });
   (resultado.analyst?.supuesto_validar_po ?? []).forEach((texto) => {

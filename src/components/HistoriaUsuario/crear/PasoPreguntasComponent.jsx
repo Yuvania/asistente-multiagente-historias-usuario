@@ -6,6 +6,7 @@ import { BotonComponent } from '../../Comun/BotonComponent';
 import { TarjetaComponent } from '../../Comun/TarjetaComponent';
 import { TarjetaPreguntaComponent } from '../TarjetaPreguntaComponent';
 import { WorkflowInterruptionForm } from '../../Comun/WorkflowInterruptionForm';
+import { ImpactoNegocioComponent } from '../../Comun/WorkflowResultsPanel';
 import { PASO, ROTULO_ESTADO_WORKFLOW } from './constantesAsistente';
 
 // Vista de un paso del asistente. El estado y las acciones vienen del controlador (useCrearHistoria).
@@ -34,9 +35,15 @@ export const PasoPreguntasComponent = () => {
   return (
     <div>
       <TarjetaComponent
-        title="Paso 3 — Preguntas de Aclaración para Negocio"
-        subtitle="Lleve estas preguntas a Negocio, registre sus respuestas y envíelas al agente. Se repite hasta que no queden vacíos."
+        title="Paso 3 — Preguntas para Negocio"
+        subtitle="El Analista y el Asesor Técnico prepararon juntos las preguntas: lleve todas a Negocio en una sola ronda, registre las respuestas y envíelas."
       >
+        {(workflowResponse?.interrupt?.payload?.impacto_negocio?.length ?? 0) > 0 && (
+          <div className="workflow-results__card">
+            <h3>Lo que encontró el Asesor Técnico</h3>
+            <ImpactoNegocioComponent listaImpacto={workflowResponse.interrupt.payload.impacto_negocio} />
+          </div>
+        )}
         {workflowSinSiguientePaso ? (
           <AlertaComponent type={workflowResponse.status === 'failed' ? 'danger' : 'info'} title={`Flujo ${ROTULO_ESTADO_WORKFLOW[workflowResponse.status] ?? workflowResponse.status}`}>
             {workflowResponse.results?.completion_reason || workflowError || 'El flujo no espera respuestas de Negocio ni tiene un borrador. Puede consultar el estado o iniciar de nuevo desde el paso 1.'}
@@ -44,7 +51,7 @@ export const PasoPreguntasComponent = () => {
         ) : agentReady ? (
           <AlertaComponent type="success" title="No quedan vacíos relevantes">
             {workflowResponse
-              ? 'El agente considera aclarado el requerimiento. Siga al paso 4 para revisar qué otras funciones afecta el cambio.'
+              ? 'El Analista considera aclarado el requerimiento y no quedan decisiones del Asesor. El Redactor-Revisor escribe la historia.'
               : 'El agente considera aclarado el requerimiento. Puede generar el borrador de la Historia de Usuario.'}
             {(agentResponse?.supuesto_validar_po?.length ?? 0) > 0 && (
               <> Quedan {agentResponse.supuesto_validar_po.length} supuestos que validará el Product Owner al aprobar.</>
@@ -80,9 +87,9 @@ export const PasoPreguntasComponent = () => {
           <BotonComponent variant="secondary" icon={ArrowLeft} onClick={() => setActiveStep(PASO.ANALISIS)}>
             Atrás
           </BotonComponent>
-          {workflowResponse && workflowResponse.results?.technical_assessment && (
-            <BotonComponent variant="primary" icon={ArrowRight} onClick={() => setActiveStep(PASO.IMPACTO)}>
-              Impacto en otros módulos
+          {workflowResponse?.results?.story && (
+            <BotonComponent variant="primary" icon={ArrowRight} onClick={() => setActiveStep(PASO.HISTORIA)}>
+              Historia de usuario
             </BotonComponent>
           )}
           {!workflowResponse && (

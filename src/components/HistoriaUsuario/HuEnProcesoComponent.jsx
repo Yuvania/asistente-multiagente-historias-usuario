@@ -8,7 +8,6 @@ import { deleteWorkflow, listWorkflows } from '../../services/workflowApi';
 // Qué espera cada flujo guardado, en lenguaje de la persona usuaria.
 const ROTULO_ESPERA = {
   business_answers: 'Esperando respuestas de Negocio',
-  impact_decisions: 'Esperando decisiones del impacto en otros módulos',
   po_approval: 'Esperando aprobación del Product Owner',
   product_owner_approval: 'Esperando aprobación del Product Owner',
   change_decision: 'Esperando decisión sobre la solicitud de cambio',

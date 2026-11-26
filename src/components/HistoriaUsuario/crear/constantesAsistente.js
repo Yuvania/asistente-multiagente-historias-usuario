@@ -7,14 +7,12 @@ export const ROTULO_ESTADO_WORKFLOW = {
   cancelled: 'cancelado',
 };
 
-export const PASO = Object.freeze({ REQUERIMIENTO: 1, ANALISIS: 2, PREGUNTAS: 3, IMPACTO: 4, HISTORIA: 5, APROBACION: 6 });
+export const PASO = Object.freeze({ REQUERIMIENTO: 1, ANALISIS: 2, PREGUNTAS: 3, HISTORIA: 4, APROBACION: 5 });
 
 export const pasoDelFlujo = (snapshot) => {
   const kind = snapshot?.interrupt?.kind;
   if (kind === 'business_answers') return PASO.PREGUNTAS;
-  if (kind === 'impact_decisions') return PASO.IMPACTO;
   if (snapshot?.results?.story) return PASO.HISTORIA;
-  if (snapshot?.results?.technical_assessment) return PASO.IMPACTO;
   return snapshot?.results?.analyst ? PASO.PREGUNTAS : null;
 };
 

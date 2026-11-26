@@ -6,32 +6,25 @@ export const PASOS_ASISTENTE = [
     texto: 'Ingrese la minuta, el correo o el incidente que llegó de Negocio, con su título, tipo de información, sistema, código de HU y área solicitante. Si todavía no lo va a analizar, use «Guardar y continuar después»: queda como borrador en la lista de historias.',
   },
   {
-    titulo: 'Paso 2 — Análisis del Agente Analista',
-    texto: 'El Agente Analista decide qué consultar (glosario, HU similares, estándares y checklist de vacíos) y clasifica la información en conocida, faltante, supuesta y ambigua. Puede tardar unos minutos.',
+    titulo: 'Paso 2 — Análisis del Analista y del Asesor Técnico',
+    texto: 'El Agente Analista decide qué consultar (glosario, HU similares, estándares y checklist de vacíos) y clasifica la información en conocida, faltante, supuesta y ambigua. Lo que solo se sabe revisando el sistema (por ejemplo, en qué otros lugares aparece un dato) no se le pregunta a Negocio: se lo pasa al Asesor Técnico, que revisa el código enseguida. Puede tardar unos minutos.',
   },
   {
     titulo: 'Paso 3 — Preguntas para Negocio',
-    texto: 'El agente arma preguntas en lenguaje de negocio. Usted las lleva a Negocio, registra las respuestas y las envía.',
+    texto: 'El Analista y el Asesor Técnico trabajan en equipo y arman una sola ronda: arriba se muestra qué otras funciones afecta el cambio (por ejemplo, una carga masiva o un reporte), sin detalle técnico, y abajo un solo formulario con las preguntas del Analista y las decisiones del Asesor. Usted las lleva a Negocio, registra las respuestas y las envía.',
     puntos: [
-      'Se repite hasta que no queden vacíos. Una pregunta ya respondida no se vuelve a hacer.',
+      'Si quedan vacíos, el Analista hace otra ronda. Una pregunta ya respondida no se vuelve a hacer.',
       'Si un punto se parece a algo que Negocio ya respondió, no se repregunta: pasa como supuesto que el Product Owner valida al aprobar.',
+      'Lo que el Asesor no pudo confirmar en el código no se le pregunta a Negocio: queda como pendiente técnico para Desarrollo.',
       'Puede guardar respuestas sin enviarlas (por ejemplo, si debe consultarlas) y terminarlas otro día.',
     ],
   },
   {
-    titulo: 'Paso 4 — Impacto en otros módulos',
-    texto: 'El Asesor Técnico revisa el código del sistema y explica, sin detalle técnico, qué otras funciones afecta el cambio además de la pantalla mencionada (por ejemplo, una carga masiva, un aviso o un reporte).',
-    puntos: [
-      'Si encuentra una regla que alguien tiene que decidir (por ejemplo, dos funciones que hoy validan distinto), la muestra como decisión pendiente. La responde la persona que redacta la historia.',
-      'Al confirmar, la historia se redacta ya con esos impactos y decisiones.',
-    ],
+    titulo: 'Paso 4 — Historia y criterios (borrador)',
+    texto: 'El Agente Redactor-Revisor escribe la historia en formato Como / Quiero / Para, con criterios Dado que / Cuando / Entonces que cubren también cada impacto en otros módulos y las decisiones tomadas, y la revisa hasta en dos rondas. El borrador se puede editar.',
   },
   {
-    titulo: 'Paso 5 — Historia y criterios (borrador)',
-    texto: 'El Agente Redactor-Revisor escribe la historia en formato Como / Quiero / Para, con criterios Dado que / Cuando / Entonces que cubren también los impactos del paso 4, y la revisa hasta en dos rondas. El borrador se puede editar.',
-  },
-  {
-    titulo: 'Paso 6 — Aprobación del Product Owner',
+    titulo: 'Paso 5 — Aprobación del Product Owner',
     texto: 'El Product Owner revisa la historia, el impacto en otros módulos, las decisiones tomadas y los supuestos a validar, y confirma que los datos están anonimizados. Puede aprobarla, devolverla a un agente con un motivo o rechazarla. Al aprobar, la HU se guarda en el Repositorio de HU y se recarga en el conocimiento que consultan los agentes.',
   },
 ];
@@ -102,10 +95,10 @@ export const AGENTES = [
   },
   {
     nombre: 'Asesor Técnico',
-    rol: 'Encuentra todos los lugares del sistema que afecta un cambio, incluso los que el requerimiento no menciona.',
+    rol: 'Trabaja en equipo con el Analista: encuentra todos los lugares del sistema que afecta un cambio, incluso los que el requerimiento no menciona, y suma sus decisiones a la ronda de preguntas para Negocio.',
     hace: [
       'Busca cada campo o regla en el código del sistema (y sus variantes, como el nombre de una columna en una carga) y abre los archivos donde aparece.',
-      'Explica a la persona usuaria, sin detalle técnico, qué otras funciones cambian y qué decisiones quedan pendientes.',
+      'Explica a Negocio, sin detalle técnico, qué otras funciones cambian y qué reglas debe decidir; lo que no pudo confirmar en el código queda como pendiente técnico.',
       'Guarda para Desarrollo la evidencia técnica (archivos y riesgos), que no se muestra en pantalla.',
     ],
     fuentes: 'Repositorio de código de solo lectura (de ejemplo: codigo-ejemplo-polizas), estándares y HU similares.',

@@ -223,12 +223,7 @@ def test_feature003_http_smoke_full_pre_post_grooming_sqlite(tmp_path, monkeypat
 
             answered = _resume(client, business, {"answers": [{"question_id": question_id, "answer": "2030-12-31"}]})
             assert answered.status_code == 200, answered.text
-            impact = answered.json()
-            assert impact["stage"] == "espera_impacto"
-            assert impact["interrupt"]["kind"] == "impact_decisions"
-            confirmed = _resume(client, impact, {"answers": []})
-            assert confirmed.status_code == 200, confirmed.text
-            po = confirmed.json()
+            po = answered.json()
             assert po["stage"] == "aprobacion_po"
             assert po["interrupt"]["kind"] == "po_approval"
             assert po["results"]["story"]["criterios"]

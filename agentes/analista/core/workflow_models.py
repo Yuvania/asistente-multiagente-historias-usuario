@@ -23,7 +23,7 @@ class WorkflowStage(StrEnum):
     WRITER = "redactor"
     REVIEW = "revision"
     TECHNICAL_ADVISOR = "asesor_tecnico"
-    IMPACT_WAIT = "espera_impacto"
+    IMPACT_WAIT = "espera_impacto"  # ya no se usa: las decisiones del Asesor van en la ronda de Negocio
     PO_APPROVAL = "aprobacion_po"
     REPOSITORY = "repositorio"
     CHANGE_MANAGER = "gestor_cambios"
@@ -204,27 +204,8 @@ class BusinessAnswerSubmission(BaseModel):
         ids = [item.question_id for item in self.answers]
         if len(ids) != len(set(ids)):
             raise ValueError("No se puede responder dos veces la misma pregunta.")
-        if sum(len(item.answer) + len(item.question_id) + 4 for item in self.answers) > 3500:
-            raise ValueError("Las respuestas exceden el límite total permitido.")
-        return self
-
-
-class ImpactDecisionSubmission(BaseModel):
-    """Respuestas de la persona que redacta la HU a las decisiones pendientes del paso de impacto.
-
-    Puede ir vacía cuando el Asesor no dejó decisiones: entonces solo confirma que revisó el impacto.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    answers: list[BusinessAnswer] = Field(default_factory=list, max_length=10)
-
-    @model_validator(mode="after")
-    def validate_submission(self) -> "ImpactDecisionSubmission":
-        ids = [item.question_id for item in self.answers]
-        if len(ids) != len(set(ids)):
-            raise ValueError("No se puede responder dos veces la misma decisión.")
-        if sum(len(item.answer) for item in self.answers) > 3500:
+        # Una sola ronda reúne las preguntas del Analista y las decisiones del Asesor.
+        if sum(len(item.answer) + len(item.question_id) + 4 for item in self.answers) > 6000:
             raise ValueError("Las respuestas exceden el límite total permitido.")
         return self
 
@@ -494,6 +475,8 @@ class WorkflowState(TypedDict, total=False):
     draft_story: dict
     technical_assessment: dict
     impact_decisions: list[dict]
+    asesor_ejecutado: bool
+    decisiones_pendientes: list[dict]
     review_observations: list[str]
     ultima_revision: list[str]
     notas_hu: list[dict]

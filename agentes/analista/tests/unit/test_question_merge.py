@@ -230,3 +230,35 @@ def test_con_similitud_baja_se_permite_una_segunda_ronda_y_no_una_tercera(monkey
     assert segunda.supuesto_validar_po == []
     assert tercera.supuesto_validar_po == ["Falta definir: Formato del teléfono"]
     assert tercera.listo_para_redactor is True
+
+
+def test_lo_que_es_del_asesor_no_se_le_pregunta_a_negocio(monkeypatch):
+    """Trabajo en equipo: lo que solo se sabe revisando el sistema pasa al Asesor, no a Negocio."""
+    monkeypatch.setattr(orchestrator, "_similitud_vacio", lambda *_: None)
+    output = AgentOutput(
+        respuesta_markdown="Análisis.",
+        analisis={
+            "conocida": ["La fecha se muestra en Datos del cliente."],
+            "faltante": [
+                "Inventario de lugares donde aparece la fecha: corresponde al Asesor Técnico.",
+                "Lugares del portal donde se muestra la fecha",
+                "Mensaje si la fecha no existe",
+            ],
+            "supuesta": [], "ambigua": [],
+        },
+        preguntas=[
+            {"categoria": "Reglas de negocio", "pregunta": "¿Qué mensaje ve la persona si la fecha no existe?", "estado": "pendiente"},
+            {"categoria": "Reglas de negocio", "pregunta": "¿Dónde más aparece la fecha? Lo debe revisar el Asesor Técnico.", "estado": "pendiente"},
+        ],
+        listo_para_redactor=False,
+        para_asesor=["Lugares del portal donde se muestra la fecha"],
+    )
+    response = orchestrator._to_response(
+        output, conversation_id=uuid4(), request_id=uuid4(), turn_id=uuid4(),
+        prior_questions=[], tool_executions=[], limitations=[], duration_ms=5,
+    )
+
+    assert [item.pregunta for item in response.preguntas] == ["¿Qué mensaje ve la persona si la fecha no existe?"]
+    assert response.analisis.faltante == ["Mensaje si la fecha no existe"]
+    assert len(response.para_asesor) == 3
+    assert "Lugares del portal donde se muestra la fecha" in response.para_asesor

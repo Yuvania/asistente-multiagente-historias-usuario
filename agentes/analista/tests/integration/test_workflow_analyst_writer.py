@@ -96,13 +96,10 @@ async def test_pending_business_question_interrupts_resumes_and_calls_existing_r
     assert [item.question_id for item in paused.pending_questions] == ["q-deadline"]
     assert draft_calls == []
 
-    impact = await runtime.resume(paused.workflow_id, {
+    # El Asesor trabajó antes de ir a Negocio (sin decisiones); al responder, el Analista termina y se redacta.
+    finished = await runtime.resume(paused.workflow_id, {
         "answers": [{"question_id": "q-deadline", "answer": "14 días"}],
     })
-    # El Asesor muestra el impacto antes de redactar: la persona lo confirma y recién entonces se redacta.
-    assert impact.current_stage == WorkflowStage.IMPACT_WAIT
-    assert draft_calls == []
-    finished = await runtime.resume(paused.workflow_id, {"answers": []})
 
     assert analyst_messages[0] == "Consultar saldos de cuentas activas"
     # El Analista recibe la pregunta con su respuesta, y el backend la marca como respondida.
@@ -212,10 +209,9 @@ async def test_writer_review_loop_allows_two_corrections_then_stops_for_po(monke
         )
 
     runtime = WorkflowRuntime(analyst=analyst, draft=draft, review=review, advisor=_empty_technical_assessment)
-    impact = await runtime.execute(WorkflowCreateRequest(
+    result = await runtime.execute(WorkflowCreateRequest(
         mode=FlowMode.PRE_GROOMING, requirement="Consultar saldos de cuentas activas"
     ))
-    result = await runtime.resume(impact.workflow_id, {"answers": []})
 
     assert result.current_stage == WorkflowStage.PO_APPROVAL
     assert result.status == WorkflowStatus.INTERRUPTED

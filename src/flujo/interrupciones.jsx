@@ -25,12 +25,14 @@ export const OPCION_CAMBIO = [
 
 const listaPregunta = (interrupt) => interrupt.payload?.questions ?? [];
 
-// Preguntas que se responden con texto (Negocio en el paso 3, decisiones de impacto en el paso 4).
-const CamposPregunta = ({ prefijo }) => function CamposPreguntaComponent({ interrupt, valor, cambiar }) {
-  return listaPregunta(interrupt).map((question) => (
+// Preguntas que Negocio responde con texto. Cada una trae su origen: el Analista o el Asesor Técnico.
+const ES_DEL_ASESOR = (question) => question.origen === 'asesor_tecnico';
+
+const CamposPregunta = ({ interrupt, lista, valor, cambiar }) => (
+  lista.map((question) => (
     <AreaTextoComponent
       key={question.question_id}
-      id={`${prefijo}-${question.question_id}`}
+      id={`${ES_DEL_ASESOR(question) ? 'workflow-decision' : 'workflow-answer'}-${question.question_id}`}
       label={question.pregunta}
       required
       rows={2}
@@ -38,8 +40,8 @@ const CamposPregunta = ({ prefijo }) => function CamposPreguntaComponent({ inter
       value={valor.answers[question.question_id] ?? ''}
       onChange={(event) => cambiar({ answers: { ...valor.answers, [question.question_id]: event.target.value } })}
     />
-  ));
-};
+  ))
+);
 
 const construirRespuesta = (mensajeFaltante) => (interrupt, valor) => {
   const questions = listaPregunta(interrupt);
@@ -49,7 +51,7 @@ const construirRespuesta = (mensajeFaltante) => (interrupt, valor) => {
   const total = questions.reduce(
     (suma, question) => suma + String(valor.answers[question.question_id] ?? '').length + question.question_id.length + 4, 0,
   );
-  if (total > (interrupt.payload?.max_total_chars ?? 3500)) {
+  if (total > (interrupt.payload?.max_total_chars ?? 6000)) {
     return { error: 'Las respuestas superan el límite total permitido. Resúmalas antes de continuar.' };
   }
   return {
@@ -57,8 +59,24 @@ const construirRespuesta = (mensajeFaltante) => (interrupt, valor) => {
   };
 };
 
-const CamposRespuestaNegocio = CamposPregunta({ prefijo: 'workflow-answer' });
-const CamposDecisionImpacto = CamposPregunta({ prefijo: 'workflow-decision' });
+// Una sola ronda para Negocio: primero las preguntas del Analista y después las decisiones del Asesor.
+const CamposRespuestaNegocio = ({ interrupt, valor, cambiar }) => {
+  const listaAnalista = listaPregunta(interrupt).filter((question) => !ES_DEL_ASESOR(question));
+  const listaAsesor = listaPregunta(interrupt).filter(ES_DEL_ASESOR);
+  const separar = listaAnalista.length > 0 && listaAsesor.length > 0;
+  return (
+    <>
+      {separar && <h4>Preguntas del Analista</h4>}
+      <CamposPregunta interrupt={interrupt} lista={listaAnalista} valor={valor} cambiar={cambiar} />
+      {listaAsesor.length > 0 && (
+        <>
+          <h4>Decisiones sobre el impacto en otros módulos (Asesor Técnico)</h4>
+          <CamposPregunta interrupt={interrupt} lista={listaAsesor} valor={valor} cambiar={cambiar} />
+        </>
+      )}
+    </>
+  );
+};
 
 const SelectorDecision = ({ id, lista, valor, cambiar }) => (
   <>
@@ -80,23 +98,14 @@ const etiquetaDe = (lista, decision) => lista.find(([opcion]) => opcion === deci
 export const registroInterrupcion = Object.freeze({
   business_answers: {
     titulo: 'Respuestas de Negocio',
-    descripcion: 'El Analista espera estas respuestas antes de continuar.',
+    descripcion: 'El Analista y el Asesor Técnico esperan estas respuestas antes de redactar la historia.',
     Campos: ({ interrupt, valor, cambiar }) => (
       <>
         <CamposRespuestaNegocio interrupt={interrupt} valor={valor} cambiar={cambiar} />
-        <p>Máximo {interrupt.payload?.max_answer_chars ?? 1000} caracteres por respuesta y {interrupt.payload?.max_total_chars ?? 3500} en total.</p>
+        <p>Máximo {interrupt.payload?.max_answer_chars ?? 1000} caracteres por respuesta y {interrupt.payload?.max_total_chars ?? 6000} en total.</p>
       </>
     ),
     construir: construirRespuesta('Responda todas las preguntas pendientes antes de reanudar.'),
-    borrador: true,
-  },
-  impact_decisions: {
-    titulo: (interrupt) => (listaPregunta(interrupt).length ? 'Decisiones pendientes' : null),
-    descripcion: (interrupt) => (listaPregunta(interrupt).length
-      ? 'Antes de redactar la historia hay que decidir estas reglas. Si necesita consultarlas, guarde lo que lleva y retome después.'
-      : 'No hay decisiones pendientes. Confirme que revisó el impacto para que se redacte la historia.'),
-    Campos: CamposDecisionImpacto,
-    construir: construirRespuesta('Responda todas las decisiones pendientes antes de continuar.'),
     borrador: true,
   },
   po_approval: {

@@ -207,6 +207,8 @@ class AgentTurnResponse(ContractModel):
     plan_agente: list[PasoPlan] = Field(default_factory=list, max_length=3)
     # Vacíos que no se le vuelven a preguntar a Negocio: el PO los valida al aprobar la HU.
     supuesto_validar_po: list[str] = Field(default_factory=list, max_length=50)
+    # Temas que verifica el Asesor Técnico en el código; no son preguntas para Negocio.
+    para_asesor: list[str] = Field(default_factory=list, max_length=20)
 
     @field_validator("respuesta_markdown")
     @classmethod

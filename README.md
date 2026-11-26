@@ -19,7 +19,7 @@ Proyecto desarrollado para el curso de Inteligencia Artificial de Cenfotec. El d
 
 ## Funcionalidades
 
-- **Asistente de seis pasos** para crear una HU, desde el requerimiento de Negocio hasta la aprobación del Product Owner.
+- **Asistente de cinco pasos** para crear una HU, desde el requerimiento de Negocio hasta la aprobación del Product Owner; el Analista y el Asesor Técnico arman juntos una sola ronda de preguntas.
 - **Análisis de impacto:** antes de redactar la historia, el Asesor Técnico revisa el código del sistema y explica, en lenguaje de negocio, qué otras funciones afecta el cambio y qué reglas falta decidir.
 - **Avance persistente:** cada flujo se guarda al esperar una respuesta. Una HU se puede dejar a medias y retomarse otro día desde la sección *En proceso*; un paso que falla se puede reintentar sin perder lo anterior.
 - **Gestión de cambios:** las solicitudes de cambio sobre una HU aprobada se clasifican como aclaración o cambio de alcance, con propuesta de lecciones aprendidas.
@@ -31,11 +31,10 @@ Proyecto desarrollado para el curso de Inteligencia Artificial de Cenfotec. El d
 | Paso | Responsable | Descripción |
 |---|---|---|
 | 1. Requerimiento | Analista humano | Registro de la minuta, el correo o el incidente recibido de Negocio |
-| 2. Análisis | Agente Analista | Clasificación en información conocida, faltante, supuesta y ambigua |
-| 3. Preguntas a Negocio | Negocio | Respuestas a las preguntas del Analista; el ciclo se repite hasta cerrar los vacíos |
-| 4. Impacto en otros módulos | Asesor Técnico y analista humano | Funciones afectadas además de la indicada y decisiones pendientes |
-| 5. Historia | Agente Redactor-Revisor | Redacción *Como / Quiero / Para* con criterios *Dado que / Cuando / Entonces* y revisión en hasta dos rondas |
-| 6. Aprobación | Product Owner | Aprobación, devolución a un agente con motivo o rechazo |
+| 2. Análisis | Agente Analista y Asesor Técnico (en equipo) | El Analista clasifica la información en conocida, faltante, supuesta y ambigua; lo que solo se sabe revisando el sistema lo pasa al Asesor, que revisa el código enseguida |
+| 3. Preguntas a Negocio | Negocio | Una sola ronda con las preguntas del Analista y las decisiones del Asesor, junto con el impacto en otros módulos explicado sin detalle técnico; se repite solo si quedan vacíos |
+| 4. Historia | Agente Redactor-Revisor | Redacción *Como / Quiero / Para* con criterios *Dado que / Cuando / Entonces* (cada impacto queda como criterio) y revisión en hasta dos rondas |
+| 5. Aprobación | Product Owner | Aprobación, devolución a un agente con motivo o rechazo |
 
 Al aprobarse, la HU se almacena en el Repositorio de HU y se incorpora a la base de conocimiento que consultan los agentes.
 

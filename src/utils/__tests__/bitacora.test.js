@@ -41,7 +41,7 @@ describe('bitácora de seguimiento de la HU', () => {
     }, { fecha: '2026-11-26', persona: 'Yuvania', notaAprobacion: 'Revisar con Desarrollo.' });
 
     expect(lista.map((nota) => nota.tipo)).toEqual(['decision', 'supuesto', 'dependencia', 'pendiente_tecnico', 'devolucion', 'nota']);
-    expect(lista[0]).toMatchObject({ autor: 'Yuvania', texto: '¿La carga usa el mismo formato?\nDecisión: Sí.' });
+    expect(lista[0]).toMatchObject({ autor: 'Negocio', texto: '¿La carga usa el mismo formato?\nDecisión: Sí.' });
     expect(lista[2]).toMatchObject({ autor: 'Redactor-Revisor', estado: 'abierto' });
     expect(lista[4]).toMatchObject({ fecha: '2026-11-25', texto: 'Motivo: Quitar el criterio general.\nCómo se atendió: Se quitó.' });
     expect(JSON.stringify(lista)).not.toContain('No detecté defectos');

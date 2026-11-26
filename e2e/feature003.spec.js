@@ -23,6 +23,10 @@ const recommendation = {
   lessons_proposed: [],
 };
 
+const impacto = [{ area: 'Reporte de pólizas ficticias', hoy: 'No muestra la vigencia.', debe: 'Mostrarla con el mismo formato que la consulta.' }];
+const decision = '¿El reporte muestra la vigencia con el mismo formato que la consulta?';
+
+// El Analista y el Asesor trabajan en equipo: una sola ronda con la pregunta y la decisión del impacto.
 const businessSnapshot = () => ({
   workflow_id: 'workflow-pre-synthetic', mode: 'pre_grooming', status: 'interrupted', stage: 'espera_negocio',
   results: {
@@ -31,11 +35,16 @@ const businessSnapshot = () => ({
       analisis: { conocida: ['Póliza ficticia TEST-003'], faltante: ['Fecha de vigencia'], supuesta: [], ambigua: [] },
       preguntas: [question], fuentes_consultadas: [], limitaciones: [],
     },
-    story: null, review_observations: [], technical_assessment: null,
+    story: null, review_observations: [],
+    technical_assessment: { impacto_negocio: impacto, decision_pendiente: [decision], affected_modules: [], dependencies: [], risks: [], critical_processes: [], consulted_sources: [], uncertainties: ['Evaluación sintética.'] },
   },
   interrupt: {
     interrupt_id: 'interrupt-business-1', kind: 'business_answers',
-    payload: { questions: [question], max_answer_chars: 1000, max_total_chars: 3500 },
+    payload: {
+      impacto_negocio: impacto,
+      questions: [{ ...question, origen: 'analista' }, { question_id: 'decision-1', pregunta: decision, origen: 'asesor_tecnico' }],
+      max_answer_chars: 1000, max_total_chars: 6000,
+    },
   },
 });
 
@@ -53,21 +62,6 @@ const poSnapshot = () => ({
   interrupt: {
     interrupt_id: 'interrupt-po-1', kind: 'po_approval',
     payload: { story, decisions: ['aprobar', 'rechazar'], technical_assessment: { uncertainties: ['Evaluación sintética.'] } },
-  },
-});
-
-const impacto = [{ area: 'Reporte de pólizas ficticias', hoy: 'No muestra la vigencia.', debe: 'Mostrarla con el mismo formato que la consulta.' }];
-const decision = '¿El reporte muestra la vigencia con el mismo formato que la consulta?';
-
-const impactSnapshot = () => ({
-  workflow_id: 'workflow-pre-synthetic', mode: 'pre_grooming', status: 'interrupted', stage: 'espera_impacto',
-  results: {
-    analyst: poSnapshot().results.analyst, story: null, review_observations: [],
-    technical_assessment: { impacto_negocio: impacto, decision_pendiente: [decision], affected_modules: [], dependencies: [], risks: [], critical_processes: [], consulted_sources: [], uncertainties: ['Evaluación sintética.'] },
-  },
-  interrupt: {
-    interrupt_id: 'interrupt-impact-1', kind: 'impact_decisions',
-    payload: { impacto_negocio: impacto, questions: [{ question_id: 'decision-1', pregunta: decision }], max_answer_chars: 1000, max_total_chars: 3500 },
   },
 });
 
@@ -103,14 +97,11 @@ test('pre-grooming presenta análisis y HU, recoge respuestas y solicita aprobac
       requestBodies.push(body);
       if (body.kind === 'business_answers') {
         expect(body.interrupt_id).toBe('interrupt-business-1');
-        expect(body.response.answers[0].answer).toBe('2030-12-31');
+        expect(body.response.answers).toEqual([
+          { question_id: question.question_id, answer: '2030-12-31' },
+          { question_id: 'decision-1', answer: 'Sí, el mismo formato.' },
+        ]);
         phase = 2;
-        return route.fulfill({ status: 200, json: impactSnapshot() });
-      }
-      if (body.kind === 'impact_decisions') {
-        expect(body.interrupt_id).toBe('interrupt-impact-1');
-        expect(body.response.answers).toEqual([{ question_id: 'decision-1', answer: 'Sí, el mismo formato.' }]);
-        phase = 3;
         return route.fulfill({ status: 200, json: poSnapshot() });
       }
       expect(body.kind).toBe('po_approval');
@@ -132,12 +123,10 @@ test('pre-grooming presenta análisis y HU, recoge respuestas y solicita aprobac
 
   await fillRequirement(page);
   await page.getByRole('button', { name: 'Analizar Requerimiento' }).click();
-  await expect(page.getByRole('heading', { name: /Preguntas de Aclaraci/ })).toBeVisible();
-  await expect(page.getByLabel(question.pregunta)).toBeVisible();
-  await page.getByLabel(question.pregunta).fill('2030-12-31');
-  await page.getByRole('button', { name: 'Confirmar y continuar' }).click();
-  await expect(page.getByRole('heading', { name: /Impacto en otros módulos/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Preguntas para Negocio/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Lo que encontró el Asesor Técnico' })).toBeVisible();
   await expect(page.getByText('Reporte de pólizas ficticias')).toBeVisible();
+  await page.getByLabel(question.pregunta).fill('2030-12-31');
   await page.getByLabel(/El reporte muestra la vigencia/).fill('Sí, el mismo formato.');
   await page.getByRole('button', { name: 'Confirmar y continuar' }).click();
   await expect(page.getByRole('heading', { name: /Historia de Usuario Generada/ })).toBeVisible();
@@ -152,8 +141,8 @@ test('pre-grooming presenta análisis y HU, recoge respuestas y solicita aprobac
   await page.getByRole('button', { name: 'Confirmar y continuar' }).click();
   await expect.poll(() => persisted).toBe(true);
   await expect(page).toHaveURL(new RegExp(`/historias/${storyId}$`));
-  expect(requestBodies.map((body) => body.kind)).toEqual(['business_answers', 'impact_decisions', 'po_approval']);
-  expect(phase).toBe(3);
+  expect(requestBodies.map((body) => body.kind)).toEqual(['business_answers', 'po_approval']);
+  expect(phase).toBe(2);
 });
 
 test('post-grooming muestra al Gestor de Cambios y registra solo tras aceptar la recomendación', async ({ page }) => {
@@ -240,7 +229,7 @@ test('la interfaz identifica un flujo que no se encontró (404)', async ({ page 
   });
   await fillRequirement(page);
   await page.getByRole('button', { name: 'Analizar Requerimiento' }).click();
-  await expect(page.getByRole('heading', { name: /Preguntas de Aclaraci/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Preguntas para Negocio/ })).toBeVisible();
   await page.getByRole('button', { name: 'Consultar estado' }).click();
   await expect(page.getByText(/El flujo no se encontró/)).toBeVisible();
   await expect(page.getByText(/HTTP 404/)).toBeVisible();
