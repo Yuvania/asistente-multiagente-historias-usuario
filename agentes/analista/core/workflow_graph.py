@@ -803,15 +803,20 @@ class WorkflowRuntime:
             self._conversation_ids[workflow_id] = conversation_id
         answers = state.get("latest_business_answers", [])
         if answers:
-            message = "Respuestas de Negocio a preguntas pendientes:\n" + "\n".join(
-                f"{item['question_id']}: {item['answer']}" for item in answers
-            )
+            # Se envía la pregunta junto con su respuesta: el modelo no debe adivinar a qué id corresponde.
+            message = "Respuestas de Negocio a las preguntas pendientes (ya quedan respondidas):\n" + "\n".join(
+                f"- Pregunta: {item.get('question', item['question_id'])}\n  Respuesta: {item['answer']}"
+                for item in answers
+            ) + "\nActualiza el análisis con estas respuestas. No vuelvas a preguntar lo que ya está respondido."
         else:
             message = state["requirement_input"] or ""
         if state.get("po_feedback"):
             message += "\nInstrucción de devolución del Product Owner:\n" + state["po_feedback"]
-        request = SendMessageRequest(request_id=uuid4(), message=message)
-        return await run_turn(self._analyst_store, conversation_id, request, observability=self.observability)
+        request = SendMessageRequest(request_id=uuid4(), message=message[:4000])
+        return await run_turn(
+            self._analyst_store, conversation_id, request, observability=self.observability,
+            respondidas={str(item["question_id"]) for item in answers},
+        )
 
     async def resume(
         self,

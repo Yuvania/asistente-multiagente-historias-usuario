@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime
+from collections.abc import Collection
 from typing import Any
 from uuid import uuid4
 
@@ -131,10 +132,18 @@ def _to_response(
     limitations: list[str],
     duration_ms: int,
     plan: list[dict[str, Any]] | None = None,
+    respondidas: Collection[str] | None = None,
 ) -> AgentTurnResponse:
     def question_key(value: str) -> str:
         return " ".join(value.casefold().split()).rstrip(".,;:!?¿¡")
 
+    # Las preguntas que Negocio respondió en este turno quedan respondidas por decisión del backend,
+    # aunque el modelo las omita o las repita como pendientes.
+    respondida = set(respondidas or ())
+    prior_questions = [
+        item.model_copy(update={"estado": QuestionState.ANSWERED}) if str(item.question_id) in respondida else item
+        for item in prior_questions
+    ]
     prior_by_text = {question_key(item.pregunta): item for item in prior_questions}
     questions: list[Question] = []
     seen: set[str] = set()
@@ -204,8 +213,12 @@ async def run_turn(
     request: Any,
     *,
     observability: Observability | None = None,
+    respondidas: Collection[str] | None = None,
 ) -> AgentTurnResponse:
-    """Execute one real turn; every OpenCode session is deleted in a finally block."""
+    """Execute one real turn; every OpenCode session is deleted in a finally block.
+
+    ``respondidas``: ids de preguntas que Negocio respondió en este turno; quedan marcadas como respondidas.
+    """
     start = await store.begin_turn(conversation_id, request.request_id, request.message)
     if start.replayed:
         if start.response is not None:
@@ -335,6 +348,7 @@ async def run_turn(
             limitations=limitations,
             duration_ms=duration_ms,
             plan=plan,
+            respondidas=respondidas,
         )
         if asyncio.get_running_loop().time() >= deadline:
             raise OrchestrationError(ErrorCode.TURN_TIMEOUT, "Se agotó el tiempo del turno.", retryable=True)

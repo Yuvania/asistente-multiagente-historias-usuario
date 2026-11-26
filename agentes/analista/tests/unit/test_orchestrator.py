@@ -227,3 +227,33 @@ def test_public_sources_include_only_successful_tool_executions():
 
     assert [item.nombre for item in response.fuentes_consultadas] == [ToolName.GLOSSARY]
     assert response.limitaciones == ["No se pudieron consultar todos los estándares."]
+
+
+def test_questions_answered_by_business_stay_answered_even_if_the_model_repeats_them_as_pending():
+    """Caso real: tras enviar respuestas, el modelo devolvió las mismas preguntas como pendientes."""
+    from uuid import uuid4
+
+    turn_id = uuid4()
+    prior = [
+        Question(question_id="q-vacio", categoria=QuestionCategory.EXPECTED_BEHAVIOR,
+                 pregunta="¿Qué pasa si el teléfono queda vacío?", estado=QuestionState.PENDING),
+        Question(question_id="q-fecha", categoria=QuestionCategory.BUSINESS_RULES,
+                 pregunta="¿Desde cuándo rige?", estado=QuestionState.PENDING),
+    ]
+    output = AgentOutput(
+        respuesta_markdown="Análisis actualizado.",
+        analisis={"conocida": ["Teléfono opcional"], "faltante": [], "supuesta": [], "ambigua": []},
+        preguntas=[AgentQuestionOutput(categoria=QuestionCategory.EXPECTED_BEHAVIOR,
+                                       pregunta="¿Qué pasa si el teléfono queda vacío?", estado=QuestionState.PENDING)],
+        listo_para_redactor=False,
+    )
+
+    response = orchestrator._to_response(
+        output, conversation_id=uuid4(), request_id=uuid4(), turn_id=turn_id, prior_questions=prior,
+        tool_executions=[], limitations=[], duration_ms=1, respondidas={"q-vacio"},
+    )
+
+    by_id = {item.question_id: item.estado for item in response.preguntas}
+    assert by_id["q-vacio"] == QuestionState.ANSWERED      # repetida por el modelo, igual respondida
+    assert by_id["q-fecha"] == QuestionState.PENDING       # no se respondió en este turno
+    assert response.listo_para_redactor is False

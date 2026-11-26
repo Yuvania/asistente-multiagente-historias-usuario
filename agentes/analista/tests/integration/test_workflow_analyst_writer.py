@@ -60,13 +60,15 @@ async def _empty_technical_assessment(_state):
 @pytest.mark.asyncio
 async def test_pending_business_question_interrupts_resumes_and_calls_existing_run_turn(monkeypatch):
     analyst_messages = []
+    answered_ids = []
     responses = [_analyst_response(ready=False, pending=True), _analyst_response(ready=True)]
 
-    async def isolated_run_turn(store, conversation_id, request, *, observability=None):
+    async def isolated_run_turn(store, conversation_id, request, *, observability=None, respondidas=None):
         assert store is not None
         assert conversation_id
         assert observability is not None
         analyst_messages.append(request.message)
+        answered_ids.append(set(respondidas or ()))
         return responses.pop(0)
 
     monkeypatch.setattr(orchestrator, "run_turn", isolated_run_turn)
@@ -97,10 +99,11 @@ async def test_pending_business_question_interrupts_resumes_and_calls_existing_r
         "answers": [{"question_id": "q-deadline", "answer": "14 días"}],
     })
 
-    assert analyst_messages == [
-        "Consultar saldos de cuentas activas",
-        "Respuestas de Negocio a preguntas pendientes:\nq-deadline: 14 días",
-    ]
+    assert analyst_messages[0] == "Consultar saldos de cuentas activas"
+    # El Analista recibe la pregunta con su respuesta, y el backend la marca como respondida.
+    assert "Respuesta: 14 días" in analyst_messages[1]
+    assert "Pregunta: ¿Cuál es el plazo de entrega?" in analyst_messages[1]
+    assert answered_ids == [set(), {"q-deadline"}]
     assert len(draft_calls) == 1
     assert finished.current_stage == WorkflowStage.PO_APPROVAL
     assert finished.status == WorkflowStatus.INTERRUPTED
