@@ -178,6 +178,60 @@ export const PENDIENTES = [
 
 // Orden alfabético por nombre.
 // Arquitectura: cómo está organizado el sistema y por qué, aunque sea un prototipo, está pensado para crecer.
+// --- Arquitectura: para ponerse al día rápido -------------------------------------------------
+export const RESUMEN_ARQUITECTURA = [
+  'Un equipo de agentes de IA convierte un requerimiento de Negocio en una historia de usuario lista para grooming. Las personas responden y deciden; ningún agente aprueba.',
+  'Flujo: requerimiento → el Analista y el Asesor Técnico arman juntos una sola ronda de preguntas → Negocio responde → el Redactor escribe y el Revisor valida → el Product Owner aprueba, devuelve o rechaza → la HU queda en el Repositorio de HU.',
+  'El Product Owner ve en Pendientes lo que espera su aprobación; quien creó la historia ve ahí si fue aprobada, devuelta o rechazada.',
+  'Antes de cambiar algo: docs/arquitectura.md, docs/marca.md y las skills de .agents/skills. Las pruebas de estructura fallan si se rompe la estructura o el diseño.',
+];
+
+export const STACK_ARQUITECTURA = [
+  { titulo: 'Interfaz: React 18 + Vite', texto: 'Pantallas por funcionalidad. Rutas y menú salen de src/config/rutas.jsx; el asistente separa su controlador (useCrearHistoria) de las vistas de cada paso.' },
+  { titulo: 'API: FastAPI (Python 3.12)', texto: 'Valida los datos y expone el estado del flujo. Cada ruta declara qué acción necesita la persona (inicio de sesión por usuario, roles y acciones en Mantenimiento).' },
+  { titulo: 'Orquestación: LangGraph', texto: 'El flujo es un StateGraph declarado como tabla de pasos (workflow_graph.py). Las pausas humanas usan interrupt y se retoman con Command(resume); cada pausa se guarda en la base de datos para seguir otro día.' },
+  { titulo: 'Agentes: OpenCode Server', texto: 'Cuatro agentes (Analista, Asesor Técnico, Redactor-Revisor y Gestor de Cambios). Cada uno es una carpeta en agentes/equipo/<id> con su definición, sus instrucciones versionadas, su servidor MCP y su servicio; se registran solos.' },
+  { titulo: 'Herramientas: MCP (FastMCP)', texto: 'Un servidor por agente, solo con herramientas de lectura. Cada agente consulta únicamente sus fuentes de conocimiento.' },
+  { titulo: 'Conocimiento: Pinecone', texto: 'Índice con las HU aprobadas, las lecciones aprendidas y el código del repositorio de pruebas. Se vuelve a cargar solo cuando algo cambia.' },
+  { titulo: 'Datos: TiDB (MySQL) con SQLAlchemy', texto: 'Historias, Repositorio de HU, cambios, lecciones, flujos en proceso, usuarios, roles y avisos. En local y en pruebas se usa SQLite.' },
+  { titulo: 'Trazabilidad: Langfuse', texto: 'Traza cada turno y cada etapa de los agentes. Los registros del servidor dicen la causa de un fallo sin guardar lo que generó el modelo.' },
+  { titulo: 'Despliegue: Docker en Render', texto: 'Una sola imagen con la interfaz compilada, el backend y OpenCode. Se despliega solo con cada cambio en la rama main.' },
+];
+
+export const REPOSITORIO_PRUEBAS = [
+  'El Asesor Técnico no revisa código real: revisa el repositorio ficticio Yuvania/codigo-ejemplo-polizas, un sistema de pólizas inventado con clientes, cargas masivas, reportes, notificaciones y un mapa de dependencias.',
+  'Se indica en ASESOR_REPOSITORIO_URL (rama en ASESOR_REPOSITORIO_RAMA). Al arrancar se descarga una copia superficial, se conservan solo .py y .md, se borra el historial y nunca se ejecuta nada.',
+  'Si la variable está vacía o el repositorio no responde, se usa la copia incluida en ejemplos/polizas_demo.',
+  'Sirve para comprobar que el Asesor encuentra todo lo que afecta un cambio, incluso lo que la historia no menciona. Los escenarios de prueba están en docs/evaluacion-asesor-tecnico.md.',
+];
+
+// Paleta: cada color es una variable de src/styles/_theme.scss con su valor en modo claro y oscuro.
+export const PALETA_COLOR = [
+  { nombre: 'Navegación', variable: '--color-nav-bg', claro: '#1E1530', oscuro: '#0B0910', uso: 'Barra lateral, barra superior en móvil y botón de ayuda.' },
+  { nombre: 'Acción principal', variable: '--color-primary', claro: '#6F3FA0', oscuro: '#7C4DB3', uso: 'Un botón principal por pantalla, lo activo y el foco.' },
+  { nombre: 'Atención', variable: '--color-brand', claro: '#F36C21', oscuro: '#F36C21', uso: 'Solo el logotipo y lo que espera una decisión. Nunca texto ni botones.' },
+  { nombre: 'Fondo', variable: '--color-bg', claro: '#F6F7F9', oscuro: '#0F0D14', uso: 'Fondo de la página.' },
+  { nombre: 'Superficie', variable: '--color-surface', claro: '#FFFFFF', oscuro: '#17141E', uso: 'Tarjetas, tablas y formularios, con borde fino.' },
+  { nombre: 'Texto', variable: '--color-text-primary', claro: '#111827', oscuro: '#ECEAF0', uso: 'Títulos y texto; el secundario y el tenue son grises más claros.' },
+  { nombre: 'Éxito', variable: '--color-success', claro: '#1F6B33', oscuro: '#6EBE78', uso: 'Aprobada, atendido.' },
+  { nombre: 'Advertencia', variable: '--color-warning', claro: '#9A4A0B', oscuro: '#F59E0B', uso: 'Espera a Negocio, dependencias.' },
+  { nombre: 'Peligro', variable: '--color-danger', claro: '#B42318', oscuro: '#E5675E', uso: 'Rechazada, eliminar, errores.' },
+];
+
+export const TIPOGRAFIA_DISENO = [
+  { titulo: 'Inter', texto: 'Toda la interfaz, en pesos 400, 500 y 600. Neutra y profesional, la misma base que usan sistemas empresariales como el de Atlassian.' },
+  { titulo: 'IBM Plex Mono', texto: 'Códigos y valores técnicos, por ejemplo HU-POL-014 o LEC-003.' },
+  { titulo: 'Escala', texto: 'Título de página de 26 px en peso 600; secciones de 17 a 18 px; texto de 14 a 16 px (16 px en móvil); etiquetas de 13 px y metadatos de 12 px. Sin pesos 700 u 800 ni serifas.' },
+  { titulo: 'Reglas', texto: 'Mayúscula solo al inicio de la oración, contraste AA en todo el texto y los estados siempre con texto, no solo con color.' },
+];
+
+export const DISPOSITIVO_DISENO = [
+  { titulo: 'Web', texto: 'Barra lateral de 232 px con el menú, la persona y el cambio de tema; contenido de hasta 1200 px.' },
+  { titulo: 'Tablet', texto: 'La barra queda en íconos de 72 px, con nombre accesible y texto emergente.' },
+  { titulo: 'Móvil', texto: 'Barra superior con la marca y la sesión; el menú pasa a una barra inferior con etiquetas cortas. Una columna y botones de 44 px.' },
+  { titulo: 'Modo claro y oscuro', texto: 'Lo elige la persona; cada color tiene su par oscuro con contraste AA.' },
+];
+
 export const PRINCIPIO_ARQUITECTURA = [
   { titulo: 'Lo que cambia seguido se declara', texto: 'Agentes, pantallas e intervenciones humanas se agregan con una declaración en un registro. El código genérico lee ese registro: agregar algo no obliga a tocar varios archivos.' },
   { titulo: 'Una carpeta por agente', texto: 'Todo lo de un agente vive junto: su definición (herramientas y permisos), sus instrucciones, su servidor de herramientas y su implementación.' },
@@ -206,7 +260,7 @@ export const CAMBIO_ARQUITECTURA = [
 ];
 
 export const PRODUCCION_ARQUITECTURA = [
-  'Diseño: una marca propia y documentada (colores, tipografía, formas y comportamiento en web, tablet y móvil, en modo claro y oscuro). Las pruebas impiden que un cambio funcional la altere.',
+  'Diseño: paleta de colores y tipografía documentadas, con comportamiento definido en web, tablet y móvil, en modo claro y oscuro. Las pruebas impiden que un cambio funcional las altere.',
   'Persistencia: cada pausa del flujo se guarda en la base de datos; se puede retomar otro día o después de un reinicio del servidor.',
   'Observabilidad: trazas por turno y por etapa, y registros estructurados que no guardan lo que genera el modelo ni datos personales.',
   'Seguridad: inicio de sesión por usuario y permisos por acción (cada rol tiene sus acciones y cada usuario sus roles), validados en el servidor; agentes sin permisos propios, herramientas de solo lectura por agente, entradas tratadas como no confiables y aprobación siempre humana.',
@@ -215,7 +269,7 @@ export const PRODUCCION_ARQUITECTURA = [
 ];
 
 export const IA_ARQUITECTURA = [
-  'El proyecto incluye guías (skills) para las herramientas de programación con IA: «estructura-proyecto», «agregar-agente» y «agregar-ruta», en .agents/skills y .claude/skills.',
+  'El proyecto incluye guías (skills) para las herramientas de programación con IA: «estructura-proyecto», «agregar-agente», «agregar-ruta» y «marca-diseno» (colores y tipografía), en .agents/skills y .claude/skills.',
   'Como todas las carpetas de agente tienen la misma forma, una herramienta de IA puede crear un agente nuevo copiando el patrón sin leer todo el proyecto.',
   'Las pruebas de estructura funcionan como barandas: si una persona o una IA rompe la estructura, la prueba lo señala con un mensaje que dice qué falta.',
   'La guía completa está en docs/arquitectura.md.',

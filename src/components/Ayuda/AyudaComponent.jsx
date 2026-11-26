@@ -64,7 +64,7 @@ export const AyudaComponent = () => (
   <div>
     <TituloPaginaComponent
       title="Centro de Ayuda y Documentación"
-      description="Cómo funciona el sistema de Historias de Usuario. Para dudas puntuales, use el chat de ayuda (botón naranja, abajo a la derecha)."
+      description="Cómo funciona el sistema de Historias de Usuario. Para dudas puntuales, use el chat de ayuda (botón «¿Cómo se usa?», abajo a la derecha)."
     />
     <SeccionesConPestanasComponent etiqueta="Secciones de la ayuda" inicial="asistente" secciones={SECCIONES} />
   </div>
