@@ -52,6 +52,7 @@ async def test_redactor_uses_simulated_opencode_and_langchain_pydantic_parsers(m
     )
     outputs = [
         draft_plan,
+        "Aquí está la historia: como persona usuaria quiero consultar el saldo.",
         '{"como":"persona usuaria","quiero":"consultar saldo","para":"conocer el disponible",'
         '"criterios":[{"dado":"una cuenta activa","cuando":"consulto el saldo",'
         '"entonces":"veo el disponible"}]}',
@@ -123,6 +124,8 @@ async def test_redactor_uses_simulated_opencode_and_langchain_pydantic_parsers(m
     assert '"nombre":"consultar_estandares"' in calls[1]
     assert '"nombre":"buscar_hu_similares"' in calls[1]
     assert "herramientas no permitidas" in calls[1]  # leer_archivo_codigo se descartó
+    # La primera redacción no era JSON: se pidió una corrección en la misma sesión.
+    assert "no cumplió el formato" in calls[2]
     # Ronda de review: plan inválido → plan predeterminado del backend, con constancia.
-    assert "no entregó un plan válido" in calls[3]
-    assert len(calls) == 4
+    assert "no entregó un plan válido" in calls[4]
+    assert len(calls) == 5

@@ -914,7 +914,7 @@ const CrearHistoriaUsuarioContenido = () => {
                     )}
                   </AlertaComponent>
                 ) : (
-                  <AlertaComponent type="warning" title={`Quedan ${pendingCount} preguntas pendientes`}>
+                  <AlertaComponent type="warning" title={pendingCount === 1 ? 'Queda 1 pregunta pendiente' : `Quedan ${pendingCount} preguntas pendientes`}>
                     Registre las respuestas y envíelas al Analista. La HU no estará disponible para aprobación mientras quede alguna pregunta pendiente.
                   </AlertaComponent>
                 )}

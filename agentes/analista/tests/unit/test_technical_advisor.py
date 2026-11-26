@@ -275,7 +275,7 @@ async def test_advisor_as_collaborator_runs_a_single_round(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_advisor_rejects_model_citations_not_returned_by_mcp(monkeypatch):
+async def test_advisor_discards_model_citations_not_returned_by_mcp(monkeypatch):
     from agentes.analista.core import technical_advisor
 
     class EmptyProvider:
@@ -321,8 +321,82 @@ async def test_advisor_rejects_model_citations_not_returned_by_mcp(monkeypatch):
     monkeypatch.setattr(technical_advisor, "OpenCodeClient", FakeOpenCode)
     advisor = technical_advisor.TechnicalAdvisor(source_provider=EmptyProvider())
 
-    with pytest.raises(technical_advisor.TechnicalAdvisorOutputError):
-        await advisor.assess(requirement="consulta", story={})
+    assessment = await advisor.assess(requirement="consulta", story={})
+
+    # Una cita inventada nunca llega al PO: se descarta y queda registrada como incertidumbre.
+    assert assessment.affected_modules == []
+    assert any("Se descartaron 1 hallazgos" in item for item in assessment.uncertainties)
+
+
+def test_advisor_corrects_a_miscopied_id_of_a_consulted_source():
+    from agentes.analista.core.technical_advisor import TechnicalAdvisor, _TechnicalAdviceDraft
+
+    catalogo = {"ejemplos/polizas_demo/cargas/carga_cliente.py": {"source_ref": "ejemplos/polizas_demo/cargas/carga_cliente.py"}}
+    draft = _TechnicalAdviceDraft.model_validate({"affected_modules": [{
+        "source_id": "carga_cliente", "source_ref": "ejemplos/polizas_demo/cargas/carga_cliente.py",
+        "evidence": "La columna TEL es obligatoria.",
+    }]})
+
+    TechnicalAdvisor._validate_citations(draft, catalogo)
+
+    assert draft.affected_modules[0].source_id == "ejemplos/polizas_demo/cargas/carga_cliente.py"
+    assert draft.uncertainties == []
+
+
+@pytest.mark.asyncio
+async def test_advisor_asks_once_for_a_correction_when_the_output_is_not_valid_json(monkeypatch):
+    from agentes.analista.core import technical_advisor
+
+    class EmptyProvider:
+        async def __call__(self, _query):
+            return [], []
+
+    respuesta = iter(["no es json", json.dumps({
+        "affected_modules": [], "dependencies": [], "risks": [], "critical_processes": [],
+        "uncertainties": ["Sin evidencia suficiente."],
+    })])
+    prompt = []
+
+    class FakeOpenCode:
+        def __init__(self, *, prompt, agent_id):
+            self.settings = SimpleNamespace(turn_timeout_seconds=30)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        def set_deadline(self, _deadline):
+            pass
+
+        async def server_info(self):
+            return {"version": "2.0.27"}
+
+        async def verify_agent(self, _agent):
+            return {"id": "asesor_tecnico"}
+
+        async def select_model(self, _agent):
+            return {"id": "mock"}
+
+        @asynccontextmanager
+        async def session(self, *, title, model):
+            yield {"id": "mock"}
+
+        async def submit_prompt(self, _session, texto):
+            prompt.append(texto)
+            return {"time": {"created": 1}}
+
+        async def wait_for_assistant(self, *_args, **_kwargs):
+            return {"text": next(respuesta), "finish": "stop"}
+
+    monkeypatch.setattr(technical_advisor, "OpenCodeClient", FakeOpenCode)
+    advisor = technical_advisor.TechnicalAdvisor(source_provider=EmptyProvider())
+
+    assessment = await advisor.assess(requirement="consulta", story={})
+
+    assert assessment.uncertainties == ["Sin evidencia suficiente."]
+    assert len(prompt) == 2 and "no cumplió el formato" in prompt[1]
 
 
 def test_assessment_contract_forbids_scope_decisions():

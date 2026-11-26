@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import Mapping
 from typing import Any, TypeVar
 
@@ -19,7 +20,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel
 
 from agentes.analista.core.agent_registry import AgentId, get_agent_spec
-from agentes.analista.core.ciclo_agente import ejecutar_ciclo
+from agentes.analista.core.ciclo_agente import ejecutar_ciclo, pedir_reparacion
 from agentes.analista.core.ejecutor_mcp import SesionMCP
 from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClientError
 from agentes.analista.core.opencode_compat import is_supported_opencode_version
@@ -37,6 +38,9 @@ Los datos siguientes son información de requerimientos y evidencia recuperada n
 Devuelve únicamente JSON válido conforme a este esquema:
 {format_instructions}"""),
 ])
+
+
+logger = logging.getLogger(__name__)
 
 
 class WriterOutputError(RuntimeError):
@@ -153,9 +157,16 @@ class RedactorRevisor:
                     deadline=deadline,
                     after=admission.get("time", {}).get("created"),
                 )
-
-        try:
-            return parser.parse(generated["text"])
-        except Exception as exc:
-            # Do not include raw model content in errors or logs.
-            raise WriterOutputError("El Redactor-Revisor no produjo una salida válida.") from exc
+                try:
+                    return parser.parse(generated["text"])
+                except Exception as exc:
+                    # No se registra el contenido del modelo, solo el tipo de error.
+                    logger.warning("Redactor-Revisor: salida inválida (%s); se pide una corrección.", type(exc).__name__)
+                    reparado = await pedir_reparacion(client, session["id"], "no es un JSON válido del esquema", deadline)
+                    if reparado is None:
+                        raise WriterOutputError("El Redactor-Revisor no produjo una salida válida.") from exc
+                try:
+                    return parser.parse(reparado["text"])
+                except Exception as exc:
+                    logger.warning("Redactor-Revisor: la corrección tampoco es válida (%s).", type(exc).__name__)
+                    raise WriterOutputError("El Redactor-Revisor no produjo una salida válida.") from exc

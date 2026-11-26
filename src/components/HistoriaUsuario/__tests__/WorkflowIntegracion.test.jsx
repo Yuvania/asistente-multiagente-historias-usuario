@@ -117,7 +117,7 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
 
     expect(await screen.findByText(/Flujo detenido por un error/i)).toBeInTheDocument();
     expect(screen.getByText(/El Analista reportó vacíos sin preguntas pendientes/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Quedan \d+ preguntas pendientes/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Queda(n)? \d+ pregunta/i)).not.toBeInTheDocument();
   });
 
   it('answers Business, displays writer/reviewer and fictional technical evidence, then saves only through backend PO approval', async () => {

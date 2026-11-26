@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Annotated, Any, Literal
 from uuid import UUID
@@ -211,9 +212,30 @@ def _serialize(runtime: WorkflowRuntime, snapshot: WorkflowSnapshot) -> Workflow
     )
 
 
+logger = logging.getLogger(__name__)
+
+
+def _describir_error(exc: BaseException) -> str:
+    """Tipo y mensaje del error y de su causa, sin el contenido generado por el modelo."""
+    partes = []
+    actual: BaseException | None = exc
+    while actual is not None and len(partes) < 4:
+        if isinstance(actual, ValidationError):
+            campo = "; ".join(
+                f"{'.'.join(str(parte) for parte in item['loc'])}: {item['type']}"
+                for item in actual.errors(include_input=False, include_url=False)[:5]
+            )
+            partes.append(f"{type(actual).__name__}({actual.title}: {campo})")
+        else:
+            partes.append(f"{type(actual).__name__}: {str(actual)[:200]}")
+        actual = actual.__cause__
+    return " <- ".join(partes)
+
+
 def _translate_runtime_error(exc: Exception) -> WorkflowApiError:
     if isinstance(exc, WorkflowApiError):
         return exc
+    logger.warning("Workflow detenido: %s", _describir_error(exc))
     if isinstance(exc, WorkflowNotFoundError):
         return WorkflowApiError(
             ErrorCode.WORKFLOW_NOT_FOUND,

@@ -21,7 +21,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, ConfigDict, Field
 
 from agentes.analista.core.agent_registry import AgentId, get_agent_spec
-from agentes.analista.core.ciclo_agente import ResultadoCiclo, ejecutar_ciclo
+from agentes.analista.core.ciclo_agente import ResultadoCiclo, ejecutar_ciclo, pedir_reparacion
 from agentes.analista.core.ejecutor_mcp import SesionMCP
 from agentes.analista.core.opencode_client import OpenCodeClient, OpenCodeClientError
 from agentes.analista.core.opencode_compat import is_supported_opencode_version
@@ -234,7 +234,14 @@ class TechnicalAdvisor:
                 generated = await client.wait_for_assistant(
                     session["id"], deadline=deadline, after=admission.get("time", {}).get("created")
                 )
-        return self._build(generated, parser, source_catalog)
+                try:
+                    return self._build(generated, parser, source_catalog)
+                except TechnicalAdvisorOutputError as exc:
+                    logger.warning("Asesor Técnico: salida inválida (%s); se pide una corrección.", exc)
+                    reparado = await pedir_reparacion(client, session["id"], str(exc), deadline)
+                    if reparado is None:
+                        raise
+        return self._build(reparado, parser, source_catalog)
 
     @staticmethod
     def _catalog(sources: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -283,11 +290,28 @@ class TechnicalAdvisor:
 
     @staticmethod
     def _validate_citations(draft: _TechnicalAdviceDraft, source_catalog: Mapping[str, Mapping[str, Any]]) -> None:
-        references = [
-            *draft.affected_modules, *draft.dependencies, *draft.risks, *draft.critical_processes
-        ]
-        for item in references:
-            if source_catalog.get(item.source_id, {}).get("source_ref") != item.source_ref:
-                raise TechnicalAdvisorOutputError("El Asesor citó una fuente que no fue consultada en este turno.")
-        if not source_catalog and references:
-            raise TechnicalAdvisorOutputError("No hay fuentes consultadas para respaldar afirmaciones técnicas.")
+        """Cada hallazgo debe citar una fuente consultada en este turno.
+
+        Si el modelo copió mal el identificador o la referencia de una fuente que sí se consultó, se corrige con
+        el catálogo del backend. Un hallazgo cuya fuente no se consultó se descarta y queda como incertidumbre:
+        nunca llega al PO una afirmación sin evidencia, y un solo error de copia no detiene todo el flujo.
+        """
+        por_ref = {entry["source_ref"]: source_id for source_id, entry in source_catalog.items()}
+        descartado = 0
+        for campo in ("affected_modules", "dependencies", "risks", "critical_processes"):
+            valido: list[EvidenceReference] = []
+            for item in getattr(draft, campo):
+                source_id = item.source_id if item.source_id in source_catalog else por_ref.get(item.source_ref)
+                if source_id is None:
+                    descartado += 1
+                    continue
+                valido.append(item.model_copy(update={
+                    "source_id": source_id, "source_ref": source_catalog[source_id]["source_ref"],
+                }))
+            setattr(draft, campo, valido)
+        if descartado:
+            logger.warning("Asesor Técnico: %d hallazgos citaban fuentes no consultadas y se descartaron.", descartado)
+            draft.uncertainties = [
+                *draft.uncertainties,
+                f"Se descartaron {descartado} hallazgos porque citaban fuentes que no se consultaron en este turno.",
+            ][:20]

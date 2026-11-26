@@ -190,6 +190,26 @@ async def _preguntar_modelo(client: Any, session_id: str, texto: str, deadline: 
     return str((generado or {}).get("text") or "")
 
 
+async def pedir_reparacion(client: Any, session_id: str, motivo: str, deadline: float) -> dict[str, Any] | None:
+    """Pide al modelo, en la misma sesión, que corrija su salida. ``None`` si ya no queda tiempo.
+
+    No reenvía la salida anterior: el modelo la tiene en la sesión. ``motivo`` lo escribe el backend.
+    """
+    import asyncio
+
+    if deadline - asyncio.get_running_loop().time() <= 5:
+        return None
+    texto = (
+        "Tu respuesta anterior no cumplió el formato requerido: " + motivo[:300] + ". "
+        "Devuelve únicamente el objeto JSON válido conforme al esquema indicado antes, sin texto adicional, "
+        "sin cercas de código y sin campos nuevos."
+    )
+    admision = await client.submit_prompt(session_id, texto)
+    return await client.wait_for_assistant(
+        session_id, deadline=deadline, after=(admision or {}).get("time", {}).get("created"),
+    )
+
+
 async def ejecutar_ciclo(
     *,
     agent_id: AgentId,

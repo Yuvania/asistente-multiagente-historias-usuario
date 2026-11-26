@@ -116,7 +116,7 @@ describe('wizard conectado al Agente Analista', () => {
     expect(screen.getByText(/Glosario \(1\)/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Preguntas a Negocio \(1\)/i }));
-    expect(screen.getByText(/Quedan 1 preguntas pendientes/i)).toBeInTheDocument();
+    expect(screen.getByText(/Queda 1 pregunta pendiente/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Enviar respuestas al agente/i })).toBeDisabled();
 
     await user.type(screen.getByPlaceholderText(/Escriba aquí la respuesta de Negocio/i), 'Desde la próxima renovación');
