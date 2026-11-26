@@ -18,6 +18,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { CAMPO_FORMULARIO, PASO, pasoDelFlujo } from './constantesAsistente';
 
 export function useCrearHistoria() {
+  // ── Navegación, retomar y estado general del flujo ───────────────────
   const navigate = useNavigate();
   const ubicacion = useLocation();
   const workflowFromChange = ubicacion.state?.workflowSnapshot ?? null;
@@ -50,7 +51,7 @@ export function useCrearHistoria() {
   const [analyzedSignature, setAnalyzedSignature] = useState(borrador?.analyzedSignature ?? null);
   const [sentAnswers, setSentAnswers] = useState(borrador?.sentAnswers ?? {});
 
-  // Step 1: Requerimiento state
+  // ── Paso 1: requerimiento ─────────────────────────────────────────────
   const [requirementName, setRequirementName] = useState(borrador?.requirementName ?? prefill?.name ?? '');
   const [infoType, setInfoType] = useState(borrador?.infoType ?? prefill?.infoType ?? 'Minuta');
   const [description, setDescription] = useState(borrador?.description ?? prefill?.description ?? '');
@@ -59,7 +60,7 @@ export function useCrearHistoria() {
   const [codigoHu, setCodigoHu] = useState(borrador?.codigoHu ?? prefill?.codigoHu ?? '');
   const [requester, setRequester] = useState(borrador?.requester ?? prefill?.requester ?? '');
 
-  // Step 2: análisis del agente
+  // ── Paso 2: análisis del Agente Analista ─────────────────────────────
   const [analysis, setAnalysis] = useState(borrador?.analysis ?? {
     knownData: [],
     missingData: [],
@@ -67,10 +68,10 @@ export function useCrearHistoria() {
     ambiguities: []
   });
 
-  // Step 3: preguntas del agente + respuestas de Negocio
+  // ── Paso 3: preguntas del Analista y respuestas de Negocio ───────────
   const [questions, setQuestions] = useState(borrador?.questions ?? prefill?.questions ?? []);
 
-  // Step 4: Generated User Story & Criteria state (borrador simulado)
+  // ── Paso 5: historia y criterios (del Redactor-Revisor o del modo manual) ──
   const [userStory, setUserStory] = useState(borrador?.userStory ?? {
     asA: '',
     iWant: '',
@@ -87,7 +88,7 @@ export function useCrearHistoria() {
   const [descargaError, setDescargaError] = useState('');
   const [pendingQuestions, setPendingQuestions] = useState(borrador?.pendingQuestions ?? []);
 
-  // Step 5: Observations state
+  // ── Paso 6: nota para la bitácora y aprobación del Product Owner ─────
   const [observations, setObservations] = useState(borrador?.observations ?? '');
   const [confirmAnonymized, setConfirmAnonymized] = useState(false);
   const [approvalError, setApprovalError] = useState('');
@@ -351,7 +352,7 @@ export function useCrearHistoria() {
     return ok;
   };
 
-  // Step 1 handler -> el Agente Analista analiza el requerimiento
+  // Paso 1 → el Agente Analista analiza el requerimiento.
   const handleAnalyzeRequirement = async (e) => {
     e.preventDefault();
     setFormError('');
@@ -408,7 +409,7 @@ export function useCrearHistoria() {
     }
   };
 
-  // Step 3 handler -> las respuestas de Negocio vuelven al agente
+  // Paso 3 → las respuestas de Negocio vuelven al Analista.
   const handleSendAnswers = async () => {
     if (workflowResponse?.interrupt?.kind === 'business_answers') {
       const pending = workflowResponse.interrupt.payload?.questions ?? [];
@@ -481,7 +482,7 @@ export function useCrearHistoria() {
     setActiveStep(1);
   };
 
-  // Step 3 -> Step 4: borrador simulado (el Agente Redactor-Revisor aún no existe)
+  // Modo manual (sin el flujo de agentes): borrador de partida para que la persona lo complete.
   const handleGenerateStory = () => {
     if (workflowResponse) {
       if (workflowResponse.interrupt?.kind === 'business_answers' || !workflowResponse.results?.story) {
@@ -534,7 +535,7 @@ export function useCrearHistoria() {
     }, 800);
   };
 
-  // Question answer handler
+  // Respuesta de Negocio escrita en una pregunta.
   const handleQuestionAnswerChange = (qId, newAnswer) => {
     setQuestions((prev) =>
       prev.map((q) => {
@@ -550,7 +551,7 @@ export function useCrearHistoria() {
     );
   };
 
-  // Step 4: la persona edita el borrador (el Agente Redactor-Revisor aún no existe)
+  // La persona edita la historia (Como / Quiero / Para).
   const handleUserStoryChange = (field, value) => setUserStory((prev) => ({ ...prev, [field]: value }));
 
   // Al llegar a la historia se propone el número según el código de HU y las historias ya guardadas.
