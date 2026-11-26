@@ -91,6 +91,19 @@ export const updateStory = (id, updatedFields) => {
   return updatedStory;
 };
 
+// Guarda una historia que ya trae su identificador (por ejemplo, la que aprobó el flujo multiagente):
+// la agrega o reemplaza en la caché y la envía a la base. Sin el envío, la siguiente sincronización
+// reemplazaría la caché con la lista de la base y la historia desaparecería de la pantalla.
+export const guardarHistoria = (story) => {
+  const stories = getStoredStories();
+  const index = stories.findIndex((s) => String(s.id) === String(story.id));
+  if (index >= 0) stories[index] = story;
+  else stories.unshift(story);
+  saveStoredStories(stories);
+  encolar(() => historiasApi.save(story));
+  return story;
+};
+
 export const deleteStory = (id) => {
   const stories = getStoredStories();
   const filtered = stories.filter((s) => String(s.id) !== String(id));

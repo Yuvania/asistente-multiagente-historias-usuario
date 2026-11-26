@@ -14,7 +14,7 @@ import { TarjetaPreguntaComponent } from './TarjetaPreguntaComponent';
 import { MarkdownAsistenteComponent } from '../AsistenteAnalista/MarkdownAsistenteComponent';
 import { useAsistenteAnalista } from '../../hooks/useAsistenteAnalista';
 import { borrarBorrador, borradorTieneContenido, guardarBorrador, leerBorrador } from '../../utils/borradorAsistente';
-import { addStory, deleteStory, generateStoryId, getStoredStories, getStoryById, saveStoredStories, updateStory } from '../../utils/storage';
+import { addStory, deleteStory, generateStoryId, getStoredStories, getStoryById, guardarHistoria, updateStory } from '../../utils/storage';
 import { CamposPlantillaComponent } from './CamposPlantillaComponent';
 import { descargarWord } from '../../utils/exportarWord';
 import { descargarPdf } from '../../utils/exportarPdf';
@@ -343,8 +343,8 @@ const CrearHistoriaUsuarioContenido = () => {
     const persistence = snapshot.results?.persistence_result;
     if (body.kind === 'po_approval' && body.response?.decision === 'aprobar' && persistence?.status === 'saved') {
       const id = persistence.story_id;
-      const previous = getStoredStories();
-      const oldIndex = previous.findIndex((item) => String(item.id) === String(id));
+      const previa = getStoryById(id);
+      const hoy = new Date().toISOString().slice(0, 10);
       const approved = {
         ...baseStoryData(),
         id,
@@ -355,11 +355,14 @@ const CrearHistoriaUsuarioContenido = () => {
         respuestasNuevas: false,
         criteriosModificados: false,
       };
-      if (oldIndex >= 0) previous[oldIndex] = { ...previous[oldIndex], ...approved };
-      else previous.unshift({ id, createdAt: new Date().toISOString().slice(0, 10), ...approved });
-      // Cache local para la navegación de la UI. La única escritura al Repositorio de HU
-      // es la que LangGraph acaba de completar en el backend.
-      saveStoredStories(previous);
+      // El Repositorio de HU ya lo escribió el backend; aquí se guarda la copia de trabajo que muestran
+      // el listado y el detalle, también en la base para que la sincronización no la borre.
+      guardarHistoria({
+        ...(previa ?? { createdAt: hoy, createdBy: leerNombreUsuario() }),
+        ...approved,
+        updatedAt: hoy,
+        updatedBy: leerNombreUsuario(),
+      });
       borrarBorrador();
       navigate(`/historias/${id}`);
     } else if (body.kind === 'po_approval' && body.response?.decision === 'aprobar'
