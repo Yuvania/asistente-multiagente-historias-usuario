@@ -56,6 +56,21 @@ const poSnapshot = () => ({
   },
 });
 
+const impacto = [{ area: 'Reporte de pólizas ficticias', hoy: 'No muestra la vigencia.', debe: 'Mostrarla con el mismo formato que la consulta.' }];
+const decision = '¿El reporte muestra la vigencia con el mismo formato que la consulta?';
+
+const impactSnapshot = () => ({
+  workflow_id: 'workflow-pre-synthetic', mode: 'pre_grooming', status: 'interrupted', stage: 'espera_impacto',
+  results: {
+    analyst: poSnapshot().results.analyst, story: null, review_observations: [],
+    technical_assessment: { impacto_negocio: impacto, decision_pendiente: [decision], affected_modules: [], dependencies: [], risks: [], critical_processes: [], consulted_sources: [], uncertainties: ['Evaluación sintética.'] },
+  },
+  interrupt: {
+    interrupt_id: 'interrupt-impact-1', kind: 'impact_decisions',
+    payload: { impacto_negocio: impacto, questions: [{ question_id: 'decision-1', pregunta: decision }], max_answer_chars: 1000, max_total_chars: 3500 },
+  },
+});
+
 const changeSnapshot = () => ({
   workflow_id: 'workflow-change-synthetic', mode: 'post_grooming', status: 'interrupted', stage: 'decision_humana',
   results: { change_recommendation: recommendation },
@@ -90,6 +105,12 @@ test('pre-grooming presenta análisis y HU, recoge respuestas y solicita aprobac
         expect(body.interrupt_id).toBe('interrupt-business-1');
         expect(body.response.answers[0].answer).toBe('2030-12-31');
         phase = 2;
+        return route.fulfill({ status: 200, json: impactSnapshot() });
+      }
+      if (body.kind === 'impact_decisions') {
+        expect(body.interrupt_id).toBe('interrupt-impact-1');
+        expect(body.response.answers).toEqual([{ question_id: 'decision-1', answer: 'Sí, el mismo formato.' }]);
+        phase = 3;
         return route.fulfill({ status: 200, json: poSnapshot() });
       }
       expect(body.kind).toBe('po_approval');
@@ -115,6 +136,10 @@ test('pre-grooming presenta análisis y HU, recoge respuestas y solicita aprobac
   await expect(page.getByLabel(question.pregunta)).toBeVisible();
   await page.getByLabel(question.pregunta).fill('2030-12-31');
   await page.getByRole('button', { name: 'Confirmar y continuar' }).click();
+  await expect(page.getByRole('heading', { name: /Impacto en otros módulos/ })).toBeVisible();
+  await expect(page.getByText('Reporte de pólizas ficticias')).toBeVisible();
+  await page.getByLabel(/El reporte muestra la vigencia/).fill('Sí, el mismo formato.');
+  await page.getByRole('button', { name: 'Confirmar y continuar' }).click();
   await expect(page.getByRole('heading', { name: /Historia de Usuario Generada/ })).toBeVisible();
   await expect(page.locator('#story-i-want')).toHaveValue(story.quiero);
   await expect(page.getByRole('heading', { name: /Criterios de Aceptación \(1\)/ })).toBeVisible();
@@ -127,8 +152,8 @@ test('pre-grooming presenta análisis y HU, recoge respuestas y solicita aprobac
   await page.getByRole('button', { name: 'Confirmar y continuar' }).click();
   await expect.poll(() => persisted).toBe(true);
   await expect(page).toHaveURL(new RegExp(`/historias/${storyId}$`));
-  expect(requestBodies.map((body) => body.kind)).toEqual(['business_answers', 'po_approval']);
-  expect(phase).toBe(2);
+  expect(requestBodies.map((body) => body.kind)).toEqual(['business_answers', 'impact_decisions', 'po_approval']);
+  expect(phase).toBe(3);
 });
 
 test('post-grooming muestra al Gestor de Cambios y registra solo tras aceptar la recomendación', async ({ page }) => {
@@ -208,7 +233,7 @@ test('el error 503 mantiene separado el modo manual', async ({ page }) => {
 });
 
 
-test('la interfaz identifica un checkpoint perdido (404)', async ({ page }) => {
+test('la interfaz identifica un flujo que no se encontró (404)', async ({ page }) => {
   await page.route('**/api/workflows**', async (route) => {
     if (route.request().method() === 'GET') return route.fulfill({ status: 404, json: { error: { code: 'WORKFLOW_NOT_FOUND' } } });
     return route.fulfill({ status: 201, json: businessSnapshot() });
@@ -216,8 +241,8 @@ test('la interfaz identifica un checkpoint perdido (404)', async ({ page }) => {
   await fillRequirement(page);
   await page.getByRole('button', { name: 'Analizar Requerimiento' }).click();
   await expect(page.getByRole('heading', { name: /Preguntas de Aclaraci/ })).toBeVisible();
-  await page.getByRole('button', { name: 'Consultar estado del workflow' }).click();
-  await expect(page.getByText(/El checkpoint no se recuper/)).toBeVisible();
+  await page.getByRole('button', { name: 'Consultar estado' }).click();
+  await expect(page.getByText(/El flujo no se encontró/)).toBeVisible();
   await expect(page.getByText(/HTTP 404/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Iniciar un workflow nuevo' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Iniciar un flujo nuevo' })).toBeVisible();
 });
