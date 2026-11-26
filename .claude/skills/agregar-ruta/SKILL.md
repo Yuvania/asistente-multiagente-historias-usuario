@@ -19,6 +19,7 @@ Las rutas y el menú salen de un solo registro: `src/config/rutas.jsx`. No agreg
    - Sin `menu` la pantalla existe pero no aparece en el menú (por ejemplo, un detalle `historias/:id`).
    - `orden` en decenas y único; `exacta: true` si la ruta no debe marcarse activa en sus subrutas.
    - Íconos de `lucide-react`.
+   - Si solo deben verla algunos roles, agrega `accion: ACCION.X` (de `src/config/acciones.js`). Si la acción no existe, agrégala en `agentes/seguridad/catalogo.py` (con su nombre legible) y en `src/config/acciones.js`; las rutas de la API que use la pantalla declaran `requiere_accion(ACCION.X)`. No hace falta tocar Mantenimiento.
 3. Si la pantalla es nueva para la persona usuaria, descríbela en la Ayuda (`src/data/ayudaDocumentacion.js`).
 4. Prueba con Testing Library (mira `src/components/EnvolturaPagina/__tests__/`) y ejecuta `npx vitest run` y `npx vite build`.
 

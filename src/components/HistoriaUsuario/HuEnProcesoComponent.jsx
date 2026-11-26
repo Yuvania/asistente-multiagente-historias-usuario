@@ -5,6 +5,8 @@ import { BotonComponent } from '../Comun/BotonComponent';
 import { AlertaComponent } from '../Comun/AlertaComponent';
 import { deleteWorkflow, listWorkflows } from '../../services/workflowApi';
 import { useConfirmacion } from '../Comun/ConfirmacionComponent';
+import { useSesion } from '../Sesion/SesionContext';
+import { ACCION } from '../../config/acciones';
 
 // Qué espera cada flujo guardado, en lenguaje de la persona usuaria.
 const ROTULO_ESPERA = {
@@ -34,6 +36,7 @@ const fecha = (valor) => {
 // HU que todavía no terminan: se pueden retomar en el paso donde quedaron, aunque haya pasado un día.
 export const HuEnProcesoComponent = () => {
   const navigate = useNavigate();
+  const { puede } = useSesion();
   const [listaFlujo, setListaFlujo] = useState([]);
   const [error, setError] = useState('');
   const confirmar = useConfirmacion();
@@ -95,9 +98,11 @@ export const HuEnProcesoComponent = () => {
               <BotonComponent variant="primary" icon={PlayCircle} onClick={() => navigate(`/historias/nueva?flujo=${encodeURIComponent(flujo.workflow_id)}`)}>
                 Retomar
               </BotonComponent>
-              <BotonComponent variant="secondary" icon={Trash2} onClick={() => descartar(flujo)}>
-                Descartar
-              </BotonComponent>
+              {puede(ACCION.HISTORIA_DESCARTAR_EN_PROCESO) && (
+                <BotonComponent variant="secondary" icon={Trash2} onClick={() => descartar(flujo)}>
+                  Descartar
+                </BotonComponent>
+              )}
             </div>
           </li>
         ))}

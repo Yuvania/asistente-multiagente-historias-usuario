@@ -1,3 +1,4 @@
+import { avisarSesionVencida, encabezadoSesion } from '../utils/sesion.js';
 const API_BASE = '/api/workflows';
 
 const STATUS_MESSAGES = Object.freeze({
@@ -32,9 +33,10 @@ async function request(path, { method = 'GET', body, signal } = {}) {
   try {
     response = await fetch(`${API_BASE}${path}`, {
       method,
-      headers: body === undefined ? { Accept: 'application/json' } : {
+      headers: body === undefined ? { Accept: 'application/json', ...encabezadoSesion() } : {
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        ...encabezadoSesion(),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       credentials: 'same-origin',
@@ -56,6 +58,7 @@ async function request(path, { method = 'GET', body, signal } = {}) {
   } catch {
     payload = {};
   }
+  avisarSesionVencida(response.status);
   if (!response.ok) throw new WorkflowApiError(response.status, payload, { path, method });
   return payload;
 }

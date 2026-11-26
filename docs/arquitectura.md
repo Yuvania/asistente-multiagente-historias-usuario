@@ -83,6 +83,7 @@ src/
 | Paso nuevo en el asistente | Su vista `Paso<Nombre>Component.jsx` en `crear/`, una entrada en `pasosAsistente.js` y su valor en `PASO`; la lógica va en `useCrearHistoria.js`. |
 | Herramienta MCP para un agente existente | Agregarla a `herramienta` (y su namespace a `fuente`) en la definición del agente. |
 | Cambiar lo que dice un agente | Su `prompt.md`, subiendo la versión editorial. |
+| Acción nueva (permiso) | Una línea en `agentes/seguridad/catalogo.py` (código, nombre y módulo) y su código en `src/config/acciones.js`; la ruta de la API declara `requiere_accion(ACCION.X)` y la pantalla o el botón lleva `accion`. Aparece sola en Mantenimiento. |
 | Regla de negocio de un paso | El modelo Pydantic del contrato y el nodo del grafo; nunca en el prompt solamente. |
 
 Las listas paso a paso están en las skills `agregar-agente` y `agregar-ruta`.
@@ -91,7 +92,7 @@ Las listas paso a paso están en las skills `agregar-agente` y `agregar-ruta`.
 
 - **Persistencia y reanudación:** cada pausa del flujo guarda un punto de control en la base de datos; se puede retomar otro día o tras un reinicio del servidor.
 - **Observabilidad:** trazas por turno y por etapa (Langfuse) y registros estructurados sin contenido del modelo ni datos personales.
-- **Seguridad:** agentes sin permisos en OpenCode, herramientas MCP de solo lectura por rol, entradas tratadas como no confiables y aprobación siempre humana.
+- **Seguridad:** inicio de sesión por usuario; usuarios con roles y roles con acciones (pestaña Mantenimiento), validados en cada ruta de la API; agentes sin permisos en OpenCode, herramientas MCP de solo lectura por rol, entradas tratadas como no confiables y aprobación siempre humana.
 - **Configuración por entorno:** claves y URLs por variables de entorno; despliegue en contenedor (ver `DESPLIEGUE.md`).
 - **Calidad:** pruebas de backend, frontend y extremo a extremo en la integración continua, más las pruebas de estructura.
 

@@ -151,12 +151,8 @@ export const TECNOLOGIAS = [
 
 export const PENDIENTES = [
   {
-    titulo: 'Roles, acciones y permisos',
-    texto: 'Se propone que los permisos se asignen por acciones (por ejemplo hu-aprobar, hu-solicitar-cambio, hu-eliminar), que las acciones se agrupen en roles y que los roles se asignen a los usuarios. Solo un rol con la acción de aprobar (el Product Owner) podría aprobar. Los permisos se validarían en el backend, no solo ocultando botones.',
-  },
-  {
-    titulo: 'Usuarios e inicio de sesión',
-    texto: 'Hoy no hay inicio de sesión: el nombre se escribe a mano y el acceso es con una clave compartida. Se propone una tabla de usuarios con contraseña guardada con hash y una pantalla de ingreso; el autor de la bitácora, de las ediciones y de las HU en proceso saldría de ahí.',
+    titulo: 'Bitácora de seguridad',
+    texto: 'Ya hay inicio de sesión por usuario, roles y acciones (pestaña Mantenimiento). Falta registrar quién asignó o quitó cada rol o acción y cuándo, para auditoría.',
   },
   {
     titulo: 'Aviso por correo al Product Owner',
@@ -164,7 +160,7 @@ export const PENDIENTES = [
   },
   {
     titulo: 'Detalle técnico para Desarrollo',
-    texto: 'El Asesor Técnico guarda los archivos y riesgos que encontró, pero no se muestran a la persona usuaria. Cuando existan los roles, se mostrarían solo a Desarrollo para el grooming.',
+    texto: 'El Asesor Técnico guarda los archivos y riesgos que encontró, pero no se muestran a la persona usuaria. Con los roles ya disponibles, se mostrarían solo a un rol de Desarrollo para el grooming.',
   },
   {
     titulo: 'Descargas y eliminación',
@@ -202,6 +198,7 @@ export const CAPA_ARQUITECTURA = [
 export const CAMBIO_ARQUITECTURA = [
   { titulo: 'Agregar una pantalla', texto: 'Se crea su componente y se agrega una entrada en el registro de pantallas. Si va en el menú, la entrada lo indica. No se tocan las rutas ni el menú a mano.' },
   { titulo: 'Agregar un agente', texto: 'Se crea su carpeta con su definición, instrucciones, servidor de herramientas e implementación sobre la clase base; se registra en OpenCode y se agrega su paso a la tabla del flujo, que se valida sola antes de arrancar. Sus permisos, herramientas y servidor salen solos de la definición.' },
+  { titulo: 'Proteger una funcionalidad nueva', texto: 'Se agrega su acción al catálogo (con el nombre que leerá la persona) y la ruta del servicio la declara. Aparece sola en Mantenimiento para asignarla a los roles, y una prueba falla si una ruta queda sin acción.' },
   { titulo: 'Agregar un paso al asistente', texto: 'El asistente separa la lógica (un controlador) de las vistas (un componente por paso). Un paso nuevo es su vista y una entrada en el registro de pasos; el indicador de pasos se actualiza solo.' },
   { titulo: 'Darle una herramienta a un agente', texto: 'Se agrega a la lista de herramientas de su definición. Ningún otro agente la recibe.' },
   { titulo: 'Agregar una decisión humana', texto: 'El agente pausa el flujo con un tipo de intervención y la interfaz muestra el formulario que el registro de intervenciones asocia a ese tipo.' },
@@ -211,7 +208,7 @@ export const CAMBIO_ARQUITECTURA = [
 export const PRODUCCION_ARQUITECTURA = [
   'Persistencia: cada pausa del flujo se guarda en la base de datos; se puede retomar otro día o después de un reinicio del servidor.',
   'Observabilidad: trazas por turno y por etapa, y registros estructurados que no guardan lo que genera el modelo ni datos personales.',
-  'Seguridad: agentes sin permisos propios, herramientas de solo lectura por agente, entradas tratadas como no confiables y aprobación siempre humana.',
+  'Seguridad: inicio de sesión por usuario y permisos por acción (cada rol tiene sus acciones y cada usuario sus roles), validados en el servidor; agentes sin permisos propios, herramientas de solo lectura por agente, entradas tratadas como no confiables y aprobación siempre humana.',
   'Configuración por entorno y despliegue en contenedor: las claves y direcciones no están en el código.',
   'Calidad: pruebas de backend, frontend y de extremo a extremo en la integración continua, más las pruebas de estructura.',
 ];

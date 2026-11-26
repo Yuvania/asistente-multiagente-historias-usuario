@@ -7,10 +7,12 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Request, status
+from fastapi import APIRouter, Body, Depends, Request, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from agentes.analista.api.errors import WorkflowApiError
+from agentes.analista.api.sesion import exigir_accion, requiere_accion, requiere_sesion, seguridad_activa, usuario_actual
+from agentes.seguridad.catalogo import ACCION
 from agentes.equipo.gestor_cambios.gestor_cambios_service import ChangeManagerError
 from agentes.analista.core.models import AgentTurnResponse, ErrorCode
 from agentes.analista.core.opencode_client import OpenCodeClientError
@@ -35,6 +37,7 @@ from agentes.analista.core.workflow_models import (
     ImpactoNegocio,
     NotaHu,
     PersistenceResult,
+    POApprovalDecision,
     POApprovalSubmission,
     TechnicalAssessment,
     WorkflowCreateRequest,
@@ -133,6 +136,7 @@ class WorkflowGuardado(BaseModel):
 
     titulo: str | None = None
     creado_por: str | None = None
+    creado_por_usuario: str | None = None
     formulario: dict[str, str] = Field(default_factory=dict)
     borrador_respuestas: dict[str, str] = Field(default_factory=dict)
     estado: str | None = None
@@ -159,6 +163,7 @@ class WorkflowResumen(BaseModel):
     modo: str
     titulo: str
     creado_por: str | None = None
+    creado_por_usuario: str | None = None
     estado: str
     etapa: str
     espera: str | None = None
@@ -274,6 +279,7 @@ def _guardado(runtime: WorkflowRuntime, workflow_id: UUID) -> WorkflowGuardado |
     meta = runtime.metadatos(workflow_id)
     return WorkflowGuardado(
         titulo=meta.get("titulo"), creado_por=meta.get("creado_por"),
+        creado_por_usuario=meta.get("creado_por_usuario"),
         formulario=meta.get("formulario") or {}, borrador_respuestas=meta.get("borrador") or {},
         estado=meta.get("estado"), reintentable=bool(meta.get("reintentable")), persistente=runtime.persiste,
     )
@@ -392,6 +398,27 @@ def _translate_runtime_error(exc: Exception) -> WorkflowApiError:
     )
 
 
+_ACCION_DECISION_PO = {
+    POApprovalDecision.APPROVE: ACCION.HISTORIA_APROBAR,
+    POApprovalDecision.RETURN_TO_ANALYST: ACCION.HISTORIA_DEVOLVER,
+    POApprovalDecision.RETURN_TO_WRITER: ACCION.HISTORIA_DEVOLVER,
+    POApprovalDecision.RETURN_TO_ADVISOR: ACCION.HISTORIA_DEVOLVER,
+    POApprovalDecision.REJECT: ACCION.HISTORIA_RECHAZAR,
+    POApprovalDecision.STOP: ACCION.HISTORIA_RECHAZAR,
+}
+
+
+def _exigir_permiso_respuesta(body: Any, usuario: dict[str, Any]) -> None:
+    """La acción depende de qué se responde: preguntas a negocio, decisión del PO o decisión de un cambio."""
+    if body.kind == "business_answers":
+        exigir_accion(usuario, ACCION.HISTORIA_RESPONDER_NEGOCIO)
+    elif body.kind == "change_decision":
+        exigir_accion(usuario, ACCION.CAMBIO_DECIDIR)
+    else:
+        # Quien tenga la acción puede decidir, también sobre una historia que él mismo creó.
+        exigir_accion(usuario, _ACCION_DECISION_PO[body.response.decision])
+
+
 def _expected_interrupt_kind(snapshot: WorkflowSnapshot) -> str | None:
     if snapshot.current_stage == WorkflowStage.BUSINESS_WAIT:
         return "business_answers"
@@ -402,7 +429,7 @@ def _expected_interrupt_kind(snapshot: WorkflowSnapshot) -> str | None:
     return None
 
 
-@router.get("", response_model=list[WorkflowResumen])
+@router.get("", response_model=list[WorkflowResumen], dependencies=[requiere_accion(ACCION.HISTORIA_VER)])
 def list_workflows(request: Request) -> list[WorkflowResumen]:
     """Flujos guardados que se pueden retomar, del más reciente al más antiguo."""
     runtime = _runtime(request)
@@ -412,7 +439,8 @@ def list_workflows(request: Request) -> list[WorkflowResumen]:
         raise _translate_runtime_error(exc) from exc
 
 
-@router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT,
+               dependencies=[requiere_accion(ACCION.HISTORIA_DESCARTAR_EN_PROCESO)])
 def delete_workflow(workflow_id: UUID, request: Request) -> None:
     runtime = _runtime(request)
     try:
@@ -421,7 +449,8 @@ def delete_workflow(workflow_id: UUID, request: Request) -> None:
         raise _translate_runtime_error(exc) from exc
 
 
-@router.put("/{workflow_id}/borrador", status_code=status.HTTP_204_NO_CONTENT)
+@router.put("/{workflow_id}/borrador", status_code=status.HTTP_204_NO_CONTENT,
+            dependencies=[requiere_accion(ACCION.HISTORIA_RESPONDER_NEGOCIO, ACCION.CAMBIO_DECIDIR)])
 def save_workflow_draft(workflow_id: UUID, body: BorradorRespuestas, request: Request) -> None:
     """Guarda respuestas escritas y todavía no enviadas, para terminarlas otro día."""
     runtime = _runtime(request)
@@ -431,7 +460,8 @@ def save_workflow_draft(workflow_id: UUID, body: BorradorRespuestas, request: Re
         raise _translate_runtime_error(exc) from exc
 
 
-@router.post("/{workflow_id}/reintentar", response_model=WorkflowApiResponse)
+@router.post("/{workflow_id}/reintentar", response_model=WorkflowApiResponse,
+             dependencies=[requiere_accion(ACCION.HISTORIA_CREAR, ACCION.CAMBIO_SOLICITAR, ACCION.HISTORIA_RESPONDER_NEGOCIO)])
 async def retry_workflow(workflow_id: UUID, request: Request) -> WorkflowApiResponse:
     """Vuelve a ejecutar el paso que falló, desde el último punto guardado."""
     runtime = _runtime(request)
@@ -442,8 +472,15 @@ async def retry_workflow(workflow_id: UUID, request: Request) -> WorkflowApiResp
             raise _translate_runtime_error(exc) from exc
 
 
-@router.post("", response_model=WorkflowApiResponse, status_code=status.HTTP_201_CREATED)
-async def create_workflow(body: WorkflowCreateRequest, request: Request) -> WorkflowApiResponse:
+@router.post("", response_model=WorkflowApiResponse, status_code=status.HTTP_201_CREATED,
+             dependencies=[requiere_accion(ACCION.HISTORIA_CREAR, ACCION.CAMBIO_SOLICITAR)])
+async def create_workflow(
+    body: WorkflowCreateRequest, request: Request, usuario: Annotated[dict[str, Any], Depends(usuario_actual)],
+) -> WorkflowApiResponse:
+    exigir_accion(usuario, ACCION.HISTORIA_CREAR if body.mode == FlowMode.PRE_GROOMING else ACCION.CAMBIO_SOLICITAR)
+    if seguridad_activa(request):
+        # Quién inicia el flujo lo dice la sesión, no el navegador.
+        body = body.model_copy(update={"creado_por": usuario["nombre"], "creado_por_usuario": usuario["id"]})
     runtime = _runtime(request)
     try:
         return _serialize(runtime, await runtime.execute(body))
@@ -451,7 +488,7 @@ async def create_workflow(body: WorkflowCreateRequest, request: Request) -> Work
         raise _translate_runtime_error(exc) from exc
 
 
-@router.get("/{workflow_id}", response_model=WorkflowApiResponse)
+@router.get("/{workflow_id}", response_model=WorkflowApiResponse, dependencies=[requiere_accion(ACCION.HISTORIA_VER)])
 def get_workflow(workflow_id: UUID, request: Request) -> WorkflowApiResponse:
     runtime = _runtime(request)
     try:
@@ -460,16 +497,18 @@ def get_workflow(workflow_id: UUID, request: Request) -> WorkflowApiResponse:
         raise _translate_runtime_error(exc) from exc
 
 
-@router.post("/{workflow_id}/resume", response_model=WorkflowApiResponse)
+@router.post("/{workflow_id}/resume", response_model=WorkflowApiResponse, dependencies=[requiere_sesion])
 async def resume_workflow(
     workflow_id: UUID,
     request: Request,
     body: Annotated[ResumeSubmission, Body()],
+    usuario: Annotated[dict[str, Any], Depends(usuario_actual)],
 ) -> WorkflowApiResponse:
     runtime = _runtime(request)
     async with _exclusive_operation(request, workflow_id):
         try:
             snapshot = runtime.get(workflow_id)
+            _exigir_permiso_respuesta(body, usuario)
             expected_kind = _expected_interrupt_kind(snapshot)
             active = runtime.pending_interrupt(workflow_id)
             if expected_kind is None or active is None:

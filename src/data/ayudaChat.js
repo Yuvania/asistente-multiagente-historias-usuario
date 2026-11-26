@@ -94,6 +94,12 @@ export const PREGUNTAS_AYUDA = [
     texto:
       'Por capas (interfaz, API, orquestación, agentes, herramientas y datos) y con registros: cada agente es una carpeta con su definición, y las pantallas salen de un registro único. Así, agregar un agente o una pantalla se hace en un solo lugar. El detalle está en Ayuda → Arquitectura.',
   },
+  {
+    id: 'mantenimiento',
+    pregunta: '¿Cómo doy permisos a una persona?',
+    texto:
+      'En Mantenimiento (solo para administradores). En Usuarios se busca a la persona y se le marcan sus roles; en Roles se elige un rol y se marcan sus acciones, por ejemplo Aprobar historia. El cambio aplica de inmediato. Solo quien tenga la acción de aprobar ve la opción Aprobar en el paso 5.',
+  },
 ];
 
 // Preguntas que se ofrecen como botones al abrir el chat.

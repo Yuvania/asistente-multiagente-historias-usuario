@@ -4,24 +4,30 @@
 //   Campos        → componente con los campos (recibe interrupt, valor y cambiar)
 //   construir     → arma la respuesta para el backend o devuelve { error }
 //   borrador      → si se pueden guardar las respuestas sin enviar
+//   accion        → acción que hace falta para responder (o, por opción, el tercer valor de la lista)
 // Ver docs/arquitectura.md y la skill «agregar-agente».
 import React from 'react';
 import { AreaTextoComponent } from '../components/Comun/AreaTextoComponent';
+import { ACCION } from '../config/acciones';
 
+// [valor, etiqueta, acción que hace falta]. Solo se muestran las opciones que la persona tiene permitidas.
 export const OPCION_PO = [
-  ['aprobar', 'Aprobar HU'],
-  ['devolver_analista', 'Devolver a Analista'],
-  ['devolver_redactor', 'Devolver a Redactor'],
-  ['devolver_asesor', 'Devolver a Asesor'],
-  ['rechazar', 'Rechazar HU'],
-  ['detener', 'Detener flujo'],
+  ['aprobar', 'Aprobar HU', ACCION.HISTORIA_APROBAR],
+  ['devolver_analista', 'Devolver a Analista', ACCION.HISTORIA_DEVOLVER],
+  ['devolver_redactor', 'Devolver a Redactor', ACCION.HISTORIA_DEVOLVER],
+  ['devolver_asesor', 'Devolver a Asesor', ACCION.HISTORIA_DEVOLVER],
+  ['rechazar', 'Rechazar HU', ACCION.HISTORIA_RECHAZAR],
+  ['detener', 'Detener flujo', ACCION.HISTORIA_RECHAZAR],
 ];
 
 export const OPCION_CAMBIO = [
-  ['aplicar', 'Aceptar recomendación'],
-  ['rechazar', 'Rechazar solicitud'],
-  ['devolver', 'Devolver para revisión'],
+  ['aplicar', 'Aceptar recomendación', ACCION.CAMBIO_DECIDIR],
+  ['rechazar', 'Rechazar solicitud', ACCION.CAMBIO_DECIDIR],
+  ['devolver', 'Devolver para revisión', ACCION.CAMBIO_DECIDIR],
 ];
+
+// Opciones que la persona puede elegir según sus acciones.
+export const opcionesPermitidas = (lista, puede = () => true) => lista.filter(([, , accion]) => puede(accion));
 
 const listaPregunta = (interrupt) => interrupt.payload?.questions ?? [];
 
@@ -78,12 +84,12 @@ const CamposRespuestaNegocio = ({ interrupt, valor, cambiar }) => {
   );
 };
 
-const SelectorDecision = ({ id, lista, valor, cambiar }) => (
+const SelectorDecision = ({ id, lista, valor, cambiar, puede }) => (
   <>
     <label htmlFor={id}>Decisión</label>
     <select id={id} required value={valor.decision} onChange={(event) => cambiar({ decision: event.target.value })}>
       <option value="">Seleccione una decisión</option>
-      {lista.map(([opcion, etiqueta]) => <option key={opcion} value={opcion}>{etiqueta}</option>)}
+      {opcionesPermitidas(lista, puede).map(([opcion, etiqueta]) => <option key={opcion} value={opcion}>{etiqueta}</option>)}
     </select>
   </>
 );
@@ -97,6 +103,7 @@ const etiquetaDe = (lista, decision) => lista.find(([opcion]) => opcion === deci
 
 export const registroInterrupcion = Object.freeze({
   business_answers: {
+    accion: ACCION.HISTORIA_RESPONDER_NEGOCIO,
     titulo: 'Respuestas de Negocio',
     descripcion: 'El Analista y el Asesor Técnico esperan estas respuestas antes de redactar la historia.',
     Campos: ({ interrupt, valor, cambiar }) => (
@@ -109,12 +116,12 @@ export const registroInterrupcion = Object.freeze({
     borrador: true,
   },
   po_approval: {
+    opciones: OPCION_PO,
     titulo: 'Decisión explícita del Product Owner',
-    Campos: ({ valor, cambiar }) => (
+    Campos: ({ valor, cambiar, puede }) => (
       <>
-        <SelectorDecision id="workflow-po-decision" lista={OPCION_PO} valor={valor} cambiar={cambiar} />
+        <SelectorDecision id="workflow-po-decision" lista={OPCION_PO} valor={valor} cambiar={cambiar} puede={puede} />
         {valor.decision.startsWith('devolver_') && <Motivo id="workflow-po-reason" valor={valor} cambiar={cambiar} />}
-        <p>La autenticación del sitio se mantiene; la autenticación Basic compartida no verifica la identidad individual del PO.</p>
       </>
     ),
     construir: (_interrupt, valor) => {
@@ -127,10 +134,11 @@ export const registroInterrupcion = Object.freeze({
     },
   },
   change_decision: {
+    opciones: OPCION_CAMBIO,
     titulo: 'Decisión sobre la solicitud de cambio',
-    Campos: ({ interrupt, valor, cambiar }) => (
+    Campos: ({ interrupt, valor, cambiar, puede }) => (
       <>
-        <SelectorDecision id="workflow-change-decision" lista={OPCION_CAMBIO} valor={valor} cambiar={cambiar} />
+        <SelectorDecision id="workflow-change-decision" lista={OPCION_CAMBIO} valor={valor} cambiar={cambiar} puede={puede} />
         {valor.decision === 'devolver' && <Motivo id="workflow-change-reason" valor={valor} cambiar={cambiar} />}
         {valor.decision === 'aplicar' && (interrupt.payload?.change_recommendation?.lessons_proposed ?? []).map((lesson, index) => (
           <div className="workflow-human-form__lesson" key={`${lesson.category}-${index}`}>
@@ -165,5 +173,10 @@ export const registroInterrupcion = Object.freeze({
     },
   },
 });
+
+// La persona puede responder esta intervención si tiene la acción del tipo o al menos una de sus opciones.
+export const puedeResponder = (tipo, puede = () => true) => (tipo.opciones
+  ? opcionesPermitidas(tipo.opciones, puede).length > 0
+  : puede(tipo.accion));
 
 export const textoDe = (campo, interrupt) => (typeof campo === 'function' ? campo(interrupt) : campo);

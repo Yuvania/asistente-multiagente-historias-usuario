@@ -1,7 +1,9 @@
 // Registro único de pantallas: de aquí salen las rutas de la aplicación y las opciones del menú.
 // Agregar una pantalla = agregar una entrada. Si debe verse en el menú, se le pone «menu».
+// Si solo deben verla quienes tengan una acción, se le pone «accion» (src/config/acciones.js).
 // Ver docs/arquitectura.md y la skill «agregar-ruta».
-import { LayoutDashboard, FileText, PlusCircle, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, FileText, PlusCircle, HelpCircle, ShieldCheck } from 'lucide-react';
+import { ACCION } from './acciones';
 import { TableroComponent } from '../components/Dashboard/TableroComponent';
 import { ListaHistoriaUsuarioComponent } from '../components/HistoriaUsuario/ListaHistoriaUsuarioComponent';
 import { CrearHistoriaUsuarioComponent } from '../components/HistoriaUsuario/CrearHistoriaUsuarioComponent';
@@ -11,8 +13,11 @@ import { EditarHistoriaUsuarioComponent } from '../components/HistoriaUsuario/Ed
 import { ListaHabilidadComponent } from '../components/Habilidad/ListaHabilidadComponent';
 import { AyudaComponent } from '../components/Ayuda/AyudaComponent';
 import { ListaLeccionComponent } from '../components/Leccion/ListaLeccionComponent';
+import { MantenimientoComponent } from '../components/Mantenimiento/MantenimientoComponent';
 
 // ruta: relativa a la raíz ('' es el inicio). componente: lo que se muestra.
+// accion (opcional): acción (o lista; basta una) que hace falta para abrirla. menu.accion la reemplaza solo
+// para mostrar la opción en el menú.
 // menu (opcional): etiqueta, título (texto emergente), ícono, orden y si la ruta debe coincidir exacta.
 export const listaRuta = Object.freeze([
   {
@@ -23,18 +28,28 @@ export const listaRuta = Object.freeze([
   {
     ruta: 'historias',
     componente: ListaHistoriaUsuarioComponent,
+    accion: ACCION.HISTORIA_VER,
     menu: { etiqueta: 'Historias de Usuario', titulo: 'Ver Historias de Usuario', icono: FileText, orden: 20, exacta: true },
   },
   {
     ruta: 'historias/nueva',
     componente: CrearHistoriaUsuarioComponent,
-    menu: { etiqueta: 'Nueva Historia', titulo: 'Crear Nueva Historia', icono: PlusCircle, orden: 30 },
+    // También se abre para retomar una historia en proceso: responder a negocio o decidir como Product Owner.
+    accion: [ACCION.HISTORIA_CREAR, ACCION.HISTORIA_RESPONDER_NEGOCIO, ACCION.HISTORIA_APROBAR,
+      ACCION.HISTORIA_DEVOLVER, ACCION.HISTORIA_RECHAZAR],
+    menu: { etiqueta: 'Nueva Historia', titulo: 'Crear Nueva Historia', icono: PlusCircle, orden: 30, accion: ACCION.HISTORIA_CREAR },
   },
-  { ruta: 'historias/:id', componente: DetalleHistoriaUsuarioComponent },
-  { ruta: 'historias/:id/editar', componente: EditarHistoriaUsuarioComponent },
-  { ruta: 'historias/:id/solicitar-cambio', componente: SolicitarCambioHistoriaComponent },
-  { ruta: 'lecciones', componente: ListaLeccionComponent },
+  { ruta: 'historias/:id', componente: DetalleHistoriaUsuarioComponent, accion: ACCION.HISTORIA_VER },
+  { ruta: 'historias/:id/editar', componente: EditarHistoriaUsuarioComponent, accion: ACCION.HISTORIA_EDITAR },
+  { ruta: 'historias/:id/solicitar-cambio', componente: SolicitarCambioHistoriaComponent, accion: ACCION.CAMBIO_SOLICITAR },
+  { ruta: 'lecciones', componente: ListaLeccionComponent, accion: ACCION.LECCION_VER },
   { ruta: 'skills', componente: ListaHabilidadComponent },
+  {
+    ruta: 'mantenimiento',
+    componente: MantenimientoComponent,
+    accion: ACCION.MANTENIMIENTO_VER,
+    menu: { etiqueta: 'Mantenimiento', titulo: 'Usuarios, roles y acciones', icono: ShieldCheck, orden: 80 },
+  },
   {
     ruta: 'ayuda',
     componente: AyudaComponent,
@@ -42,8 +57,8 @@ export const listaRuta = Object.freeze([
   },
 ]);
 
-// Opciones del menú principal, en su orden.
-export const listaOpcionMenu = () => listaRuta
-  .filter((entrada) => entrada.menu)
-  .map((entrada) => ({ ...entrada.menu, destino: `/${entrada.ruta}` }))
+// Opciones del menú principal, en su orden. «puede» filtra las que la persona no tiene permitidas.
+export const listaOpcionMenu = (puede = () => true) => listaRuta
+  .filter((entrada) => entrada.menu && puede(entrada.menu.accion ?? entrada.accion))
+  .map(({ ruta, menu: { accion: _accion, ...menu } }) => ({ ...menu, destino: `/${ruta}` }))
   .sort((a, b) => a.orden - b.orden);

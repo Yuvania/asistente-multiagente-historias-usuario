@@ -921,6 +921,7 @@ class WorkflowRuntime:
         self._meta[workflow_id] = {
             "titulo": " ".join(titulo.split())[:200] or "Sin título",
             "creado_por": request.creado_por if request else None,
+            "creado_por_usuario": request.creado_por_usuario if request else None,
             "formulario": dict(request.formulario or {}) if request else {},
             "borrador": {},
             "estado": "en_ejecucion",
@@ -962,6 +963,7 @@ class WorkflowRuntime:
             self._persistencia.guardar_workflow({
                 "id": str(workflow_id), "hilo": thread_id, "modo": str(values.get("mode", "pre_grooming")),
                 "titulo": meta.get("titulo"), "creado_por": meta.get("creado_por"),
+                "creado_por_usuario": meta.get("creado_por_usuario"),
                 "estado": estado, "etapa": str(values.get("current_stage", "analista")),
                 "espera": pendiente["payload"].get("kind") if pendiente else None,
                 "formulario": meta.get("formulario") or {}, "punto_control": punto,
@@ -986,6 +988,7 @@ class WorkflowRuntime:
         self._threads[workflow_id] = registro["hilo"]
         self._meta[workflow_id] = {
             "titulo": registro.get("titulo"), "creado_por": registro.get("creado_por"),
+            "creado_por_usuario": registro.get("creado_por_usuario"),
             "formulario": registro.get("formulario") or {}, "borrador": registro.get("borrador") or {},
             "estado": registro.get("estado"), "creado_en": registro.get("creado_en"),
             "actualizado_en": registro.get("actualizado_en"),

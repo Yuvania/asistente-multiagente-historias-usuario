@@ -15,6 +15,7 @@ Lee `docs/arquitectura.md` antes de cambiar código. Resumen de lo que no se neg
 5. **Ningún agente aprueba.** La aprobación es siempre una decisión humana (Product Owner).
 6. **Mínimo privilegio.** Herramientas MCP de solo lectura y solo las que declara la definición del agente.
 7. **La HU no muestra detalle técnico** a la persona usuaria (archivos, código, nombres internos).
+8. **Toda funcionalidad se protege con una acción.** El catálogo está en `agentes/seguridad/catalogo.py` (código, nombre legible y módulo) y su copia de códigos en `src/config/acciones.js`. Cada ruta de la API declara `requiere_accion(ACCION.X)`, `requiere_sesion` o `ruta_publica` (`agentes/analista/api/sesion.py`); en el frontend, la entrada de `rutas.jsx` lleva `accion` y los botones usan `useSesion().puede(ACCION.X)` o `<Permitido accion>`. La acción nueva aparece sola en Mantenimiento para asignarla a los roles. El permiso se valida en el backend; ocultar el botón no basta.
 
 ## Convenciones de código
 - Nombres en español y en singular: `listaAgente`, `listaRuta` (no `agentes`, `rutas` para variables).

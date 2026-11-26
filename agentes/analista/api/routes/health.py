@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
 
+from agentes.analista.api.sesion import ruta_publica
 from agentes.analista.core.models import (
     CheckStatus,
     HealthChecks,
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health", response_model=HealthResponse, dependencies=[ruta_publica])
 async def health(request: Request) -> HealthResponse:
     state = request.app.state
     prompt_status = CheckStatus.OK

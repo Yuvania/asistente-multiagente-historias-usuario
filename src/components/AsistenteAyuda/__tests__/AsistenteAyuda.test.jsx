@@ -85,10 +85,10 @@ describe('página de Ayuda', () => {
     expect(screen.getByRole('heading', { name: 'Agregar un agente' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /Por definir/ }));
-    expect(screen.getByRole('heading', { name: 'Roles, acciones y permisos' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Bitácora de seguridad' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Aviso por correo al Product Owner' })).toBeInTheDocument();
     expect(screen.queryByText(/Falta construir el Agente Redactor-Revisor/)).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Usuarios e inicio de sesión' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Usuarios e inicio de sesión' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('tab', { name: /Equipo/ }));
     const nombres = screen.getAllByRole('listitem').map((item) => item.textContent);

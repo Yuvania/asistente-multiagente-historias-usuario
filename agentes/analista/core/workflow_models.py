@@ -391,6 +391,8 @@ class WorkflowCreateRequest(BaseModel):
     # Solo para guardar y retomar el flujo: no llegan al grafo ni a los agentes.
     titulo: str | None = Field(default=None, max_length=200)
     creado_por: str | None = Field(default=None, max_length=120)
+    # Lo pone el backend con el usuario de la sesión (para no aprobar la historia propia).
+    creado_por_usuario: str | None = Field(default=None, max_length=60)
     formulario: dict[str, str] | None = Field(default=None, max_length=20)
 
     @field_validator("formulario")

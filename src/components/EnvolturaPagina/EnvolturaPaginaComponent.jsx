@@ -1,18 +1,25 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Sparkles, Moon, Sun, UserRound } from 'lucide-react';
+import { Sparkles, Moon, Sun, UserRound, LogOut } from 'lucide-react';
 import { useTema } from '../../hooks/useTema';
 import { useUsuarioActual } from '../../hooks/useUsuarioActual';
 import { DialogoUsuarioComponent } from '../Usuario/DialogoUsuarioComponent';
 import { TEXTO_PIE } from '../../config/entorno';
 import { listaOpcionMenu } from '../../config/rutas';
 import { AsistenteAyudaComponent } from '../AsistenteAyuda/AsistenteAyudaComponent';
+import { useSesion } from '../Sesion/SesionContext';
+import { useConfirmacion } from '../Comun/ConfirmacionComponent';
 
 export const EnvolturaPaginaComponent = () => {
   const { theme, toggleTheme } = useTema();
   const isDark = theme === 'dark';
   const { nombre, guardar } = useUsuarioActual();
   const [mostrarUsuario, setMostrarUsuario] = useState(false);
+  const { seguridad, usuario, puede, salir } = useSesion();
+  const confirmar = useConfirmacion();
+  const cerrarSesion = async () => {
+    if (await confirmar({ titulo: 'Cerrar sesión', mensaje: `¿Cerrar la sesión de ${usuario.nombre}?`, textoConfirmar: 'Cerrar sesión' })) salir();
+  };
 
   return (
     <div className="app-container">
@@ -29,7 +36,7 @@ export const EnvolturaPaginaComponent = () => {
 
           {/* Las opciones salen del registro único de pantallas (src/config/rutas.jsx). */}
           <nav className="header__nav">
-            {listaOpcionMenu().map(({ destino, etiqueta, titulo, icono: Icono, exacta }) => (
+            {listaOpcionMenu(puede).map(({ destino, etiqueta, titulo, icono: Icono, exacta }) => (
               <NavLink
                 key={destino}
                 to={destino}
@@ -43,6 +50,18 @@ export const EnvolturaPaginaComponent = () => {
             ))}
           </nav>
 
+          {seguridad && usuario ? (
+            <button
+              type="button"
+              className="header__theme-toggle header__user"
+              onClick={cerrarSesion}
+              aria-label={`Usuario: ${usuario.nombre}. Cerrar sesión`}
+              title={`${usuario.nombre} (${usuario.roles.map((rol) => rol.nombre).join(', ') || 'sin roles'}). Cerrar sesión`}
+            >
+              <LogOut size={18} />
+              <span>{usuario.nombre}</span>
+            </button>
+          ) : (
           <button
             type="button"
             className="header__theme-toggle header__user"
@@ -53,6 +72,7 @@ export const EnvolturaPaginaComponent = () => {
             <UserRound size={18} />
             <span>{nombre || 'Identificarse'}</span>
           </button>
+          )}
 
           <button
             type="button"

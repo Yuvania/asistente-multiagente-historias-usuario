@@ -10,6 +10,8 @@ import { etiquetaHistoria } from '../../utils/plantillaHu';
 import { PlusCircle, Search, Filter, LayoutGrid, List } from 'lucide-react';
 import { EstadoVacioComponent } from '../Comun/EstadoVacioComponent';
 import { HuEnProcesoComponent } from './HuEnProcesoComponent';
+import { useSesion } from '../Sesion/SesionContext';
+import { ACCION } from '../../config/acciones';
 
 const CLAVE_VISTA = 'historias_usuario_vista';
 
@@ -24,6 +26,7 @@ const leerVista = () => {
 
 export const ListaHistoriaUsuarioComponent = () => {
   const navigate = useNavigate();
+  const { puede } = useSesion();
   const [stories, setStories] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -77,7 +80,7 @@ export const ListaHistoriaUsuarioComponent = () => {
       <TituloPaginaComponent
         title="Historias de Usuario"
         description="Gestione y consulte todas las Historias de Usuario generadas y registradas."
-        action={
+        action={puede(ACCION.HISTORIA_CREAR) && (
           <BotonComponent
             variant="primary"
             icon={PlusCircle}
@@ -85,7 +88,7 @@ export const ListaHistoriaUsuarioComponent = () => {
           >
             Nueva Historia
           </BotonComponent>
-        }
+        )}
       />
 
       <HuEnProcesoComponent />

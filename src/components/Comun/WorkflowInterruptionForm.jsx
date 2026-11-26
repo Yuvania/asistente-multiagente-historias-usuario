@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertaComponent } from './AlertaComponent';
 import { BotonComponent } from './BotonComponent';
-import { registroInterrupcion, textoDe } from '../../flujo/interrupciones';
+import { puedeResponder, registroInterrupcion, textoDe } from '../../flujo/interrupciones';
+import { useSesion } from '../Sesion/SesionContext';
+import { sesionApi } from '../../services/seguridadApi';
 import { useConfirmacion } from './ConfirmacionComponent';
 
 // Formulario genérico de intervención humana. Qué campos muestra y qué respuesta arma lo decide el
@@ -14,10 +16,32 @@ export const WorkflowInterruptionForm = ({
   const [draftNotice, setDraftNotice] = useState('');
   const [validationError, setValidationError] = useState('');
   const confirmar = useConfirmacion();
+  const { puede, seguridad } = useSesion();
+  const tipo = interrupt ? registroInterrupcion[interrupt.kind] : null;
+  const permitido = !tipo || puedeResponder(tipo, puede);
+  const [listaAprobador, setListaAprobador] = useState([]);
+
+  // Sin permiso para decidir: se indica quién puede hacerlo (por ejemplo, los Product Owner).
+  useEffect(() => {
+    if (!seguridad || permitido || interrupt?.kind !== 'po_approval') return;
+    sesionApi.listarAprobador().then(setListaAprobador).catch((fallo) => {
+      console.error('No se pudo consultar quién puede aprobar:', fallo);
+    });
+  }, [seguridad, permitido, interrupt?.kind]);
+
   if (!interrupt) return null;
-  const tipo = registroInterrupcion[interrupt.kind];
   if (!tipo) {
     return <AlertaComponent type="danger" title="Intervención no reconocida">El flujo pidió una intervención que esta versión no sabe mostrar.</AlertaComponent>;
+  }
+  if (!permitido) {
+    const nombres = listaAprobador.map((persona) => persona.nombre).join(', ');
+    return (
+      <AlertaComponent type="info" title="Esta decisión le corresponde a otra persona">
+        {interrupt.kind === 'po_approval'
+          ? `La historia quedó pendiente de aprobación${nombres ? ` por: ${nombres}` : ' de un Product Owner'}. La verán en Historias de Usuario → En proceso.`
+          : 'Su rol no tiene la acción necesaria para responder este paso. Pida a un administrador que se la asigne en Mantenimiento.'}
+      </AlertaComponent>
+    );
   }
 
   const cambiar = (parcial) => {
@@ -53,7 +77,7 @@ export const WorkflowInterruptionForm = ({
     <form onSubmit={submit} className="workflow-human-form" aria-label="Intervención humana requerida">
       {titulo && <h3>{titulo}</h3>}
       {descripcion && <p>{descripcion}</p>}
-      <Campos interrupt={interrupt} valor={valor} cambiar={cambiar} />
+      <Campos interrupt={interrupt} valor={valor} cambiar={cambiar} puede={puede} />
 
       {validationError && <AlertaComponent type="warning" title="Revise la respuesta">{validationError}</AlertaComponent>}
       {draftNotice && <AlertaComponent type="success" title="Respuestas guardadas">{draftNotice}</AlertaComponent>}

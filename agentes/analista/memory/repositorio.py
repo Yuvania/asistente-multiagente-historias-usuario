@@ -123,6 +123,7 @@ workflow_guardado = Table(
     Column("modo", String(20), nullable=False),
     Column("titulo", String(200), nullable=False),
     Column("creado_por", String(120)),
+    Column("creado_por_usuario", String(60)),  # id del usuario que inició el flujo (con seguridad activa)
     Column("estado", String(20), nullable=False),  # esperando | en_ejecucion | error | completado | cancelado | fallido
     Column("etapa", String(40), nullable=False),
     Column("espera", String(40)),  # tipo de interrupción pendiente, si hay
@@ -184,7 +185,7 @@ def _verificar_esquema(motor) -> None:
 
 
 # Columnas agregadas después de crear la tabla: create_all no altera tablas existentes.
-_COLUMNA_NUEVA = {"hu_aprobada": ("seguimiento",)}
+_COLUMNA_NUEVA = {"hu_aprobada": ("seguimiento",), "workflow_guardado": ("creado_por_usuario",)}
 
 
 def _agregar_columnas_nuevas(motor) -> None:
@@ -295,6 +296,7 @@ class RepositorioHU:
         valores = {
             "hilo": registro["hilo"], "modo": registro["modo"], "titulo": (registro.get("titulo") or "Sin título")[:200],
             "creado_por": (registro.get("creado_por") or None) and registro["creado_por"][:120],
+            "creado_por_usuario": registro.get("creado_por_usuario"),
             "estado": registro["estado"], "etapa": registro["etapa"], "espera": registro.get("espera"),
             "formulario": json.dumps(registro.get("formulario") or {}, ensure_ascii=False),
             "punto_control": json.dumps(registro.get("punto_control"), ensure_ascii=False),
@@ -323,7 +325,7 @@ class RepositorioHU:
         """Resumen de los flujos guardados, del más reciente al más antiguo (sin el punto de control)."""
         consulta = select(
             workflow_guardado.c.id, workflow_guardado.c.modo, workflow_guardado.c.titulo,
-            workflow_guardado.c.creado_por, workflow_guardado.c.estado, workflow_guardado.c.etapa,
+            workflow_guardado.c.creado_por, workflow_guardado.c.creado_por_usuario, workflow_guardado.c.estado, workflow_guardado.c.etapa,
             workflow_guardado.c.espera, workflow_guardado.c.creado_en, workflow_guardado.c.actualizado_en,
         ).order_by(workflow_guardado.c.actualizado_en.desc())
         with self.motor.connect() as conexion:

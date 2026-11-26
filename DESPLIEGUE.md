@@ -21,7 +21,8 @@ El Blueprint mantiene un único Web Service Docker. La imagen incluye React comp
 | Variable | Qué es |
 |---|---|
 | `OPENCODE_API_KEY` | Clave del plan OpenCode Go (la misma que usas en local, pero crea una **nueva** para el servidor). |
-| `ACCESO_USUARIO` / `ACCESO_CLAVE` | Usuario y clave compartidos con el equipo para entrar al URL. Usa una clave larga. |
+| `ACCESO_USUARIO` / `ACCESO_CLAVE` | Usuario y contraseña del **administrador inicial**. Con ellas se activa el inicio de sesión por usuario: en una base nueva se crean los roles iniciales y este administrador, que luego crea a los demás usuarios en Mantenimiento. Usa una clave larga. |
+| `SESION_SECRETO` (opcional) | Secreto para firmar las sesiones. Si falta se deriva de `ACCESO_CLAVE`; si se cambia, todos deben volver a ingresar. |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Opcionales. Déjalas vacías si no usas Langfuse en el servidor. |
 
 3. Ya vienen definidas en `render.yaml`: `ANALISTA_PUBLICO=1` (obliga a tener usuario y clave; si faltan, el servicio no inicia), `OPENCODE_PROVIDER_ID`, `OPENCODE_MODEL_ID` y `OPENCODE_SERVER_PASSWORD` (la genera Render).
@@ -35,7 +36,7 @@ Se cambian en el panel de Render (**Environment**); al guardar, Render reinicia 
 | Variable | Obligatoria | Uso |
 |---|---|---|
 | `ANALISTA_PUBLICO` | Sí en Render | Con `1` exige usuario y clave de acceso. |
-| `ACCESO_USUARIO`, `ACCESO_CLAVE` | Sí en Render | Acceso al URL. |
+| `ACCESO_USUARIO`, `ACCESO_CLAVE` | Sí en Render | Administrador inicial y activación de la seguridad por usuario. |
 | `OPENCODE_SERVER_PASSWORD` | Sí | Clave interna entre el backend y OpenCode (la genera Render). |
 | `OPENCODE_API_KEY` | Sí | Credencial del modelo. |
 | `OPENCODE_PROVIDER_ID`, `OPENCODE_MODEL_ID` | Sí | Modelo a usar (`opencode-go` / `glm-5.3-flash`). |
@@ -88,7 +89,7 @@ Para usarlo en serio: en `render.yaml` cambie `plan: free` por `plan: starter`, 
 - **Seguridad:** quien entre al URL consume la cuota de tu plan de OpenCode. Por eso el acceso con clave es obligatorio y no se debe compartir el URL con la clave fuera del equipo. No uses datos personales reales en las historias.
 - **Un solo servidor:** el servicio está pensado para una sola instancia (las conversaciones del agente y los flujos activos viven en memoria; los flujos se guardan en la base de datos cada vez que esperan a una persona, así que un reinicio no los pierde). No lo escales a varias instancias.
 - **Credenciales del modelo:** el contenedor escribe `OPENCODE_API_KEY` en el archivo de credenciales de OpenCode al arrancar. Si el endpoint `/api/analista/health` indica que el modelo no está disponible, revisa que la clave sea válida y el plan esté activo.
-- **Rotación:** cambia `OPENCODE_API_KEY` y `ACCESO_CLAVE` desde el panel cuando alguien deje el equipo.
+- **Rotación:** cambia `OPENCODE_API_KEY` desde el panel cuando alguien deje el equipo, y desactiva su usuario en Mantenimiento.
 - **Datos compartidos:** las historias y el Repositorio de HU viven en la base de datos. El navegador solo conserva una copia local (caché) que se actualiza al abrir la aplicación y al volver a ella; sin conexión se puede leer, pero los cambios se envían cuando el servicio responde.
 
 ## Ingesta, salud y memoria

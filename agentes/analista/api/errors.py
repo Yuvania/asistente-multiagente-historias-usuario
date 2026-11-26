@@ -11,6 +11,7 @@ from agentes.analista.core.conversation_store import StoreError
 from agentes.analista.core.models import ErrorCode, ErrorDetail, ErrorResponse, ValidationIssue
 from agentes.equipo.analista.analista_service import OrchestrationError
 from agentes.analista.memory.repositorio import RepositorioError
+from agentes.seguridad.repositorio_seguridad import SeguridadError
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,10 @@ def _status(code: ErrorCode) -> int:
         return 503
     if code == ErrorCode.INVALID_INPUT:
         return 400
+    if code == ErrorCode.SESION_REQUERIDA:
+        return 401
+    if code == ErrorCode.PERMISO_DENEGADO:
+        return 403
     if code == ErrorCode.CONTRACT_INVALID:
         return 422
     if code in {ErrorCode.CONVERSATION_NOT_FOUND, ErrorCode.REPOSITORY_NOT_FOUND}:
@@ -78,6 +83,12 @@ def install_error_handlers(app: FastAPI) -> None:
     async def repositorio_error(_: Request, exc: RepositorioError) -> JSONResponse:
         code = ErrorCode.REPOSITORY_NOT_FOUND if exc.not_found else ErrorCode.INVALID_REQUEST
         detail = ErrorDetail(code=code, message=exc.message[:500], retryable=False)
+        return JSONResponse(status_code=_status(code), content=ErrorResponse(error=detail).model_dump(mode="json"))
+
+    @app.exception_handler(SeguridadError)
+    async def seguridad_error(_: Request, exc: SeguridadError) -> JSONResponse:
+        code = ErrorCode.REPOSITORY_NOT_FOUND if exc.no_encontrado else ErrorCode.INVALID_INPUT
+        detail = ErrorDetail(code=code, message=exc.mensaje[:500], retryable=False)
         return JSONResponse(status_code=_status(code), content=ErrorResponse(error=detail).model_dump(mode="json"))
 
     @app.exception_handler(OrchestrationError)
