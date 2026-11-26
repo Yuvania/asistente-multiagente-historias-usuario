@@ -107,3 +107,50 @@ def test_question_merge_rejects_overflow_instead_of_silently_dropping_items():
         )
 
     assert raised.value.code.value == "AGENT_OUTPUT_INVALID"
+
+
+def _respuesta_con_vacio(prior_questions, respondidas=None):
+    output = AgentOutput(
+        respuesta_markdown="Quedan vacíos.",
+        analisis={
+            "conocida": ["El cliente tiene teléfono"],
+            "faltante": ["Formato del teléfono"],
+            "supuesta": ["El teléfono es de Costa Rica"],
+            "ambigua": [],
+        },
+        preguntas=[],
+        listo_para_redactor=False,
+    )
+    return orchestrator._to_response(
+        output,
+        conversation_id=uuid4(),
+        request_id=uuid4(),
+        turn_id=uuid4(),
+        prior_questions=prior_questions,
+        tool_executions=[],
+        limitations=[],
+        duration_ms=5,
+        respondidas=respondidas,
+    )
+
+
+def test_vacio_sin_pregunta_se_convierte_en_pregunta_pendiente_para_negocio():
+    response = _respuesta_con_vacio([])
+
+    pendiente = [item for item in response.preguntas if item.estado == QuestionState.PENDING]
+    assert [item.categoria for item in pendiente] == [QuestionCategory.REQUIRED_DATA, QuestionCategory.BUSINESS_RULES]
+    assert "«Formato del teléfono»" in pendiente[0].pregunta
+    assert response.analisis.faltante == ["Formato del teléfono"]
+    assert response.listo_para_redactor is False
+
+
+def test_vacio_ya_respondido_pasa_a_conocida_y_el_flujo_puede_avanzar():
+    generada = _respuesta_con_vacio([]).preguntas
+    prior = [item.model_copy(update={"estado": QuestionState.PENDING}) for item in generada]
+
+    response = _respuesta_con_vacio(prior, respondidas=[item.question_id for item in prior])
+
+    assert all(item.estado == QuestionState.ANSWERED for item in response.preguntas)
+    assert response.analisis.faltante == [] and response.analisis.supuesta == []
+    assert "Formato del teléfono (confirmado por Negocio)" in response.analisis.conocida
+    assert response.listo_para_redactor is True

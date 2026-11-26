@@ -58,6 +58,13 @@ import {
   FileDown
 } from 'lucide-react';
 
+const ROTULO_ESTADO_WORKFLOW = {
+  failed: 'detenido por un error',
+  running: 'en ejecución',
+  completed: 'finalizado',
+  cancelled: 'cancelado',
+};
+
 const STEPPER_STEPS = [
   { id: 1, label: 'Requerimiento' },
   { id: 2, label: 'Análisis del agente' },
@@ -167,9 +174,15 @@ const CrearHistoriaUsuarioContenido = () => {
   const failedMessage = useMemo(() => latestFailedMessage(agent.messages), [agent.messages]);
   const isProcessing = agent.isProcessing || isGeneratingStory || workflowBusy;
   const unsentQuestions = questionsToSend(questions, sentAnswers);
-  const pendingCount = questions.filter((q) => q.status === 'pendiente').length;
   const agentError = failedMessage?.error || agent.error;
   const agentReady = Boolean(agentResponse?.listo_para_redactor) && unsentQuestions.length === 0;
+  const esperaRespuesta = workflowResponse?.interrupt?.kind === 'business_answers';
+  // Con workflow activo, las preguntas pendientes son las que el backend pide en la interrupción.
+  const pendingCount = workflowResponse
+    ? (esperaRespuesta ? (workflowResponse.interrupt.payload?.questions ?? []).length : 0)
+    : questions.filter((q) => q.status === 'pendiente').length;
+  const workflowSinSiguientePaso = Boolean(workflowResponse) && !esperaRespuesta && !agentReady
+    && !workflowResponse?.results?.story;
   const sources = describeSources(agentResponse?.fuentes_consultadas);
 
   const setWorkflowSnapshot = (snapshot) => {
@@ -889,7 +902,11 @@ const CrearHistoriaUsuarioContenido = () => {
                 title="Paso 3 — Preguntas de Aclaración para Negocio"
                 subtitle="Lleve estas preguntas a Negocio, registre sus respuestas y envíelas al agente. Se repite hasta que no queden vacíos."
               >
-                {agentReady ? (
+                {workflowSinSiguientePaso ? (
+                  <AlertaComponent type={workflowResponse.status === 'failed' ? 'danger' : 'info'} title={`Flujo ${ROTULO_ESTADO_WORKFLOW[workflowResponse.status] ?? workflowResponse.status}`}>
+                    {workflowResponse.results?.completion_reason || workflowError || 'El flujo no espera respuestas de Negocio ni tiene un borrador. Puede consultar el estado o iniciar de nuevo desde el paso 1.'}
+                  </AlertaComponent>
+                ) : agentReady ? (
                   <AlertaComponent type="success" title="No quedan vacíos relevantes">
                     El agente considera aclarado el requerimiento. Puede generar el borrador de la Historia de Usuario.
                   </AlertaComponent>

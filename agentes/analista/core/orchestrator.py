@@ -32,6 +32,7 @@ from agentes.analista.core.models import (
     ErrorCode,
     ErrorDetail,
     Question,
+    QuestionCategory,
     QuestionState,
     SourceConsultation,
     ToolExecution,
@@ -121,6 +122,42 @@ def _plan_publico(ciclo: ResultadoCiclo) -> list[dict[str, Any]]:
     return salida
 
 
+_PLANTILLA_VACIO: dict[str, tuple[QuestionCategory, str]] = {
+    "faltante": (QuestionCategory.REQUIRED_DATA, "Falta definir: «{}». ¿Cuál es la regla o el dato correcto?"),
+    "supuesta": (QuestionCategory.BUSINESS_RULES, "Se está suponiendo lo siguiente: «{}». ¿Es correcto?"),
+    "ambigua": (QuestionCategory.EXPECTED_BEHAVIOR, "Esto no está claro: «{}». ¿Cómo debe entenderse?"),
+}
+
+
+def _preguntas_de_vacio(
+    analisis: Analysis, questions: list[Question], question_key: Any, turn_id: Any,
+) -> tuple[Analysis, list[Question]]:
+    """Convierte vacíos sin pregunta en preguntas; los ya respondidos pasan a «conocida»."""
+    respondida = {question_key(item.pregunta) for item in questions if item.estado == QuestionState.ANSWERED}
+    existente = {question_key(item.pregunta) for item in questions}
+    conocida = list(analisis.conocida)
+    restante: dict[str, list[str]] = {}
+    generada: list[Question] = []
+    for campo, (categoria, plantilla) in _PLANTILLA_VACIO.items():
+        restante[campo] = []
+        for item in getattr(analisis, campo):
+            texto = plantilla.format(item.strip())[:500]
+            clave = question_key(texto)
+            if clave in respondida:
+                conocida.append(f"{item.strip()[:970]} (confirmado por Negocio)")
+                continue
+            restante[campo].append(item)
+            if clave in existente:
+                continue
+            existente.add(clave)
+            generada.append(Question(
+                question_id=str(uuid4()), categoria=categoria, pregunta=texto,
+                estado=QuestionState.PENDING, created_turn_id=turn_id, updated_turn_id=None,
+            ))
+    nuevo = analisis.model_copy(update={"conocida": conocida[:100], **restante})
+    return nuevo, generada
+
+
 def _to_response(
     output: AgentOutput,
     *,
@@ -187,7 +224,13 @@ def _to_response(
         for item in tool_executions if item.status == ToolStatus.OK
     ]
     # The readiness gate is derived from validated facts, never trusted to the model.
-    ready = not (output.analisis.faltante or output.analisis.supuesta or output.analisis.ambigua)
+    analisis = output.analisis
+    if not any(item.estado == QuestionState.PENDING for item in questions):
+        # El modelo dejó vacíos sin preguntar: cada vacío se convierte en pregunta para Negocio. Si esa misma
+        # pregunta ya fue respondida, el punto queda confirmado y pasa a «conocida». Así el ciclo siempre avanza.
+        analisis, generadas = _preguntas_de_vacio(analisis, questions, question_key, turn_id)
+        questions.extend(generadas[:50 - len(questions)])
+    ready = not (analisis.faltante or analisis.supuesta or analisis.ambigua)
     ready = ready and not any(item.estado == QuestionState.PENDING for item in questions)
     return AgentTurnResponse(
         conversation_id=conversation_id,
@@ -195,7 +238,7 @@ def _to_response(
         turn_id=turn_id,
         estado="completado",
         respuesta_markdown=output.respuesta_markdown.strip(),
-        analisis=output.analisis,
+        analisis=analisis,
         preguntas=questions,
         fuentes_consultadas=sources[:4],
         listo_para_redactor=ready,

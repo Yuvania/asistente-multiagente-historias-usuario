@@ -91,6 +91,29 @@ describe('workflow LangGraph conectado al wizard de HU', () => {
 
   afterEach(() => cleanup());
 
+  it('muestra el estado y el motivo cuando el flujo se detiene sin preguntas ni borrador', async () => {
+    const user = userEvent.setup();
+    startWorkflow.mockResolvedValue({
+      workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'interrupted', stage: 'espera_negocio',
+      results: baseResults, interrupt: analystInterrupt,
+    });
+    resumeWorkflow.mockResolvedValueOnce({
+      workflow_id: WORKFLOW_ID, mode: 'pre_grooming', status: 'failed', stage: 'analista',
+      results: { ...baseResults, analyst: { ...baseResults.analyst, preguntas: [] }, completion_reason: 'El Analista reportó vacíos sin preguntas pendientes.' },
+      interrupt: null,
+    });
+
+    renderAt();
+    await fillRequirement(user);
+    await user.click(screen.getByRole('button', { name: /Analizar Requerimiento/i }));
+    await user.type(await screen.findByLabelText(/¿Cuál es el plazo\?/i), '12 meses');
+    await user.click(screen.getByRole('button', { name: /Confirmar y continuar/i }));
+
+    expect(await screen.findByText(/Flujo detenido por un error/i)).toBeInTheDocument();
+    expect(screen.getByText(/El Analista reportó vacíos sin preguntas pendientes/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Quedan \d+ preguntas pendientes/i)).not.toBeInTheDocument();
+  });
+
   it('answers Business, displays writer/reviewer and fictional technical evidence, then saves only through backend PO approval', async () => {
     const user = userEvent.setup();
     startWorkflow.mockResolvedValue({
