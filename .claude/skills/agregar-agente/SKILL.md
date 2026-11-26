@@ -32,7 +32,11 @@ El modelo de salida va en `agentes/analista/core/workflow_models.py`, con `extra
 Agrega en `opencode.jsonc` la entrada `"<id>"` con `"mode"` igual a `modo_opencode`, `"system": "{file:./agentes/equipo/<id>/prompt.md}"` y el permiso deny-all.
 
 ## 4. Flujo
-En `agentes/analista/core/workflow_graph.py`: una función `call_<id>` (con parámetro inyectable para pruebas, como `draft`/`review`), un nodo que valida la salida con su modelo y actualiza el estado, y sus aristas. Agrega a `WorkflowState`/`WorkflowSnapshot` los campos nuevos y a `_public_snapshot` los que puede ver la interfaz.
+El flujo es una tabla de pasos al final de `build_workflow_graph` en `agentes/analista/core/workflow_graph.py` (`lista_paso`). No uses `add_node`/`add_edge` directamente.
+- Escribe una función `call_<id>` (con parámetro inyectable para pruebas, como `draft`/`review`) y un nodo que valide la salida con su modelo y devuelva los cambios de estado.
+- Agrega su `Paso("<id>", <id>_node, "<siguiente>", "descripción")` y cambia el `siguiente` del paso anterior para que llegue al nuevo. Si el siguiente depende del estado, usa `Ruta(decidir, {clave: paso})`.
+- `construir_flujo` valida la tabla: si un destino no existe o un paso queda sin llegada, falla con un mensaje claro.
+- Agrega a `WorkflowState`/`WorkflowSnapshot` los campos nuevos y a `_public_snapshot` los que puede ver la interfaz.
 
 Si el agente necesita una decisión humana: el nodo usa `interrupt({...,"kind": "<tipo>"})`, se agrega el tipo a `WorkflowInterrupt.kind` y a la tabla de modelos de respuesta en `agentes/analista/api/routes/workflows.py`, y en el frontend una entrada en `src/flujo/interrupciones.jsx`.
 

@@ -12,10 +12,10 @@ from uuid import UUID, uuid4
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
-from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from agentes.analista.core.agent_registry import AgentId
+from agentes.analista.core.flujo import FIN, Paso, Ruta, construir_flujo
 from agentes.equipo.gestor_cambios.gestor_cambios_service import GestorCambiosService
 from agentes.analista.core.conversation_store import ConversationStore, StoreError
 from agentes.analista.core.models import AgentTurnResponse, SendMessageRequest, QuestionState
@@ -753,77 +753,61 @@ def build_workflow_graph(
         _trace_stage(observability, state, stage=WorkflowStage.ANALYST, agent=AgentId.ANALYST)
         return {"current_stage": WorkflowStage.ANALYST, "status": WorkflowStatus.FAILED}
 
-    builder = StateGraph(WorkflowState)
-    builder.add_node("prepare_pre_grooming", prepare_pre_grooming)
-    builder.add_node("prepare_post_grooming", prepare_post_grooming)
-    builder.add_node("change_manager", change_manager_node)
-    builder.add_node("human_change_decision", human_change_decision_node)
-    builder.add_node("apply_change_decision", apply_change_decision_node)
-    builder.add_node("analyst", analyst_node)
-    builder.add_node("business_wait", wait_for_business)
-    builder.add_node("writer", writer_node)
-    builder.add_node("reviewer", reviewer_node)
-    builder.add_node("technical_advisor", technical_advisor_node)
-    builder.add_node("impact_wait", impact_wait_node)
-    builder.add_node("aprobacion_po", po_approval_node)
-    builder.add_node("repositorio", repository_node)
-    builder.add_node("hold_for_unresolved_gaps", hold_for_unresolved_gaps)
-    builder.add_conditional_edges(
-        START,
-        lambda state: FlowMode(state["mode"]).value,
-        {
-            FlowMode.PRE_GROOMING.value: "prepare_pre_grooming",
-            FlowMode.POST_GROOMING.value: "prepare_post_grooming",
-        },
-    )
-    builder.add_conditional_edges(
-        "prepare_pre_grooming",
-        lambda state: "analyst" if state.get("execute_agents") else END,
-        {"analyst": "analyst", END: END},
-    )
-    builder.add_conditional_edges(
-        "prepare_post_grooming",
-        lambda state: "change_manager" if state.get("execute_agents") else END,
-        {"change_manager": "change_manager", END: END},
-    )
-    builder.add_edge("change_manager", "human_change_decision")
-    builder.add_conditional_edges(
-        "human_change_decision",
-        lambda state: state["change_route"],
-        {"apply": "apply_change_decision", "analyze": "analyst", "end": END},
-    )
-    builder.add_conditional_edges(
-        "apply_change_decision",
-        lambda state: state["change_route"],
-        {"analyze": "analyst", "end": END},
-    )
-    builder.add_conditional_edges(
-        "analyst",
-        lambda state: (
-            "business_wait" if state.get("pending_questions") else
-            "technical_advisor" if state.get("analyst_ready") else "hold_for_unresolved_gaps"
-        ),
-        {"business_wait": "business_wait", "technical_advisor": "technical_advisor",
-         "hold_for_unresolved_gaps": "hold_for_unresolved_gaps"},
-    )
-    builder.add_edge("business_wait", "analyst")
-    builder.add_edge("writer", "reviewer")
-    builder.add_conditional_edges(
-        "reviewer",
-        lambda state: "writer" if state.get("review_requires_correction") else "aprobacion_po",
-        {"writer": "writer", "aprobacion_po": "aprobacion_po"},
-    )
-    builder.add_edge("technical_advisor", "impact_wait")
-    builder.add_edge("impact_wait", "writer")
-    builder.add_conditional_edges(
-        "aprobacion_po",
-        lambda state: state["po_route"],
-        {"analyst": "analyst", "writer": "writer", "technical_advisor": "technical_advisor",
-         "repository": "repositorio", "end": END},
-    )
-    builder.add_edge("repositorio", END)
-    builder.add_edge("hold_for_unresolved_gaps", END)
-    return builder.compile(checkpointer=checkpointer or InMemorySaver())
+    # El flujo como tabla: cada paso, su nodo y a dónde sigue. Para agregar un agente se agrega su Paso
+    # y se cambia el «siguiente» del paso anterior (ver docs/arquitectura.md, skill «agregar-agente»).
+    inicio = Ruta(lambda state: FlowMode(state["mode"]).value, {
+        FlowMode.PRE_GROOMING.value: "prepare_pre_grooming",
+        FlowMode.POST_GROOMING.value: "prepare_post_grooming",
+    })
+    lista_paso = [
+        # Creación de una HU (pre-grooming)
+        Paso("prepare_pre_grooming", prepare_pre_grooming,
+             Ruta(lambda state: "analista" if state.get("execute_agents") else "fin",
+                  {"analista": "analyst", "fin": FIN}),
+             "Valida la solicitud de creación."),
+        Paso("analyst", analyst_node,
+             Ruta(lambda state: (
+                 "preguntas" if state.get("pending_questions") else
+                 "listo" if state.get("analyst_ready") else "vacios"
+             ), {"preguntas": "business_wait", "listo": "technical_advisor", "vacios": "hold_for_unresolved_gaps"}),
+             "Agente Analista: aclara los vacíos del requerimiento."),
+        Paso("business_wait", wait_for_business, "analyst",
+             "Pausa: Negocio responde las preguntas del Analista."),
+        Paso("technical_advisor", technical_advisor_node, "impact_wait",
+             "Asesor Técnico: impacto en otros módulos."),
+        Paso("impact_wait", impact_wait_node, "writer",
+             "Pausa: la persona que redacta la HU decide sobre el impacto."),
+        Paso("writer", writer_node, "reviewer",
+             "Redactor-Revisor: redacta o corrige la historia."),
+        Paso("reviewer", reviewer_node,
+             Ruta(lambda state: "corregir" if state.get("review_requires_correction") else "aprobar",
+                  {"corregir": "writer", "aprobar": "aprobacion_po"}),
+             "Redactor-Revisor: revisa la historia (hasta dos rondas)."),
+        Paso("aprobacion_po", po_approval_node,
+             Ruta(lambda state: state["po_route"], {
+                 "analyst": "analyst", "writer": "writer", "technical_advisor": "technical_advisor",
+                 "repository": "repositorio", "end": FIN,
+             }),
+             "Pausa: el Product Owner aprueba, devuelve o rechaza."),
+        Paso("repositorio", repository_node, FIN, "Guarda la HU aprobada en el Repositorio de HU."),
+        Paso("hold_for_unresolved_gaps", hold_for_unresolved_gaps, FIN,
+             "Se detiene si quedan vacíos sin preguntas posibles."),
+        # Solicitud de cambio sobre una HU aprobada (post-grooming)
+        Paso("prepare_post_grooming", prepare_post_grooming,
+             Ruta(lambda state: "gestor" if state.get("execute_agents") else "fin",
+                  {"gestor": "change_manager", "fin": FIN}),
+             "Valida la solicitud de cambio."),
+        Paso("change_manager", change_manager_node, "human_change_decision",
+             "Gestor de Cambios: compara con la HU aprobada y recomienda."),
+        Paso("human_change_decision", human_change_decision_node,
+             Ruta(lambda state: state["change_route"],
+                  {"apply": "apply_change_decision", "analyze": "analyst", "end": FIN}),
+             "Pausa: el Product Owner decide sobre el cambio."),
+        Paso("apply_change_decision", apply_change_decision_node,
+             Ruta(lambda state: state["change_route"], {"analyze": "analyst", "end": FIN}),
+             "Aplica la decisión y, si corresponde, vuelve a analizar."),
+    ]
+    return construir_flujo(WorkflowState, inicio, lista_paso, checkpointer=checkpointer or InMemorySaver())
 
 
 _ESTADO_GUARDADO = {
