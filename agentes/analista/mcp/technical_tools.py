@@ -27,8 +27,11 @@ MAXIMO_CONTENIDO = 12_000
 
 __all__ = [
     "CodeFileResult", "CodeSearchRequest", "CodeSearchResult", "CodeSource", "KnowledgeCitation",
-    "StandardEntry", "StandardsResult", "consultar_codigo_demo", "leer_archivo_codigo", "technical_mcp",
+    "ReferenceSearchResult", "StandardEntry", "StandardsResult", "buscar_referencias_codigo",
+    "consultar_codigo_demo", "leer_archivo_codigo", "technical_mcp",
 ]
+
+MAXIMO_REFERENCIA = 40
 
 
 class CodeSearchRequest(BaseModel):
@@ -63,6 +66,23 @@ class CodeSearchResult(ToolModel):
         if items is not None and total != len(items):
             raise ValueError("total debe coincidir con las fuentes")
         return total
+
+
+class CodeReference(ToolModel):
+    source_id: str = Field(min_length=1, max_length=160)
+    source_ref: str = Field(min_length=1, max_length=300)
+    linea: int = Field(ge=1)
+    texto: str = Field(min_length=1, max_length=300)
+    contenido_no_confiable: Literal[True]
+
+
+class ReferenceSearchResult(ToolModel):
+    termino: str = Field(min_length=2, max_length=80)
+    coincidencias: list[CodeReference] = Field(max_length=MAXIMO_REFERENCIA)
+    total: int = Field(ge=0)
+    archivos: list[str] = Field(max_length=MAXIMO_REFERENCIA)
+    recortado: bool = False
+    repositorio: dict[str, Any] | None = None
 
 
 class CodeFileResult(ToolModel):
@@ -126,7 +146,48 @@ def leer_archivo_codigo(ruta: str) -> CodeFileResult:
     )
 
 
+def buscar_referencias_codigo(termino: str) -> ReferenceSearchResult:
+    """Búsqueda literal (sin distinguir mayúsculas) de un campo, constante o texto en todo el repositorio."""
+    if not isinstance(termino, str) or "\n" in termino or not 2 <= len(termino.strip()) <= 80:
+        raise ValueError("termino debe tener entre 2 y 80 caracteres en una sola línea")
+    termino = termino.strip()
+    buscado = termino.casefold()
+    lista_coincidencia: list[CodeReference] = []
+    lista_archivo: list[str] = []
+    total = 0
+    try:
+        lista_registro = AuthorizedSourceLoader().load_demo_code()
+    except SourceError as exc:
+        raise ValueError("El repositorio de código no está disponible.") from exc
+    for registro in lista_registro:
+        encontrado = False
+        for numero, linea in enumerate(registro.text.splitlines(), start=1):
+            if buscado not in linea.casefold():
+                continue
+            total += 1
+            encontrado = True
+            if len(lista_coincidencia) < MAXIMO_REFERENCIA:
+                lista_coincidencia.append(CodeReference(
+                    source_id=registro.source_id, source_ref=registro.source_ref, linea=numero,
+                    texto=linea.strip()[:300] or "(línea vacía)", contenido_no_confiable=True,
+                ))
+        if encontrado and len(lista_archivo) < MAXIMO_REFERENCIA:
+            lista_archivo.append(registro.source_ref)
+    return ReferenceSearchResult(
+        termino=termino, coincidencias=lista_coincidencia, total=total, archivos=lista_archivo,
+        recortado=total > len(lista_coincidencia), repositorio=origen_repositorio(),
+    )
+
+
 def _registrar_codigo(servidor: FastMCP) -> None:
+    servidor.tool(
+        buscar_referencias_codigo, name="buscar_referencias_codigo", title="Buscar referencias en el código",
+        description=(
+            "Búsqueda literal en TODO el repositorio de código: devuelve cada archivo y línea donde aparece "
+            "un campo, constante o texto (por ejemplo telefono o fecha_nacimiento). Úsala para encontrar los "
+            "otros lugares que afecta un cambio. Busca también nombres alternativos (columnas, etiquetas)."
+        ),
+    )
     servidor.tool(
         consultar_codigo_demo, name="consultar_codigo_demo", title="Buscar en el repositorio de código",
         description=(

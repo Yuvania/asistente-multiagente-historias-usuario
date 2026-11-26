@@ -25,12 +25,25 @@ async def test_technical_server_exposes_only_read_only_allowed_sources():
             by_name = {tool.name: tool for tool in listed.tools}
             assert set(by_name) == {
                 "consultar_estandares", "consultar_codigo_demo", "leer_archivo_codigo", "buscar_hu_similares",
+                "buscar_referencias_codigo",
             }
+            parameter = {"leer_archivo_codigo": {"ruta"}, "buscar_referencias_codigo": {"termino"}}
             for name, tool in by_name.items():
-                expected = {"ruta"} if name == "leer_archivo_codigo" else {"consulta", "limite"}
+                expected = parameter.get(name, {"consulta", "limite"})
                 assert set(tool.input_schema["properties"]) == expected
                 assert tool.input_schema["additionalProperties"] is False
                 assert tool.output_schema["additionalProperties"] is False
+
+            found = await session.call_tool("buscar_referencias_codigo", {"termino": "telefono"})
+            assert not found.is_error
+            assert {
+                "ejemplos/polizas_demo/clientes/pantalla_cliente.py",
+                "ejemplos/polizas_demo/notificaciones/aviso_cliente.py",
+                "ejemplos/polizas_demo/reportes/exportacion_cliente.py",
+                "ejemplos/polizas_demo/cargas/carga_cliente.py",
+            } <= set(found.structured_content["archivos"])
+            invalid_term = await session.call_tool("buscar_referencias_codigo", {"termino": "x"})
+            assert invalid_term.is_error
 
             opened = await session.call_tool("leer_archivo_codigo", {"ruta": "servicios/primas.py"})
             assert not opened.is_error

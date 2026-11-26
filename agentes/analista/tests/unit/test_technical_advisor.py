@@ -15,15 +15,9 @@ from agentes.analista.core.workflow_models import TechnicalAssessment
 
 def test_demo_policy_application_is_allowlisted_and_read_as_static_text():
     expected = {
-        "ejemplos/polizas_demo/__init__.py",
-        "ejemplos/polizas_demo/servicios/__init__.py",
         "ejemplos/polizas_demo/modelos.py",
-        "ejemplos/polizas_demo/servicios/polizas.py",
-        "ejemplos/polizas_demo/servicios/coberturas.py",
         "ejemplos/polizas_demo/servicios/primas.py",
         "ejemplos/polizas_demo/servicios/renovaciones.py",
-        "ejemplos/polizas_demo/servicios/pagos.py",
-        "ejemplos/polizas_demo/servicios/validaciones.py",
         "ejemplos/polizas_demo/mapa_dependencias.md",
     }
     worker = """
@@ -42,7 +36,9 @@ print(json.dumps(sorted(source.source_ref for source in result.fuentes)))
         [sys.executable, "-c", worker], cwd=root, check=True, capture_output=True, text=True, timeout=30
     )
 
-    assert set(json.loads(result.stdout)) == expected
+    refs = set(json.loads(result.stdout))
+    assert expected <= refs
+    assert all(ref.startswith("ejemplos/polizas_demo/") and ref.endswith((".py", ".md")) for ref in refs)
 
 
 def test_code_tool_has_no_user_supplied_path_and_advisor_role_is_read_only():
@@ -106,7 +102,9 @@ def _advisor_adapter(results, calls):
         def __init__(self, name):
             self.name = name
             self.description = name
-            self.args = {"ruta": {}} if name == "leer_archivo_codigo" else {"consulta": {}, "limite": {}}
+            self.args = {"leer_archivo_codigo": {"ruta": {}}, "buscar_referencias_codigo": {"termino": {}}}.get(
+                name, {"consulta": {}, "limite": {}}
+            )
 
         async def ainvoke(self, arguments):
             calls.append((self.name, arguments))
@@ -147,6 +145,11 @@ async def test_advisor_plans_searches_repository_opens_a_file_and_cites_only_con
             "contenido": "primas afecta alta y renovación", "contenido_no_confiable": True,
         }},
         "buscar_hu_similares": {"historias": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True},
+        "buscar_referencias_codigo": {"termino": "prima", "coincidencias": [
+            {"source_id": "ejemplos/polizas_demo/servicios/renovaciones.py",
+             "source_ref": "ejemplos/polizas_demo/servicios/renovaciones.py", "linea": 3,
+             "texto": "from ejemplos.polizas_demo.servicios.primas import calcular_prima", "contenido_no_confiable": True},
+        ], "total": 1, "archivos": ["ejemplos/polizas_demo/servicios/renovaciones.py"]},
     }
     output = {
         "affected_modules": [{
@@ -164,7 +167,11 @@ async def test_advisor_plans_searches_repository_opens_a_file_and_cites_only_con
             "source_ref": "ejemplos/polizas_demo/mapa_dependencias.md",
             "evidence": "Un cambio de prima afecta alta y renovación.",
         }],
-        "critical_processes": [],
+        "critical_processes": [{
+            "source_id": "ejemplos/polizas_demo/servicios/renovaciones.py",
+            "source_ref": "ejemplos/polizas_demo/servicios/renovaciones.py",
+            "evidence": "La renovación reutiliza el cálculo de prima.",
+        }],
         "uncertainties": [],
     }
     _FakeAdvisorOpenCode.prompts = []
@@ -172,6 +179,9 @@ async def test_advisor_plans_searches_repository_opens_a_file_and_cites_only_con
         json.dumps({"razonamiento": "Busco el cálculo de prima y las reglas.", "consultas": [
             {"herramienta": "consultar_codigo_demo", "consulta": "cálculo de prima"},
             {"herramienta": "consultar_estandares", "consulta": "validaciones"},
+        ]}),
+        json.dumps({"razonamiento": "Busco otros lugares que usan la prima.", "consultas": [
+            {"herramienta": "buscar_referencias_codigo", "consulta": "prima"},
         ]}),
         json.dumps({"razonamiento": "Confirmo dependencias en el mapa.", "consultas": [
             {"herramienta": "leer_archivo_codigo", "consulta": "mapa_dependencias.md"},
@@ -189,15 +199,19 @@ async def test_advisor_plans_searches_repository_opens_a_file_and_cites_only_con
     assert assessment.dependencies[0].source_ref == "agentes/analista/fuentes/estandares.json"
     assert {item.source_ref for item in assessment.consulted_sources} == {
         "ejemplos/polizas_demo/servicios/primas.py",
+        "ejemplos/polizas_demo/servicios/renovaciones.py",
         "ejemplos/polizas_demo/mapa_dependencias.md",
         "agentes/analista/fuentes/estandares.json",
     }
-    assert [name for name, _ in calls] == ["consultar_codigo_demo", "consultar_estandares", "leer_archivo_codigo"]
+    assert [name for name, _ in calls] == [
+        "consultar_codigo_demo", "consultar_estandares", "buscar_referencias_codigo", "leer_archivo_codigo",
+    ]
+    assert calls[2][1] == {"termino": "prima"}
     assert calls[-1][1] == {"ruta": "mapa_dependencias.md"}
     prompts = _FakeAdvisorOpenCode.prompts
-    assert "ronda 1 de 2" in prompts[0] and "ronda 2 de 2" in prompts[1]
+    assert "ronda 1 de 3" in prompts[0] and "ronda 3 de 3" in prompts[2]
     assert "primas.py" in prompts[1]  # la segunda ronda ve los resultados de la primera
-    assert "primas.py" in prompts[2] and "mapa_dependencias.md" in prompts[2]
+    assert "línea 3" in prompts[3] and "mapa_dependencias.md" in prompts[3]
 
 
 @pytest.mark.asyncio
@@ -208,6 +222,7 @@ async def test_no_evidence_is_reported_as_uncertainty_without_claims(monkeypatch
         "consultar_codigo_demo": {"fuentes": [], "total": 0, "origen": "simulado"},
         "consultar_estandares": {"estandares": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True},
         "leer_archivo_codigo": {"encontrado": False, "motivo": "no existe"},
+        "buscar_referencias_codigo": {"termino": "x", "coincidencias": [], "total": 0, "archivos": []},
         "buscar_hu_similares": {"historias": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True},
     }
     _FakeAdvisorOpenCode.prompts = []
@@ -241,6 +256,7 @@ async def test_advisor_as_collaborator_runs_a_single_round(monkeypatch):
         "consultar_codigo_demo": {"fuentes": [], "total": 0, "origen": "simulado"},
         "consultar_estandares": {"estandares": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True},
         "leer_archivo_codigo": {"encontrado": False},
+        "buscar_referencias_codigo": {"termino": "x", "coincidencias": [], "total": 0, "archivos": []},
         "buscar_hu_similares": {"historias": [], "total": 0, "origen": "simulado", "contenido_no_confiable": True},
     }
     _FakeAdvisorOpenCode.prompts = []

@@ -73,7 +73,8 @@ MCP_TOOL_ALLOWLIST: Final[dict[AgentId, frozenset[str]]] = {
         "consultar_estandares", "aplicar_checklist_vacios", "buscar_hu_similares",
     }),
     AgentId.TECHNICAL_ADVISOR: frozenset({
-        "consultar_estandares", "consultar_codigo_demo", "leer_archivo_codigo", "buscar_hu_similares",
+        "consultar_estandares", "consultar_codigo_demo", "buscar_referencias_codigo",
+        "leer_archivo_codigo", "buscar_hu_similares",
     }),
     AgentId.CHANGE_MANAGER: frozenset({
         "buscar_hu_similares", "consultar_lecciones", "aplicar_checklist_vacios",
@@ -106,6 +107,7 @@ _TOOL_NAMESPACE: Final[dict[str, KnowledgeNamespace]] = {
     "consultar_lecciones": KnowledgeNamespace.LESSONS,
     "consultar_codigo_demo": KnowledgeNamespace.CODE,
     "leer_archivo_codigo": KnowledgeNamespace.CODE,
+    "buscar_referencias_codigo": KnowledgeNamespace.CODE,
 }
 
 # Roles que pueden pedir criterio técnico al Asesor durante su propio ciclo.
@@ -116,7 +118,7 @@ ASESOR_CONSULTABLE_POR: Final[frozenset[AgentId]] = frozenset({AgentId.ANALYST, 
 MAXIMO_RONDA_HERRAMIENTA: Final[dict[AgentId, int]] = {
     AgentId.ANALYST: 1,
     AgentId.WRITER_REVIEWER: 1,
-    AgentId.TECHNICAL_ADVISOR: 2,
+    AgentId.TECHNICAL_ADVISOR: 3,
     AgentId.CHANGE_MANAGER: 1,
 }
 

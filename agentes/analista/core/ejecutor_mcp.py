@@ -61,7 +61,7 @@ class MCPNoDisponibleError(RuntimeError):
 class HerramientaDisponible:
     nombre: str
     descripcion: str
-    parametro: str  # "consulta" o "ruta"
+    parametro: str  # "consulta", "ruta" o "termino"
 
 
 @dataclass(slots=True)
@@ -129,7 +129,18 @@ def contar_resultado(datos: Any) -> int:
         return int(datos["total"])
     if "encontrado" in datos:
         return 1 if datos.get("encontrado") else 0
+    if isinstance(datos.get("coincidencias"), list):
+        return len(datos["coincidencias"])
     return 0
+
+
+def _parametro(tool: Any) -> str:
+    """Nombre del parámetro de texto de la herramienta: consulta (búsqueda), ruta (archivo) o termino (referencia)."""
+    argumento = getattr(tool, "args", None) or {}
+    for nombre in ("ruta", "termino"):
+        if nombre in argumento:
+            return nombre
+    return "consulta"
 
 
 class SesionMCP:
@@ -173,8 +184,7 @@ class SesionMCP:
         salida: list[HerramientaDisponible] = []
         for nombre in sorted(self._estado.herramienta):
             tool = self._estado.herramienta[nombre]
-            argumento = getattr(tool, "args", None) or {}
-            parametro = "ruta" if "ruta" in argumento else "consulta"
+            parametro = _parametro(tool)
             salida.append(HerramientaDisponible(nombre, (getattr(tool, "description", "") or "")[:300], parametro))
         return salida
 
@@ -188,7 +198,8 @@ class SesionMCP:
             return ResultadoHerramienta(nombre, consulta, "rechazada", detalle="Herramienta no permitida para el rol.")
         if tool is None:
             return ResultadoHerramienta(nombre, consulta, "rechazada", detalle="El servidor no expone la herramienta.")
-        argumento = {"ruta": consulta} if "ruta" in (getattr(tool, "args", None) or {}) else {"consulta": consulta, "limite": limite}
+        parametro = _parametro(tool)
+        argumento = {parametro: consulta} if parametro != "consulta" else {"consulta": consulta, "limite": limite}
         operacion = self._trace.operation(
             kind="tool", name=f"mcp-{nombre}", metadata={"tool_name": nombre, "agent": self.agent_id.value},
         ) if self._trace else None

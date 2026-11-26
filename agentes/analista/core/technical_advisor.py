@@ -36,9 +36,12 @@ from agentes.conocimiento.repositorio_codigo import origen_repositorio
 logger = logging.getLogger(__name__)
 STANDARD_SOURCE_PATH = "agentes/analista/fuentes/estandares.json"
 _TAREA = (
-    "Evalúa el impacto técnico del requerimiento o de la HU en el repositorio de código: qué módulos podría "
-    "afectar, sus dependencias, riesgos y procesos críticos. Busca primero por significado y, si necesitas "
-    "confirmar, abre los archivos concretos (por ejemplo mapa_dependencias.md)."
+    "Tu meta principal es encontrar TODOS los lugares del repositorio de código que afecta el cambio, no solo "
+    "la pantalla que menciona la HU. 1) Identifica cada campo, regla o texto que cambia y búscalo con "
+    "buscar_referencias_codigo (también variantes: nombre de columna, etiqueta, abreviatura). 2) Si aparece "
+    "en otros módulos (cargas, exportaciones, avisos, integraciones), ábrelos con leer_archivo_codigo para "
+    "confirmar cómo lo usan. 3) Usa mapa_dependencias.md para ver qué depende de esos módulos. Reporta cada "
+    "módulo afectado con su evidencia y explica el impacto en lenguaje de negocio."
 )
 
 
@@ -100,6 +103,21 @@ def fuentes_desde_ciclo(ciclo: ResultadoCiclo) -> tuple[list[dict[str, Any]], li
             for fuente in datos.get("fuentes", []):
                 extra = {k: v for k, v in cita.get(fuente["source_id"], {}).items() if k not in {"source_id", "source_ref"}}
                 codigo.setdefault(fuente["source_id"], {**fuente, **extra})
+        elif item.nombre == "buscar_referencias_codigo":
+            por_archivo: dict[str, list[str]] = {}
+            for ref in datos.get("coincidencias", []):
+                if isinstance(ref, dict) and isinstance(ref.get("source_ref"), str):
+                    por_archivo.setdefault(ref["source_ref"], []).append(f"línea {ref.get('linea')}: {ref.get('texto', '')}")
+            for source_ref, lista_linea in por_archivo.items():
+                previo = codigo.get(source_ref)
+                texto = f"Referencias a «{datos.get('termino', item.consulta)}»:\n" + "\n".join(lista_linea)
+                if previo is None:
+                    codigo[source_ref] = {
+                        "source_id": source_ref, "source_ref": source_ref, "contenido": texto,
+                        "contenido_no_confiable": True, "backend": None, "lectura": "referencias",
+                    }
+                elif previo.get("lectura") == "referencias":
+                    previo["contenido"] = f"{previo['contenido']}\n{texto}"
         elif item.nombre == "leer_archivo_codigo" and datos.get("encontrado") and isinstance(datos.get("archivo"), dict):
             archivo = datos["archivo"]
             codigo[archivo["source_id"]] = {**archivo, "backend": None, "lectura": "archivo_completo"}

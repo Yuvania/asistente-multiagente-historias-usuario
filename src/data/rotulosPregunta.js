@@ -34,6 +34,7 @@ const ROTULO_HERRAMIENTA = {
   aplicar_checklist_vacios: 'Checklist de vacíos',
   consultar_lecciones: 'Lecciones aprendidas',
   consultar_codigo_demo: 'Búsqueda en el repositorio de código',
+  buscar_referencias_codigo: 'Referencias en el código',
   leer_archivo_codigo: 'Lectura de un archivo del repositorio',
 };
 

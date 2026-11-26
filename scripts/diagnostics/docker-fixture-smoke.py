@@ -15,6 +15,11 @@ REQUIRED_FILES = (
     "servicios/pagos.py",
     "servicios/validaciones.py",
     "mapa_dependencias.md",
+    "clientes/modelo_cliente.py",
+    "clientes/pantalla_cliente.py",
+    "notificaciones/aviso_cliente.py",
+    "reportes/exportacion_cliente.py",
+    "cargas/carga_cliente.py",
 )
 
 
