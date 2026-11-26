@@ -59,7 +59,7 @@ export const PasoPreguntasComponent = () => {
           </AlertaComponent>
         ) : (
           <AlertaComponent type="warning" title={pendingCount === 1 ? 'Queda 1 pregunta pendiente' : `Quedan ${pendingCount} preguntas pendientes`}>
-            Registre las respuestas y envíelas al Analista. La HU no estará disponible para aprobación mientras quede alguna pregunta pendiente.
+            Registre las respuestas y envíelas: las esperan el Analista y el Asesor Técnico. La HU no estará disponible para aprobación mientras quede alguna pregunta pendiente.
           </AlertaComponent>
         )}
 

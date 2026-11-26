@@ -74,4 +74,20 @@ describe('historias en la base de datos', () => {
     guardarHistoria({ id, title: 'Después' });
     expect(getStoredStories()).toEqual([{ id, title: 'Después' }]);
   });
+
+  it('una lectura de la base que empezó antes de guardar no borra la HU recién guardada', async () => {
+    const aprobada = { id: '7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f', title: 'Recién aprobada', createdAt: '2026-11-26' };
+    let lectura = 0;
+    historiasApi.list.mockImplementation(async () => {
+      lectura += 1;
+      if (lectura === 1) {
+        guardarHistoria(aprobada); // se guarda mientras la primera lectura está en curso
+        return [];
+      }
+      return historiasApi.save.mock.calls.map(([historia]) => historia);
+    });
+    await sincronizarHistorias();
+    expect(lectura).toBe(2);
+    expect(getStoredStories()).toEqual([aprobada]);
+  });
 });
