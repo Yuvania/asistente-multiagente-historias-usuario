@@ -68,7 +68,7 @@ services:
       # Repositorio de código que revisa el Asesor Técnico (público, https, sin credenciales en la URL).
       # Vacío: se usa el ejemplo incluido en ejemplos/polizas_demo.
       - key: ASESOR_REPOSITORIO_URL
-        value: https://github.com/Yuvania/polizas-demo.git
+        value: https://github.com/Yuvania/codigo-ejemplo-polizas.git
       - key: ASESOR_REPOSITORIO_RAMA
         value: main
       # Transporte MCP entre cada agente y su servidor: memoria (mismo proceso, mismo protocolo MCP; evita

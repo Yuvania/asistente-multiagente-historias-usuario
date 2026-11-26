@@ -69,7 +69,7 @@ def test_sync_keeps_only_code_text_removes_history_and_records_origin(tmp_path, 
     raiz = _proyecto(tmp_path)
     llamada = _git_simulado(monkeypatch, FIXTURE)
 
-    resultado = sincronizar("https://github.com/organizacion/polizas-demo.git", "main", project_root=raiz)
+    resultado = sincronizar("https://github.com/organizacion/codigo-ejemplo-polizas.git", "main", project_root=raiz)
 
     destino = raiz / RAIZ_SINCRONIZADA
     assert resultado.sincronizado and resultado.commit == "a" * 40
@@ -80,7 +80,7 @@ def test_sync_keeps_only_code_text_removes_history_and_records_origin(tmp_path, 
     assert not (destino / "vacio.py").exists() and not (destino / "solo_espacio.md").exists()
     assert (destino / "servicios" / "primas.py").is_file()
     marca = json.loads((destino / repositorio_codigo.MARCA_ORIGEN).read_text(encoding="utf-8"))
-    assert marca["repositorio"] == "github.com/organizacion/polizas-demo"
+    assert marca["repositorio"] == "github.com/organizacion/codigo-ejemplo-polizas"
     assert "--depth" in llamada[0] and "core.symlinks=false" in llamada[0]
     # El cargador RAG y las citas usan la nueva raíz.
     registro = AuthorizedSourceLoader(raiz).load_demo_code()
@@ -92,7 +92,7 @@ def test_sync_keeps_only_code_text_removes_history_and_records_origin(tmp_path, 
 def test_failed_sync_keeps_service_running_with_previous_code(tmp_path, monkeypatch):
     raiz = _proyecto(tmp_path)
     _git_simulado(monkeypatch, FIXTURE, falla=True)
-    monkeypatch.setenv("ASESOR_REPOSITORIO_URL", "https://github.com/organizacion/polizas-demo.git")
+    monkeypatch.setenv("ASESOR_REPOSITORIO_URL", "https://github.com/organizacion/codigo-ejemplo-polizas.git")
 
     resultado = sincronizar_desde_entorno(raiz)
 

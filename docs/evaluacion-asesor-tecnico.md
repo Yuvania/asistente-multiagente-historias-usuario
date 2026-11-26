@@ -1,6 +1,6 @@
 # Evaluación del Asesor Técnico: impacto en otros lugares
 
-La meta principal del Asesor Técnico es encontrar **todos** los lugares del repositorio de código que afecta un cambio, incluso los que la historia de usuario no menciona. Estos escenarios sirven para comprobarlo con el repositorio ficticio [`Yuvania/polizas-demo`](https://github.com/Yuvania/polizas-demo) (módulo de clientes).
+La meta principal del Asesor Técnico es encontrar **todos** los lugares del repositorio de código que afecta un cambio, incluso los que la historia de usuario no menciona. Estos escenarios sirven para comprobarlo con el repositorio ficticio [`Yuvania/codigo-ejemplo-polizas`](https://github.com/Yuvania/codigo-ejemplo-polizas) (módulo de clientes).
 
 > Este documento vive en el proyecto principal y **no** en el repositorio de código: el Asesor no puede leer las respuestas esperadas.
 

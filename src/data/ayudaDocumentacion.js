@@ -108,7 +108,7 @@ export const AGENTES = [
       'Explica a la persona usuaria, sin detalle técnico, qué otras funciones cambian y qué decisiones quedan pendientes.',
       'Guarda para Desarrollo la evidencia técnica (archivos y riesgos), que no se muestra en pantalla.',
     ],
-    fuentes: 'Repositorio de código de solo lectura (de ejemplo: polizas-demo), estándares y HU similares.',
+    fuentes: 'Repositorio de código de solo lectura (de ejemplo: codigo-ejemplo-polizas), estándares y HU similares.',
   },
   {
     nombre: 'Redactor-Revisor',
@@ -149,7 +149,7 @@ export const TECNOLOGIAS = [
   { titulo: 'Modelo de lenguaje', texto: 'OpenCode Server 2.1.2 como interfaz con el modelo, sin permisos para usar herramientas propias. Proveedor OpenCode Go con el modelo glm-5.3-flash (configurables). LangChain para las plantillas de los prompts y la validación de las salidas.' },
   { titulo: 'Herramientas (MCP)', texto: 'FastMCP: un servidor MCP por agente, con herramientas de solo lectura, conectado con el adaptador MCP de LangChain.' },
   { titulo: 'Conocimiento (RAG)', texto: 'Pinecone con el modelo de embeddings multilingual-e5-large (1024 dimensiones) en 6 espacios: glosario, estándares, checklist, HU aprobadas, lecciones y código. Se carga solo al arrancar y al aprobar una HU; si Pinecone no responde, se usa una copia local.' },
-  { titulo: 'Repositorio de código', texto: 'Un repositorio de GitHub de solo lectura (de ejemplo, polizas-demo) que el Asesor Técnico revisa. Se copia al arrancar el servicio.' },
+  { titulo: 'Repositorio de código', texto: 'Un repositorio de GitHub de solo lectura (de ejemplo, codigo-ejemplo-polizas) que el Asesor Técnico revisa. Se copia al arrancar el servicio.' },
   { titulo: 'Datos', texto: 'TiDB Cloud (compatible con MySQL) como base compartida: historias, Repositorio de HU, cambios, lecciones y los flujos en proceso. En local y en pruebas, SQLite.' },
   { titulo: 'Trazabilidad', texto: 'Langfuse para seguir cada paso de los agentes, y registros del servidor que indican la causa cuando un flujo se detiene.' },
   { titulo: 'Pruebas', texto: 'Vitest y Testing Library en la interfaz; pytest y pytest-asyncio en el backend. GitHub Actions las ejecuta en cada cambio.' },
