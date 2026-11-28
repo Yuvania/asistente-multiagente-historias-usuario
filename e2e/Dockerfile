@@ -1,5 +1,5 @@
 # Imagen de las pruebas de punta a punta: Playwright con Chromium, Firefox y WebKit ya instalados.
-# Corre contra la aplicación del servicio «app» de docker-compose.yml (o contra BASE_URL).
+# Corre contra la aplicación del servicio «aplicacion» de docker-compose.yml (o contra BASE_URL).
 # La versión de la imagen debe ser la misma de @playwright/test en package-lock.json (lo revisa una prueba
 # de estructura): si se actualiza Playwright, se cambia aquí también.
 FROM mcr.microsoft.com/playwright:v1.65.1-noble

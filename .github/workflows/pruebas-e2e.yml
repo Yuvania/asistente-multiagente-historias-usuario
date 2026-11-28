@@ -1,7 +1,7 @@
 # Pruebas automatizadas de la aplicación (Playwright), en Docker.
 #
 # Se arranca desde el tablero «Pruebas automatizadas» de la aplicación (o a mano: Actions → Run workflow).
-# Usa las mismas imágenes de docker-compose.yml que cualquier computadora: la aplicación («app») y las
+# Usa las mismas imágenes de docker-compose.yml que cualquier computadora: la aplicación («aplicacion») y las
 # pruebas («pruebas»). El tablero sigue el avance por el nombre de los pasos («Preparar…», «Ejecutar…»,
 # «Publicar…»): si se cambian, se cambia también LISTA_ETAPA en agentes/pruebas/pruebas_service.py.
 # Las opciones de «alcance» son las del catálogo agentes/pruebas/catalogo_pruebas.py (lo revisa una prueba).
@@ -105,8 +105,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$AMBIENTE" = "pruebas" ]; then
-            docker compose --profile pruebas build app pruebas
-            docker compose up --detach --wait app
+            docker compose --profile pruebas build aplicacion pruebas
+            docker compose up --detach --wait aplicacion
           else
             docker compose --profile pruebas build pruebas
           fi
@@ -129,7 +129,7 @@ jobs:
 
       - name: Mostrar el registro de la aplicación
         if: failure() && inputs.ambiente == 'pruebas'
-        run: docker compose logs app --tail 200
+        run: docker compose logs aplicacion --tail 200
 
       - name: Publicar los resultados para el tablero
         if: always()

@@ -99,7 +99,7 @@ Las evidencias quedan en `reportes-pruebas/` (abra `reportes-pruebas/html/index.
 | `e2e/soporte/` | Ayudas comunes y el reportero que escribe `resumen.json` |
 | `e2e/Dockerfile` | Imagen de las pruebas (Playwright con Chromium, Firefox y WebKit) |
 | `playwright.config.js` | Proyectos web, tablet y móvil; `BASE_URL`, `NAVEGADOR` y `REPORTE_DIR` |
-| `docker-compose.yml` | Servicios `app` (la aplicación) y `pruebas` |
+| `docker-compose.yml` | Servicios `aplicacion` y `pruebas` |
 | `.github/workflows/pruebas-e2e.yml` | El workflow que arranca el tablero |
 | `agentes/pruebas/` | Catálogo de suites, registro de ejecuciones y cliente de GitHub Actions |
 | `src/components/Pruebas/` | El tablero y los resultados |

@@ -10,7 +10,8 @@
 name: historias-de-usuario
 
 services:
-  app:
+  # El nombre no puede ser «app»: Chrome obliga https en el dominio .app y no abriría http://app.
+  aplicacion:
     build:
       context: .
       args:
@@ -42,11 +43,11 @@ services:
       dockerfile: e2e/Dockerfile
     image: historias-de-usuario-pruebas:local
     depends_on:
-      app:
+      aplicacion:
         condition: service_healthy
     ipc: host
     environment:
-      BASE_URL: ${BASE_URL:-http://app:10000}
+      BASE_URL: ${BASE_URL:-http://aplicacion:10000}
       NAVEGADOR: ${NAVEGADOR:-chromium}
       QA_USUARIO: ${QA_USUARIO:-}
       QA_CLAVE: ${QA_CLAVE:-}
