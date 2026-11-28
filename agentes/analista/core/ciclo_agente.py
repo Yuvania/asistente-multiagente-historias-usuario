@@ -190,6 +190,10 @@ async def _preguntar_modelo(client: Any, session_id: str, texto: str, deadline: 
     return str((generado or {}).get("text") or "")
 
 
+# Para los agentes con un ciclo propio (por ejemplo, el Agente de Pruebas con su navegador).
+preguntar_modelo = _preguntar_modelo
+
+
 async def pedir_reparacion(client: Any, session_id: str, motivo: str, deadline: float) -> dict[str, Any] | None:
     """Pide al modelo, en la misma sesión, que corrija su salida. ``None`` si ya no queda tiempo.
 

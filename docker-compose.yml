@@ -5,6 +5,7 @@
 #   3. docker compose --profile pruebas run --rm pruebas            → corre las pruebas de Playwright
 #      docker compose --profile pruebas run --rm pruebas --grep @basicas   → solo una suite
 #   4. docker compose down                    → la detiene (los datos quedan en el volumen «datos»)
+#   Agente de Pruebas (diagnóstico de fallos con Playwright MCP): ver docs/pruebas-automatizadas.md.
 #
 # Es la misma imagen que se publica en Render y la misma que usa GitHub Actions para las pruebas.
 name: historias-de-usuario
@@ -54,6 +55,33 @@ services:
     volumes:
       # Evidencias: reporte HTML, JUnit, resumen, capturas, videos y trazas.
       - ./reportes-pruebas:/pruebas/reportes
+
+  # Navegador del Agente de Pruebas: Playwright MCP (oficial de Microsoft), solo dentro de la red de Docker.
+  # Solo corre cuando se pide: --profile diagnostico (lo usa el workflow cuando una prueba falla).
+  navegador:
+    profiles: ["diagnostico"]
+    image: mcr.microsoft.com/playwright/mcp:${PLAYWRIGHT_MCP_VERSION:-latest}
+    init: true
+    entrypoint: ["node", "/app/cli.js"]
+    command:
+      - --headless
+      - --browser=chromium
+      - --no-sandbox
+      - --isolated
+      - --port=8931
+      - --host=0.0.0.0
+      # No publica puertos: solo lo alcanza el contenedor de la aplicación.
+      - --allowed-hosts=*
+      # El navegador solo abre la aplicación de prueba (el backend también lo revisa en cada acción).
+      - --allowed-origins=http://aplicacion:10000
+    depends_on:
+      aplicacion:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8931/mcp').then(() => process.exit(0), () => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   datos:

@@ -4,7 +4,7 @@ La aplicación completa (interfaz, backend del Agente Analista y OpenCode Server
 
 El Blueprint mantiene un único Web Service Docker. La imagen incluye React compilado, FastAPI y OpenCode; FastAPI mantiene un worker, usa el `DATABASE_URL` de TiDB y conserva la autenticación Basic existente. `/healthz` es el health check ligero de Render y queda exento de autenticación. Esta configuración no crea servicios ni modifica credenciales.
 
-**Alcance verificado:** el servicio despliega los cuatro agentes (Analista, Asesor Técnico, Redactor-Revisor y Gestor de Cambios) orquestados con LangGraph, con pausas para las decisiones humanas guardadas en la base de datos, conocimiento en Pinecone (con copia local de respaldo) y un servidor MCP de solo lectura por agente. El health detallado `/api/analista/health` verifica OpenCode, el prompt y que cada servidor MCP exponga exactamente las herramientas de su agente.
+**Alcance verificado:** el servicio despliega los cuatro agentes del flujo de HU (Analista, Asesor Técnico, Redactor-Revisor y Gestor de Cambios) orquestados con LangGraph, más el Agente de Pruebas (que trabaja en GitHub Actions al diagnosticar pruebas fallidas), con pausas para las decisiones humanas guardadas en la base de datos, conocimiento en Pinecone (con copia local de respaldo) y un servidor MCP de solo lectura por agente. El health detallado `/api/analista/health` verifica OpenCode, el prompt y que cada servidor MCP exponga exactamente las herramientas de su agente.
 
 ## Flujo de trabajo
 
@@ -61,7 +61,7 @@ Se cambian en el panel de Render (**Environment**); al guardar, Render reinicia 
 
 ## Pruebas automatizadas (GitHub Actions)
 
-La pestaña **Pruebas** arranca el workflow `.github/workflows/pruebas-e2e.yml` del mismo repositorio que despliega Render. Las pruebas corren en GitHub (no le quitan memoria al servicio) y las evidencias quedan ahí. Solo hace falta `GITHUB_PRUEBAS_TOKEN`; para el ambiente Producción, además, los secrets `QA_USUARIO` y `QA_CLAVE` en GitHub y un usuario de QA con el rol Consulta. Paso a paso: [docs/pruebas-automatizadas.md](docs/pruebas-automatizadas.md).
+La pestaña **Pruebas** arranca el workflow `.github/workflows/pruebas-e2e.yml` del mismo repositorio que despliega Render. Las pruebas corren en GitHub (no le quitan memoria al servicio) y las evidencias quedan ahí. Solo hace falta `GITHUB_PRUEBAS_TOKEN`; para el ambiente Producción, además, los secrets `QA_USUARIO` y `QA_CLAVE` en GitHub y un usuario de QA con el rol Consulta; y para que el Agente de Pruebas explique los fallos, el secret `OPENCODE_API_KEY` en GitHub (una clave nueva, solo para esto). Paso a paso: [docs/pruebas-automatizadas.md](docs/pruebas-automatizadas.md).
 
 ## Con Docker en cualquier computadora
 

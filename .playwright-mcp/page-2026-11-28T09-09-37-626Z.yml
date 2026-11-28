@@ -1,0 +1,81 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - link "Historias de Usuario, ir al inicio" [ref=e5] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e10]:
+        - text: Historias
+        - generic [ref=e11]: de Usuario
+    - navigation "Menú principal" [ref=e12]:
+      - link "Inicio" [ref=e13] [cursor=pointer]:
+        - /url: /
+      - link "Pendientes" [ref=e20] [cursor=pointer]:
+        - /url: /pendientes
+      - link "Historias de usuario" [ref=e25] [cursor=pointer]:
+        - /url: /historias
+      - link "Nueva historia" [ref=e30] [cursor=pointer]:
+        - /url: /historias/nueva
+      - link "Pruebas" [ref=e34] [cursor=pointer]:
+        - /url: /pruebas
+      - link "Mantenimiento" [ref=e38] [cursor=pointer]:
+        - /url: /mantenimiento
+      - link "Ayuda" [ref=e43] [cursor=pointer]:
+        - /url: /ayuda
+    - generic [ref=e48]:
+      - button "Identificarse" [ref=e49] [cursor=pointer]:
+        - generic [ref=e54]:
+          - text: Identificarse
+          - generic [ref=e55]: Su nombre queda en las historias
+      - button "Cambiar a modo oscuro" [ref=e56] [cursor=pointer]
+  - generic [ref=e59]:
+    - main [ref=e60]:
+      - generic [ref=e61]:
+        - generic [ref=e64]:
+          - heading "Centro de Ayuda y Documentación" [level=1] [ref=e65]
+          - paragraph [ref=e66]: Cómo funciona el sistema de Historias de Usuario. Para dudas puntuales, use el chat de ayuda (botón «¿Cómo se usa?», abajo a la derecha).
+        - generic [ref=e67]:
+          - tablist "Secciones de la ayuda" [ref=e69]:
+            - tab "1. Pasos del asistente" [selected] [ref=e70] [cursor=pointer]
+            - tab "2. Acciones sobre una HU" [ref=e72] [cursor=pointer]
+            - tab "3. Los agentes" [ref=e74] [cursor=pointer]
+            - tab "4. Ejemplo de HU generada" [ref=e76] [cursor=pointer]
+            - tab "5. Tecnologías" [ref=e78] [cursor=pointer]
+            - tab "6. Arquitectura" [ref=e80] [cursor=pointer]
+            - tab "7. Pruebas automatizadas" [ref=e82] [cursor=pointer]
+            - tab "8. Por definir" [ref=e84] [cursor=pointer]
+            - tab "9. Equipo" [ref=e86] [cursor=pointer]
+          - tabpanel "1. Pasos del asistente" [ref=e89]:
+            - generic [ref=e90]:
+              - generic [ref=e92]:
+                - heading "¿Cómo funciona el Asistente IA?" [level=3] [ref=e93]
+                - paragraph [ref=e94]: Flujo principal de 5 pasos
+              - generic [ref=e95]:
+                - generic [ref=e96]:
+                  - heading "Paso 1 — Requerimiento" [level=5] [ref=e97]
+                  - paragraph [ref=e98]: "Ingrese la minuta, el correo o el incidente que llegó de Negocio, con su título, tipo de información, sistema, código de HU y área solicitante. Si todavía no lo va a analizar, use «Guardar y continuar después»: queda como borrador en la lista de historias."
+                - generic [ref=e99]:
+                  - heading "Paso 2 — Análisis del Analista y del Asesor Técnico" [level=5] [ref=e100]
+                  - paragraph [ref=e101]: "El Agente Analista decide qué consultar (glosario, HU similares, estándares y checklist de vacíos) y clasifica la información en conocida, faltante, supuesta y ambigua. Lo que solo se sabe revisando el sistema (por ejemplo, en qué otros lugares aparece un dato) no se le pregunta a Negocio: se lo pasa al Asesor Técnico, que revisa el código enseguida. Puede tardar unos minutos."
+                - generic [ref=e102]:
+                  - heading "Paso 3 — Preguntas para Negocio" [level=5] [ref=e103]
+                  - paragraph [ref=e104]: "El Analista y el Asesor Técnico trabajan en equipo y arman una sola ronda: arriba se muestra qué otras funciones afecta el cambio (por ejemplo, una carga masiva o un reporte), sin detalle técnico, y abajo un solo formulario con las preguntas del Analista y las decisiones del Asesor. Usted las lleva a Negocio, registra las respuestas y las envía."
+                  - list [ref=e105]:
+                    - listitem [ref=e106]: Si quedan vacíos, el Analista hace otra ronda. Una pregunta ya respondida no se vuelve a hacer.
+                    - listitem [ref=e107]: "Si un punto se parece a algo que Negocio ya respondió, no se repregunta: pasa como supuesto que el Product Owner valida al aprobar."
+                    - listitem [ref=e108]: "Lo que el Asesor no pudo confirmar en el código no se le pregunta a Negocio: queda como pendiente técnico para Desarrollo."
+                    - listitem [ref=e109]: Puede guardar respuestas sin enviarlas (por ejemplo, si debe consultarlas) y terminarlas otro día.
+                - generic [ref=e110]:
+                  - heading "Paso 4 — Historia y criterios (borrador)" [level=5] [ref=e111]
+                  - paragraph [ref=e112]: El Agente Redactor-Revisor escribe la historia en formato Como / Quiero / Para, con criterios Dado que / Cuando / Entonces que cubren también cada impacto en otros módulos y las decisiones tomadas, y la revisa hasta en dos rondas. El borrador se puede editar.
+                - generic [ref=e113]:
+                  - heading "Paso 5 — Aprobación del Product Owner" [level=5] [ref=e114]
+                  - paragraph [ref=e115]: El Product Owner revisa la historia, el impacto en otros módulos, las decisiones tomadas y los supuestos a validar, y confirma que los datos están anonimizados. Puede aprobarla, devolverla a un agente con un motivo o rechazarla. Al aprobar, la HU se guarda en el Repositorio de HU y se recarga en el conocimiento que consultan los agentes.
+              - heading "Cómo moverse entre pasos" [level=5] [ref=e116]
+              - list [ref=e117]:
+                - listitem [ref=e118]: "El avance se guarda cada vez que el flujo espera una respuesta: puede salir y retomarlo otro día desde Historias de Usuario → En proceso, aunque el servicio se haya reiniciado."
+                - listitem [ref=e119]: Si un paso falla (por ejemplo, un agente no responde), el avance anterior queda guardado y aparece «Reintentar el paso que falló».
+                - listitem [ref=e120]: Use Atrás para volver a ver un paso anterior sin perder lo escrito.
+                - listitem [ref=e121]: Mientras los agentes trabajan se muestra una pantalla de espera; puede tardar varios minutos.
+    - contentinfo [ref=e122]:
+      - generic [ref=e123]: HISTORIAS DE USUARIO ® Derechos Reservados 2026 - V.1.0.0
+  - button "Abrir chat de ayuda" [ref=e126] [cursor=pointer]:
+    - generic [ref=e130]: ¿Cómo se usa?

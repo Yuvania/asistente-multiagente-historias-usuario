@@ -74,7 +74,7 @@ export const ACCIONES_HISTORIA = [
   },
 ];
 
-// Lo que comparten los cuatro agentes: las cuatro propiedades de un agente.
+// Lo que comparten los agentes: las cuatro propiedades de un agente.
 export const PROPIEDAD_AGENTE = [
   { titulo: 'Autonomía', texto: 'Cada agente decide qué consultar y con qué consulta. Primero arma un plan; el sistema lo valida y lo ejecuta.' },
   { titulo: 'Razonamiento', texto: 'Explica por qué consulta cada fuente y trabaja en ciclos de percibir, pensar y actuar. Su plan se puede ver en «Cómo trabajó el agente».' },
@@ -122,6 +122,16 @@ export const AGENTES = [
       'Puede pedir criterio al Asesor Técnico sobre el impacto del cambio.',
     ],
     fuentes: 'HU aprobadas, lecciones aprendidas y checklist de vacíos.',
+  },
+  {
+    nombre: 'Agente de Pruebas',
+    rol: 'No participa en la creación de historias: cuida la calidad de la aplicación. Cuando una prueba automatizada falla, explica por qué falló y no solo que falló.',
+    hace: [
+      'Lee la evidencia del caso: el error, los pasos, la página al fallar y los errores de consola y de la API.',
+      'Abre la aplicación de prueba con un navegador real (Playwright MCP) para confirmar la causa: revisa la página, la consola y las llamadas a la API.',
+      'Clasifica el fallo (error de la aplicación, prueba desactualizada o ambiente), indica su confianza y sugiere qué revisar. No cambia nada: decide una persona.',
+    ],
+    fuentes: 'La evidencia de la prueba y un navegador por Playwright MCP, limitado por el backend a la aplicación de prueba y a herramientas de lectura y navegación.',
   },
 ];
 
@@ -190,7 +200,7 @@ export const STACK_ARQUITECTURA = [
   { titulo: 'Interfaz: React 18 + Vite', texto: 'Pantallas por funcionalidad. Rutas y menú salen de src/config/rutas.jsx; el asistente separa su controlador (useCrearHistoria) de las vistas de cada paso.' },
   { titulo: 'API: FastAPI (Python 3.12)', texto: 'Valida los datos y expone el estado del flujo. Cada ruta declara qué acción necesita la persona (inicio de sesión por usuario, roles y acciones en Mantenimiento).' },
   { titulo: 'Orquestación: LangGraph', texto: 'El flujo es un StateGraph declarado como tabla de pasos (workflow_graph.py). Las pausas humanas usan interrupt y se retoman con Command(resume); cada pausa se guarda en la base de datos para seguir otro día.' },
-  { titulo: 'Agentes: OpenCode Server', texto: 'Cuatro agentes (Analista, Asesor Técnico, Redactor-Revisor y Gestor de Cambios). Cada uno es una carpeta en agentes/equipo/<id> con su definición, sus instrucciones versionadas, su servidor MCP y su servicio; se registran solos.' },
+  { titulo: 'Agentes: OpenCode Server', texto: 'Cuatro agentes en el flujo de HU (Analista, Asesor Técnico, Redactor-Revisor y Gestor de Cambios) y el Agente de Pruebas, que diagnostica las pruebas que fallan. Cada uno es una carpeta en agentes/equipo/<id> con su definición, sus instrucciones versionadas, su servidor MCP y su servicio; se registran solos.' },
   { titulo: 'Herramientas: MCP (FastMCP)', texto: 'Un servidor por agente, solo con herramientas de lectura. Cada agente consulta únicamente sus fuentes de conocimiento.' },
   { titulo: 'Conocimiento: Pinecone', texto: 'Índice con las HU aprobadas, las lecciones aprendidas y el código del repositorio de pruebas. Se vuelve a cargar solo cuando algo cambia.' },
   { titulo: 'Datos: TiDB (MySQL) con SQLAlchemy', texto: 'Historias, Repositorio de HU, cambios, lecciones, flujos en proceso, usuarios, roles y avisos. En local y en pruebas se usa SQLite.' },
@@ -220,12 +230,22 @@ export const PRUEBAS_AUTOMATIZADAS = [
     ],
   },
   {
+    titulo: 'Agente de Pruebas: por qué falló',
+    texto: 'Cuando un caso falla, el Agente de Pruebas lee la evidencia (error, pasos, página, consola y API) y abre la aplicación con un navegador real por Playwright MCP para confirmar la causa. En el resultado de cada caso deja qué falló, la causa probable, la evidencia, una sugerencia y si es un error de la aplicación, una prueba desactualizada o un problema del ambiente.',
+    puntos: [
+      'Solo diagnostica: no cambia nada y decide una persona.',
+      'El backend le permite 10 herramientas del navegador (navegar, leer, clic, escribir, consola y red) y solo la dirección de la aplicación de prueba.',
+      'Diagnostica como máximo 3 casos por ejecución para cuidar la cuota del modelo.',
+    ],
+  },
+  {
     titulo: 'Configuración (una sola vez)',
     texto: 'Lo hace quien administra el repositorio desde el que Render despliega.',
     puntos: [
       'GitHub → Settings → Developer settings → Fine-grained tokens: un token solo para ese repositorio, con permiso Actions: Read and write.',
       'Render → Environment: GITHUB_PRUEBAS_TOKEN con ese token. El repositorio y la rama se toman solos de Render.',
       'Para el ambiente Producción: en Mantenimiento, un usuario de QA con el rol Consulta; y en GitHub → Settings → Secrets → Actions, QA_USUARIO y QA_CLAVE.',
+      'Para el Agente de Pruebas: en GitHub → Settings → Secrets → Actions, OPENCODE_API_KEY (una clave nueva, solo para esto).',
       'Cambiar de repositorio (por ejemplo, del de un compañero al propio) = cambiar el token.',
     ],
   },

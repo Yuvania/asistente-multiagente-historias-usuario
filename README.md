@@ -1,6 +1,6 @@
 # Asistente multiagente para historias de usuario
 
-Aplicación web que asiste en la creación y el mantenimiento de historias de usuario (HU) mediante un sistema de **cuatro agentes de inteligencia artificial**. Los agentes detectan vacíos en el requerimiento, identifican el impacto del cambio en otras partes del sistema, redactan la historia con sus criterios de aceptación y analizan las solicitudes de cambio posteriores al grooming. Las decisiones finales siempre las toma una persona: la HU solo se aprueba con la confirmación explícita del Product Owner.
+Aplicación web que asiste en la creación y el mantenimiento de historias de usuario (HU) mediante un sistema de **cuatro agentes de inteligencia artificial**. Los agentes detectan vacíos en el requerimiento, identifican el impacto del cambio en otras partes del sistema, redactan la historia con sus criterios de aceptación y analizan las solicitudes de cambio posteriores al grooming. Un quinto agente, el **Agente de Pruebas**, cuida la calidad de la aplicación: cuando una prueba automatizada falla, explica por qué. Las decisiones finales siempre las toma una persona: la HU solo se aprueba con la confirmación explícita del Product Owner.
 
 Proyecto desarrollado para el curso de Inteligencia Artificial de Cenfotec. El diseño de la interfaz y de los flujos se elaboró con Antigravity.
 
@@ -74,6 +74,7 @@ Todos los agentes siguen el ciclo **percibir → pensar → actuar** (`agentes/a
 | Asesor Técnico | Decide qué datos buscar y qué archivos abrir, en hasta tres rondas | Identifica todos los lugares que afecta un cambio y separa el impacto de negocio de la evidencia técnica | Referencias en el código, búsqueda semántica, lectura de archivos, estándares y HU similares | Análisis validado y Repositorio de HU |
 | Redactor-Revisor | Redacta, revisa y corrige, en hasta dos rondas | Evalúa la HU contra estándares y checklist, y cubre cada impacto con criterios | Estándares, checklist y HU similares | Análisis aclarado, impacto y ronda previa |
 | Gestor de Cambios | Elige fuentes y puede consultar al Asesor Técnico | Compara con la HU aprobada, clasifica el cambio y determina la causa raíz | HU aprobadas, lecciones aprendidas y checklist | HU aprobadas e historial de causas raíz |
+| Agente de Pruebas (fuera del flujo de HU) | Decide qué pantallas abrir y qué revisar, en hasta cuatro rondas | Explica por qué falló una prueba y la clasifica: error de la aplicación, prueba desactualizada o ambiente | Un navegador real por **Playwright MCP**, limitado por el backend a la aplicación de prueba y a herramientas de lectura y navegación | La evidencia del caso fallido: error, pasos, página, consola y API |
 
 ### Principios de diseño
 
@@ -81,6 +82,7 @@ Todos los agentes siguen el ciclo **percibir → pensar → actuar** (`agentes/a
 - **Revisión de código en solo lectura:** el Asesor Técnico analiza un repositorio independiente, indicado en `ASESOR_REPOSITORIO_URL` (por defecto, [codigo-ejemplo-polizas](https://github.com/Yuvania/codigo-ejemplo-polizas)). Al arrancar se descarga una copia superficial, se conservan solo archivos `.py` y `.md`, se elimina el historial y no se ejecuta nada. Si no está disponible, se usa la copia incluida en `ejemplos/polizas_demo`.
 - **Lenguaje de negocio para las personas usuarias:** la interfaz no muestra archivos, líneas ni código; la evidencia técnica se conserva para Desarrollo.
 - **Control humano:** ningún agente aprueba historias. Negocio responde, la persona que redacta la HU toma las decisiones de impacto y el Product Owner aprueba.
+- **MCP propio y MCP de terceros:** los agentes del flujo usan servidores MCP propios (FastMCP) sobre la base de conocimiento; el Agente de Pruebas usa Playwright MCP, el servidor oficial de Microsoft, y el backend solo le permite 10 de sus herramientas y solo la dirección de la aplicación de prueba.
 - **Trazabilidad:** la sección *Cómo trabajó el agente* muestra qué decidió consultar cada agente y por qué; Langfuse registra cada paso.
 
 ### Persistencia de los flujos
@@ -199,7 +201,7 @@ GitHub Actions ejecuta todas las pruebas en cada cambio que llega a `main` y en 
 La aplicación completa (interfaz, backend y OpenCode) se publica como un único servicio Docker en Render, con despliegue automático desde la rama `main` (`render.yaml`). Las historias, el Repositorio de HU, las lecciones y los flujos en proceso se almacenan en TiDB Cloud, por lo que se conservan entre despliegues.
 
 - Verificación ligera: `<URL del servicio>/healthz` (sin autenticación).
-- Diagnóstico completo: `<URL del servicio>/api/analista/health` (con credenciales; comprueba OpenCode y los cuatro servidores MCP).
+- Diagnóstico completo: `<URL del servicio>/api/analista/health` (con credenciales; comprueba OpenCode y el servidor MCP de cada agente).
 - Variables de entorno y configuración: [DESPLIEGUE.md](DESPLIEGUE.md).
 
 ## Seguridad y datos

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './soporte/prueba.js';
 import { abrirSinSeguridad } from './soporte/ambiente.js';
 
 const HISTORIA = {

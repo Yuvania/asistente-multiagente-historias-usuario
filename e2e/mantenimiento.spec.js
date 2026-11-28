@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './soporte/prueba.js';
 import { USUARIO_ADMINISTRADOR, ingresarComo } from './soporte/ambiente.js';
 
 const LISTA_ACCION = [

@@ -1,0 +1,77 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - link "Historias de Usuario, ir al inicio" [ref=e5] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e10]:
+        - text: Historias
+        - generic [ref=e11]: de Usuario
+    - navigation "Menú principal" [ref=e12]:
+      - link "Inicio" [ref=e13] [cursor=pointer]:
+        - /url: /
+      - link "Pendientes" [ref=e20] [cursor=pointer]:
+        - /url: /pendientes
+      - link "Historias de usuario" [ref=e25] [cursor=pointer]:
+        - /url: /historias
+      - link "Nueva historia" [ref=e30] [cursor=pointer]:
+        - /url: /historias/nueva
+      - link "Pruebas" [ref=e34] [cursor=pointer]:
+        - /url: /pruebas
+      - link "Mantenimiento" [ref=e38] [cursor=pointer]:
+        - /url: /mantenimiento
+      - link "Ayuda" [ref=e43] [cursor=pointer]:
+        - /url: /ayuda
+    - generic [ref=e48]:
+      - button "Identificarse" [ref=e49] [cursor=pointer]:
+        - generic [ref=e54]:
+          - text: Identificarse
+          - generic [ref=e55]: Su nombre queda en las historias
+      - button "Cambiar a modo oscuro" [ref=e56] [cursor=pointer]
+  - generic [ref=e59]:
+    - main [ref=e60]:
+      - generic [ref=e61]:
+        - generic [ref=e64]:
+          - heading "Pruebas automatizadas" [level=1] [ref=e65]
+          - paragraph [ref=e66]: Pruebas de la aplicación con Playwright en web, tablet y móvil. Elija qué probar y ejecútelas.
+        - generic "Indicadores" [ref=e67]:
+          - generic [ref=e68]:
+            - paragraph [ref=e69]: Última ejecución
+            - paragraph [ref=e70]: —
+            - paragraph [ref=e71]: Todavía no hay ejecuciones
+          - generic [ref=e72]:
+            - paragraph [ref=e73]: Casos aprobados
+            - paragraph [ref=e74]: —
+          - generic [ref=e75]:
+            - paragraph [ref=e76]: Casos fallidos
+            - paragraph [ref=e77]: —
+          - generic [ref=e78]:
+            - paragraph [ref=e79]: Duración
+            - paragraph [ref=e80]: —
+          - generic [ref=e81]:
+            - paragraph [ref=e82]: Éxito (últimas 10)
+            - paragraph [ref=e83]: —
+        - generic [ref=e84]:
+          - form "Nueva ejecución" [ref=e85]:
+            - heading "Nueva ejecución" [level=2] [ref=e86]
+            - generic [ref=e87]:
+              - generic [ref=e88]:
+                - generic [ref=e89]: Qué probar
+                - combobox "Qué probar" [ref=e90]
+              - generic [ref=e91]:
+                - generic [ref=e92]: Ambiente
+                - combobox "Ambiente" [ref=e93]
+              - generic [ref=e94]:
+                - generic [ref=e95]: Navegador
+                - combobox "Navegador" [ref=e96]
+                - paragraph [ref=e97]: Cada caso se prueba en web, tablet y móvil.
+            - button "Ejecutar pruebas" [disabled] [ref=e99]
+          - region "Ejecución actual" [ref=e102]:
+            - heading "Ejecución actual" [level=2] [ref=e103]
+            - paragraph [ref=e104]: No hay ninguna ejecución en curso.
+        - region "Ejecuciones recientes" [ref=e105]:
+          - heading "Ejecuciones recientes" [level=2] [ref=e106]
+          - paragraph [ref=e107]: Consultando…
+        - paragraph [ref=e108]: Las evidencias (reporte HTML, JUnit, capturas, videos y trazas) quedan en GitHub con cada ejecución. Solo los roles con la acción «Ejecutar pruebas automatizadas» ven el botón. Cada ejecución queda a nombre de quien la inició.
+    - contentinfo [ref=e109]:
+      - generic [ref=e110]: HISTORIAS DE USUARIO ® Derechos Reservados 2026 - V.1.0.0
+  - button "Abrir chat de ayuda" [ref=e113] [cursor=pointer]:
+    - generic [ref=e117]: ¿Cómo se usa?

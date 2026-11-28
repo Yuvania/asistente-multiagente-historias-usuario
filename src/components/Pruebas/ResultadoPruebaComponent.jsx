@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, ExternalLink, MinusCircle, RotateCcw, AlertTriangle, XCircle } from 'lucide-react';
+import { ArrowLeft, Bot, CheckCircle2, ExternalLink, MinusCircle, RotateCcw, AlertTriangle, XCircle } from 'lucide-react';
 import { TituloPaginaComponent } from '../Comun/TituloPaginaComponent';
 import { BotonComponent } from '../Comun/BotonComponent';
 import { AlertaComponent } from '../Comun/AlertaComponent';
@@ -8,7 +8,9 @@ import { Permitido } from '../Sesion/SesionContext';
 import { ACCION } from '../../config/acciones';
 import { useEjecucionPrueba } from '../../hooks/usePruebas';
 import { pruebasApi } from '../../services/pruebasApi';
-import { ESTADO_CASO, casosAprobados, duracion, estaActiva, numeroEjecucion } from '../../utils/formatoPruebas';
+import {
+  CONFIANZA_DIAGNOSTICO, ESTADO_CASO, TIPO_DIAGNOSTICO, casosAprobados, duracion, estaActiva, numeroEjecucion,
+} from '../../utils/formatoPruebas';
 import { EstadoEjecucion, LineaTiempo } from './PruebasComponent';
 
 const ICONO_CASO = Object.freeze({ aprobado: CheckCircle2, fallido: XCircle, inestable: AlertTriangle, omitido: MinusCircle });
@@ -18,6 +20,36 @@ const LISTA_FILTRO = Object.freeze([
   { id: 'aprobados', texto: 'Aprobados', incluye: (caso) => caso.estado === 'aprobado' || caso.estado === 'inestable' },
 ]);
 const DISPOSITIVO = Object.freeze({ web: 'web', tablet: 'tablet', movil: 'móvil' });
+
+// Lo que explicó el Agente de Pruebas: por qué falló, no solo que falló.
+export const DiagnosticoCaso = ({ diagnostico }) => {
+  if (!diagnostico) return null;
+  if (diagnostico.estado !== 'listo') {
+    return <p className="pruebas__meta">{diagnostico.motivo || 'El Agente de Pruebas no pudo diagnosticar este caso.'}</p>;
+  }
+  const tipo = TIPO_DIAGNOSTICO[diagnostico.tipo] ?? TIPO_DIAGNOSTICO.indeterminado;
+  const acciones = diagnostico.exploracion?.acciones?.length ?? 0;
+  return (
+    <section className="pruebas__diagnostico" aria-label="Diagnóstico del Agente de Pruebas">
+      <div className="pruebas__diagnostico-encabezado">
+        <Bot size={16} aria-hidden="true" />
+        <span className="pruebas__diagnostico-titulo">Diagnóstico del Agente de Pruebas</span>
+        <span className={`pruebas__estado pruebas__estado--${tipo.clase}`}>{tipo.texto}</span>
+        {diagnostico.confianza && <span className="pruebas__meta">{CONFIANZA_DIAGNOSTICO[diagnostico.confianza]}</span>}
+      </div>
+      {diagnostico.que_fallo && <p><strong>Qué falló:</strong> {diagnostico.que_fallo}</p>}
+      {diagnostico.causa_probable && <p><strong>Causa probable:</strong> {diagnostico.causa_probable}</p>}
+      {diagnostico.evidencia?.length > 0 && (
+        <ul className="pruebas__evidencia">{diagnostico.evidencia.map((texto) => <li key={texto}>{texto}</li>)}</ul>
+      )}
+      {diagnostico.sugerencia && <p><strong>Sugerencia:</strong> {diagnostico.sugerencia}</p>}
+      <p className="pruebas__meta">
+        {acciones > 0 ? `Revisó la aplicación con ${acciones} ${acciones === 1 ? 'acción' : 'acciones'} en el navegador (Playwright MCP).`
+          : 'Diagnosticó con la evidencia de la prueba.'} Es una propuesta: decide una persona.
+      </p>
+    </section>
+  );
+};
 
 const Caso = ({ caso }) => {
   const estado = ESTADO_CASO[caso.estado] ?? ESTADO_CASO.fallido;
@@ -31,6 +63,7 @@ const Caso = ({ caso }) => {
           <span className="sr-only"> — {estado.texto}</span>
         </p>
         {caso.error && <p className="pruebas__caso-error">{caso.error.split('\n')[0]}</p>}
+        <DiagnosticoCaso diagnostico={caso.diagnostico} />
         <p className="pruebas__meta">
           {[caso.modulo, DISPOSITIVO[caso.dispositivo] ?? caso.dispositivo, duracion(caso.duracion_ms)].filter(Boolean).join(' · ')}
           {caso.estado === 'inestable' ? ' · pasó al reintentar' : ''}
@@ -146,7 +179,8 @@ export const ResultadoPruebaComponent = () => {
       </section>
 
       <p className="pruebas__nota">
-        En GitHub, el artefacto «evidencias» trae el reporte HTML de Playwright, el JUnit y, de cada caso fallido, la captura, el video y
+        Si el repositorio tiene configurado el modelo, el Agente de Pruebas explica cada caso fallido: abre la aplicación con un
+        navegador real (Playwright MCP) y revisa la página, la consola y las llamadas a la API. En GitHub, el artefacto «evidencias» trae el reporte HTML de Playwright, el JUnit y, de cada caso fallido, la captura, el video y
         la traza (se abre en trace.playwright.dev).
       </p>
     </div>

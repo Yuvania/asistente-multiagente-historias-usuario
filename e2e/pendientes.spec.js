@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './soporte/prueba.js';
 import { USUARIO_ADMINISTRADOR, ingresarComo } from './soporte/ambiente.js';
 
 const FLUJO_ID = '11111111-1111-4111-8111-111111111111';

@@ -32,6 +32,14 @@
       "permissions": [
         { "action": "*", "resource": "*", "effect": "deny" }
       ]
+    },
+    "probador": {
+      "description": "Diagnostica pruebas de Playwright que fallan; solo observa con el navegador del backend y no cambia nada.",
+      "mode": "subagent",
+      "system": "{file:./agentes/equipo/probador/prompt.md}",
+      "permissions": [
+        { "action": "*", "resource": "*", "effect": "deny" }
+      ]
     }
   }
 }

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './soporte/prueba.js';
 import {
   CLAVE_PRUEBA, USUARIO_ADMINISTRADOR, USUARIO_CONSULTA, ingresar, ingresarComo, simularApiVacia, simularSesion,
 } from './soporte/ambiente.js';

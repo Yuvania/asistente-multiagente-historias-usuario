@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './soporte/prueba.js';
 import { USUARIO_ADMINISTRADOR, ingresarComo } from './soporte/ambiente.js';
 
 // El propio tablero «Pruebas automatizadas», con la API simulada (no arranca GitHub Actions).
@@ -37,7 +37,13 @@ const TERMINADA = {
 
 const CASOS = [
   { id: 'c1', titulo: 'El PO aprueba la historia en el paso 5', modulo: 'historias', dispositivo: 'movil', estado: 'fallido', duracion_ms: 41000,
-    error: 'Esperaba ver «Historia aprobada» y no apareció en 10 s.', pasos: ['Ingresa como Product Owner', 'Elige Aprobar historia'] },
+    error: 'Esperaba ver «Historia aprobada» y no apareció en 10 s.', pasos: ['Ingresa como Product Owner', 'Elige Aprobar historia'],
+    diagnostico: {
+      estado: 'listo', tipo: 'error_aplicacion', confianza: 'media', que_fallo: 'El Product Owner no pudo aprobar la historia.',
+      causa_probable: 'Al confirmar, la API respondió 403: el rol no tiene la acción Aprobar historia.',
+      evidencia: ['POST /api/workflows/…/resume respondió 403'], sugerencia: 'Revisar las acciones del rol Product Owner.',
+      exploracion: { rondas: 2, acciones: ['browser_navigate (ok)', 'browser_network_requests (ok)'], limitaciones: [] },
+    } },
   { id: 'c2', titulo: 'El analista registra el requerimiento', modulo: 'historias', dispositivo: 'web', estado: 'aprobado', duracion_ms: 12000, pasos: [] },
   { id: 'c3', titulo: 'Un analista no ve la opción Aprobar historia', modulo: 'historias', dispositivo: 'web', estado: 'aprobado', duracion_ms: 9000, pasos: [] },
 ];
@@ -125,8 +131,15 @@ test.describe('Pruebas automatizadas', { tag: '@pruebas' }, () => {
     await test.step('Filtra los fallidos y ve el error', async () => {
       await page.getByRole('button', { name: /Fallidos/ }).click();
       const casos = page.getByRole('list', { name: 'Casos' });
-      await expect(casos.getByRole('listitem')).toHaveCount(1);
+      await expect(casos.getByText('El PO aprueba la historia en el paso 5')).toBeVisible();
+      await expect(casos.getByText('El analista registra el requerimiento')).toHaveCount(0);
       await expect(casos.getByText('Esperaba ver «Historia aprobada»').first()).toBeVisible();
+    });
+    await test.step('Lee el diagnóstico del Agente de Pruebas', async () => {
+      const diagnostico = page.getByRole('region', { name: 'Diagnóstico del Agente de Pruebas' });
+      await expect(diagnostico.getByText('Error de la aplicación')).toBeVisible();
+      await expect(diagnostico.getByText(/la API respondió 403/)).toBeVisible();
+      await expect(diagnostico.getByText(/2 acciones en el navegador/)).toBeVisible();
     });
     await test.step('Vuelve a ejecutar solo los fallidos', async () => {
       await page.getByRole('button', { name: 'Volver a ejecutar los fallidos' }).click();

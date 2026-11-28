@@ -43,3 +43,13 @@ export const fechaCorta = (valor) => {
 export const casosAprobados = (resumen) => (
   resumen ? `${(resumen.aprobados ?? 0) + (resumen.inestables ?? 0)} de ${resumen.total ?? 0}` : '—'
 );
+
+// Clasificación del Agente de Pruebas para un caso fallido.
+export const TIPO_DIAGNOSTICO = Object.freeze({
+  error_aplicacion: { texto: 'Error de la aplicación', clase: 'peligro' },
+  prueba_desactualizada: { texto: 'Prueba desactualizada', clase: 'advertencia' },
+  ambiente: { texto: 'Problema del ambiente', clase: 'neutro' },
+  indeterminado: { texto: 'Sin causa clara', clase: 'neutro' },
+});
+
+export const CONFIANZA_DIAGNOSTICO = Object.freeze({ alta: 'confianza alta', media: 'confianza media', baja: 'confianza baja' });

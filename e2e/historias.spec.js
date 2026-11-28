@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './soporte/prueba.js';
 
 // Asistente de 5 pasos (pre-grooming) y Gestor de Cambios (post-grooming), con la API simulada.
 // La aplicación se abre sin seguridad, como en el desarrollo local, y sin el backend de historias: así

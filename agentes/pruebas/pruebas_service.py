@@ -36,6 +36,7 @@ LISTA_ETAPA = (
     ("solicitud", "Solicitud registrada", None),
     ("preparacion", "Se preparó el navegador y la aplicación", "Preparar"),
     ("ejecucion", "Pruebas en ejecución", "Ejecutar"),
+    ("diagnostico", "Diagnóstico de los fallos (Agente de Pruebas)", "Diagnosticar"),
     ("publicacion", "Publicación de resultados", "Publicar"),
 )
 _ESTADO_COLA = {"queued", "waiting", "requested", "pending"}
@@ -46,6 +47,27 @@ class ErrorPrueba(Exception):
         super().__init__(mensaje)
         self.mensaje = mensaje
         self.status_code = status_code
+
+
+class ExploracionResumen(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    rondas: int = Field(default=0, ge=0, le=20)
+    acciones: list[str] = Field(default_factory=list, max_length=20)
+    limitaciones: list[str] = Field(default_factory=list, max_length=10)
+
+
+class DiagnosticoCaso(BaseModel):
+    """Lo que explica el Agente de Pruebas de un caso fallido (agentes/pruebas/diagnosticar.py)."""
+    model_config = ConfigDict(extra="ignore")
+    estado: Literal["listo", "sin_diagnostico"]
+    que_fallo: str | None = Field(default=None, max_length=400)
+    causa_probable: str | None = Field(default=None, max_length=600)
+    tipo: Literal["error_aplicacion", "prueba_desactualizada", "ambiente", "indeterminado"] | None = None
+    confianza: Literal["alta", "media", "baja"] | None = None
+    evidencia: list[str] = Field(default_factory=list, max_length=4)
+    sugerencia: str | None = Field(default=None, max_length=600)
+    motivo: str | None = Field(default=None, max_length=300)
+    exploracion: ExploracionResumen | None = None
 
 
 class CasoResumen(BaseModel):
@@ -59,6 +81,17 @@ class CasoResumen(BaseModel):
     duracion_ms: int = Field(default=0, ge=0)
     error: str | None = None
     pasos: list[str] = Field(default_factory=list, max_length=40)
+    diagnostico: DiagnosticoCaso | None = None
+
+    @field_validator("diagnostico", mode="before")
+    @classmethod
+    def _diagnostico_valido(cls, valor: Any) -> Any:
+        # Un diagnóstico mal formado no invalida el resumen: el caso queda sin diagnóstico.
+        try:
+            return DiagnosticoCaso.model_validate(valor) if valor is not None else None
+        except ValidationError:
+            logger.warning("diagnostico_no_valido", extra={"event": "diagnostico_no_valido"})
+            return None
 
     @field_validator("error")
     @classmethod

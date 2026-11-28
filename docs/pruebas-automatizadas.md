@@ -26,7 +26,27 @@ Tablero (Render) ──token──▶ GitHub Actions: pruebas-e2e.yml
 4. Al terminar descarga el artefacto `resumen-<id>` (el `resumen.json` que escribe `e2e/soporte/reportero-resumen.js`), lo valida y lo guarda en la tabla `prueba_ejecucion`.
 5. Las evidencias completas quedan en GitHub, en el artefacto `evidencias-<id>`: reporte HTML, JUnit, JSON y, de cada fallo, captura, video y traza (se abre en [trace.playwright.dev](https://trace.playwright.dev)). Se conservan 30 días.
 
+6. **Si hay fallos**, el **Agente de Pruebas** explica por qué (ver la sección siguiente) y su diagnóstico aparece en cada caso del tablero.
+
 **¿Por qué en GitHub y no en Render?** Chromium le quitaría memoria a la aplicación en vivo (el plan tiene 2 GB) y las evidencias se borrarían con cada despliegue. En repositorios públicos los minutos de Actions no tienen costo.
+
+## Agente de Pruebas: por qué falló, no solo que falló
+
+Playwright dice *que* algo falló («esperaba ver "Historia aprobada" y no apareció»). El Agente de Pruebas investiga *por qué*.
+
+1. **Percibe** la evidencia del caso fallido, que deja el reportero en `resumen.json`: el error, los pasos que alcanzó (`test.step`), la página al fallar (árbol de accesibilidad) y los errores de consola y de la API que registró la prueba (`e2e/soporte/prueba.js`).
+2. **Piensa** qué necesita confirmar y **actúa** con un navegador real por **Playwright MCP** (el servidor oficial de Microsoft, servicio `navegador` de `docker-compose.yml`): abre pantallas, lee la página, revisa la consola y las llamadas a la API. Hasta 4 rondas.
+3. **Diagnostica**: qué falló, la causa probable, la evidencia, una sugerencia y la clasificación — **error de la aplicación**, **prueba desactualizada** (la aplicación cambió a propósito y la prueba quedó vieja) o **problema del ambiente** — con su nivel de confianza.
+
+Reglas:
+
+- **Solo diagnostica.** No cambia código, datos ni usuarios; decide una persona.
+- **Mínimo privilegio.** Playwright MCP trae más de 20 herramientas; el backend (`agentes/pruebas/navegador_playwright_service.py`) solo permite 10 (navegar, leer la página, clic, escribir, elegir, tecla, esperar, consola y red) y rechaza las demás (por ejemplo, ejecutar JavaScript o subir archivos). Solo abre la aplicación de prueba (`http://aplicacion:10000`); cualquier otra dirección se rechaza, y el navegador además tiene `--allowed-origins`.
+- **Cuida la cuota:** el mismo caso en web, tablet y móvil se diagnostica una vez, y como máximo 3 casos por ejecución (variable `PROBADOR_MAXIMO_CASO` del repositorio).
+- Usa el modelo con OpenCode, como los demás agentes (`agentes/equipo/probador/`). Sus instrucciones están en `prompt.md`.
+- La aplicación que abre no tiene la API simulada de la prueba: la usa para confirmar lo que depende de la interfaz (textos, botones, permisos, errores de JavaScript, llamadas que fallan).
+
+Si el repositorio no tiene `OPENCODE_API_KEY`, las pruebas corren igual y los casos quedan sin diagnóstico.
 
 ### Ambientes
 
@@ -61,9 +81,10 @@ La hace quien administra el repositorio desde el que Render despliega. **Para pa
 3. **Para el ambiente Producción** (opcional):
    - En la aplicación, Mantenimiento → *Nuevo usuario* de QA con el rol **Consulta**.
    - En GitHub → *Settings* → *Secrets and variables* → *Actions* → *New repository secret*: `QA_USUARIO` y `QA_CLAVE`.
-4. **Permiso en la aplicación**: el Administrador tiene las acciones nuevas «Acceder a Pruebas automatizadas» y «Ejecutar pruebas automatizadas». Asígnelas en Mantenimiento a los roles que deban verlas o ejecutarlas.
+4. **Para el Agente de Pruebas** (recomendado): en GitHub → *Settings* → *Secrets and variables* → *Actions* → *New repository secret*: `OPENCODE_API_KEY`. Use una clave **nueva** solo para esto, que se pueda revocar sin afectar la aplicación. Opcional, en *Variables*: `OPENCODE_MODEL_ID`, `OPENCODE_PROVIDER_ID` y `PROBADOR_MAXIMO_CASO`.
+5. **Permiso en la aplicación**: el Administrador tiene las acciones nuevas «Acceder a Pruebas automatizadas» y «Ejecutar pruebas automatizadas». Asígnelas en Mantenimiento a los roles que deban verlas o ejecutarlas.
 
-El token nunca se envía al navegador ni se escribe en los registros. Las claves de QA solo viven en los Secrets de GitHub.
+El token nunca se envía al navegador ni se escribe en los registros. Las claves de QA y del modelo solo viven en los Secrets de GitHub.
 
 Fuera de Render (por ejemplo, con Docker en una computadora), además del token se indican `GITHUB_PRUEBAS_REPOSITORIO` (`dueño/repositorio`) y `GITHUB_PRUEBAS_RAMA`.
 
@@ -80,7 +101,14 @@ docker compose --profile pruebas run --rm -e NAVEGADOR=firefox pruebas
 docker compose down                             # detener (los datos quedan en el volumen «datos»)
 ```
 
-Las evidencias quedan en `reportes-pruebas/` (abra `reportes-pruebas/html/index.html`). Las imágenes son las mismas que usa GitHub Actions: lo que pasa en su computadora pasa en GitHub.
+Las evidencias quedan en `reportes-pruebas/` (abra `reportes-pruebas/html/index.html`).
+
+Para que el Agente de Pruebas diagnostique los fallos en su computadora (necesita `OPENCODE_API_KEY` en `.env.docker`):
+
+```powershell
+docker compose --profile diagnostico up --detach --wait navegador
+Get-Content reportes-pruebas\resumen.json | docker compose exec -T aplicacion python -m agentes.pruebas.diagnosticar > reportes-pruebas\diagnostico.json
+``` Las imágenes son las mismas que usa GitHub Actions: lo que pasa en su computadora pasa en GitHub.
 
 ## Escribir una prueba
 
@@ -101,7 +129,9 @@ Las evidencias quedan en `reportes-pruebas/` (abra `reportes-pruebas/html/index.
 | `playwright.config.js` | Proyectos web, tablet y móvil; `BASE_URL`, `NAVEGADOR` y `REPORTE_DIR` |
 | `docker-compose.yml` | Servicios `aplicacion` y `pruebas` |
 | `.github/workflows/pruebas-e2e.yml` | El workflow que arranca el tablero |
-| `agentes/pruebas/` | Catálogo de suites, registro de ejecuciones y cliente de GitHub Actions |
+| `agentes/pruebas/` | Catálogo de suites, registro de ejecuciones, cliente de GitHub Actions, navegador (Playwright MCP) y `diagnosticar.py` |
+| `agentes/equipo/probador/` | El Agente de Pruebas: definición, instrucciones y su servicio |
+| `e2e/soporte/prueba.js` | `test` con el registro automático de consola y API (evidencia para el agente) |
 | `src/components/Pruebas/` | El tablero y los resultados |
 
 ## Problemas frecuentes
@@ -110,4 +140,5 @@ Las evidencias quedan en `reportes-pruebas/` (abra `reportes-pruebas/html/index.
 - **«GitHub rechazó el token»**: venció o no tiene *Actions: Read and write* sobre ese repositorio.
 - **«GitHub no encontró pruebas-e2e.yml»**: el workflow no está en la rama que despliega Render, o el token es de otro repositorio.
 - **«GitHub no inició la ejecución»**: revise que Actions esté habilitado en el repositorio (*Settings* → *Actions*).
+- **Los casos fallidos no tienen diagnóstico**: falta el secret `OPENCODE_API_KEY`, o el modelo no respondió a tiempo (el caso dice el motivo). El paso «Diagnosticar los fallos» en GitHub muestra el detalle.
 - **La ejecución terminó sin resultados**: abra «Ver en GitHub» y revise el paso «Ejecutar las pruebas» (por ejemplo, la aplicación no levantó).

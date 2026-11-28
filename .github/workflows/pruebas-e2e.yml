@@ -5,6 +5,9 @@
 # pruebas («pruebas»). El tablero sigue el avance por el nombre de los pasos («Preparar…», «Ejecutar…»,
 # «Publicar…»): si se cambian, se cambia también LISTA_ETAPA en agentes/pruebas/pruebas_service.py.
 # Las opciones de «alcance» son las del catálogo agentes/pruebas/catalogo_pruebas.py (lo revisa una prueba).
+#
+# Si hay casos fallidos y el repositorio tiene el secret OPENCODE_API_KEY, el Agente de Pruebas explica por qué
+# fallaron: abre la aplicación con un navegador por Playwright MCP y deja su diagnóstico en cada caso.
 name: Pruebas automatizadas
 
 run-name: >-
@@ -79,6 +82,7 @@ jobs:
       AMBIENTE: ${{ inputs.ambiente }}
       URL_OBJETIVO: ${{ inputs.url }}
       CASOS: ${{ inputs.casos }}
+      HAY_MODELO: ${{ secrets.OPENCODE_API_KEY != '' }}
     steps:
       - name: Descargar el código
         uses: actions/checkout@v4
@@ -102,9 +106,23 @@ jobs:
           mkdir -p reportes-pruebas
 
       - name: Preparar el navegador y la aplicación
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_PROVIDER_ID: ${{ vars.OPENCODE_PROVIDER_ID || 'opencode-go' }}
+          OPENCODE_MODEL_ID: ${{ vars.OPENCODE_MODEL_ID || 'glm-5.3-flash' }}
         run: |
           set -euo pipefail
           if [ "$AMBIENTE" = "pruebas" ]; then
+            # Clave del modelo solo para el Agente de Pruebas (las pruebas simulan la API y no la usan).
+            if [ -n "$OPENCODE_API_KEY" ]; then
+              umask 077
+              {
+                echo "OPENCODE_API_KEY=$OPENCODE_API_KEY"
+                echo "OPENCODE_PROVIDER_ID=$OPENCODE_PROVIDER_ID"
+                echo "OPENCODE_MODEL_ID=$OPENCODE_MODEL_ID"
+                echo "ANALISTA_TURN_TIMEOUT_SECONDS=300"
+              } > .env.docker
+            fi
             docker compose --profile pruebas build aplicacion pruebas
             docker compose up --detach --wait aplicacion
           else
@@ -112,6 +130,7 @@ jobs:
           fi
 
       - name: Ejecutar las pruebas
+        id: ejecutar
         env:
           ETIQUETA: ${{ steps.solicitud.outputs.etiqueta }}
           # El usuario de QA solo viaja a producción; en «Pruebas» la API es simulada.
@@ -130,6 +149,35 @@ jobs:
       - name: Mostrar el registro de la aplicación
         if: failure() && inputs.ambiente == 'pruebas'
         run: docker compose logs aplicacion --tail 200
+
+      - name: Diagnosticar los fallos con el Agente de Pruebas
+        if: failure() && steps.ejecutar.outcome == 'failure' && inputs.ambiente == 'pruebas' && env.HAY_MODELO == 'true'
+        continue-on-error: true
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          sudo chown -R "$(id -u):$(id -g)" reportes-pruebas
+          if [ ! -f reportes-pruebas/resumen.json ]; then echo "No hay resumen: nada que diagnosticar."; exit 0; fi
+          docker compose --profile diagnostico up --detach --wait navegador
+          docker compose exec -T \
+            -e NAVEGADOR_MCP_URL=http://navegador:8931/mcp \
+            -e BASE_URL_DIAGNOSTICO=http://aplicacion:10000 \
+            -e PROBADOR_MAXIMO_CASO="${{ vars.PROBADOR_MAXIMO_CASO || '3' }}" \
+            aplicacion python -m agentes.pruebas.diagnosticar \
+            < reportes-pruebas/resumen.json > reportes-pruebas/diagnostico.json
+          python3 - <<'PY'
+          import json, pathlib
+          ruta = pathlib.Path("reportes-pruebas/resumen.json")
+          resumen = json.loads(ruta.read_text(encoding="utf-8"))
+          salida = json.loads(pathlib.Path("reportes-pruebas/diagnostico.json").read_text(encoding="utf-8"))
+          for caso in resumen.get("casos", []):
+              if caso.get("id") in salida.get("diagnosticos", {}):
+                  caso["diagnostico"] = salida["diagnosticos"][caso["id"]]
+          resumen["diagnostico"] = {"omitidos": salida.get("omitidos", 0)}
+          ruta.write_text(json.dumps(resumen, ensure_ascii=False, indent=2), encoding="utf-8")
+          listos = sum(1 for d in salida.get("diagnosticos", {}).values() if d.get("estado") == "listo")
+          print(f"Casos con diagnóstico: {listos}")
+          PY
 
       - name: Publicar los resultados para el tablero
         if: always()
@@ -164,13 +212,17 @@ jobs:
           salida.write(f"**{datos['aprobados'] + datos['inestables']} de {datos['total']}** casos aprobados · "
                        f"{datos['fallidos']} fallidos · {datos['omitidos']} omitidos · {round(datos['duracion_ms'] / 1000)} s\n\n")
           fallidos = [c for c in datos["casos"] if c["estado"] == "fallido"]
+          limpiar = lambda texto: (texto or "").splitlines()[0][:200].replace("|", "\\|") if texto else ""
           if fallidos:
-              salida.write("| Caso | Dispositivo | Error |\n|---|---|---|\n")
+              salida.write("| Caso | Dispositivo | Error | Diagnóstico del Agente de Pruebas |\n|---|---|---|---|\n")
               for caso in fallidos:
-                  error = (caso.get("error") or "").splitlines()[0][:160].replace("|", "\\|") if caso.get("error") else ""
-                  salida.write(f"| {caso['titulo']} | {caso['dispositivo']} | {error} |\n")
+                  diagnostico = caso.get("diagnostico") or {}
+                  causa = f"{diagnostico.get('tipo', '')}: {diagnostico.get('causa_probable', '')}" if diagnostico.get("estado") == "listo" else ""
+                  salida.write(f"| {caso['titulo']} | {caso['dispositivo']} | {limpiar(caso.get('error'))} | {limpiar(causa)} |\n")
           PY
 
       - name: Apagar la aplicación
         if: always()
-        run: docker compose --profile pruebas down --volumes
+        run: |
+          docker compose --profile pruebas --profile diagnostico down --volumes
+          rm -f .env.docker

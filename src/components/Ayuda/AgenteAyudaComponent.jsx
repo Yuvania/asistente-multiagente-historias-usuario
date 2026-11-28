@@ -13,7 +13,7 @@ const Lista = ({ titulo, elementos }) => (
 
 export const AgenteAyudaComponent = () => (
   <>
-    <TarjetaComponent title="Los agentes del sistema" subtitle="Cuatro agentes, cada uno con su rol, sus herramientas y su memoria">
+    <TarjetaComponent title="Los agentes del sistema" subtitle="Cuatro agentes en el flujo de HU y el Agente de Pruebas, cada uno con su rol, sus herramientas y su memoria">
       <p className="ayuda-item__texto">
         El Analista y el Asesor Técnico trabajan en equipo: después del primer análisis, el Asesor revisa qué otras
         funciones afecta el cambio y las preguntas de los dos llegan a Negocio en una sola ronda. Luego el

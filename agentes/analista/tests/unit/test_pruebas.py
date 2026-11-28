@@ -31,9 +31,13 @@ RESUMEN = {
     "casos": [
         {"id": "c1", "titulo": "El PO aprueba (paso 5)", "modulo": "historias", "archivo": "historias.spec.js",
          "dispositivo": "movil", "estado": "fallido", "duracion_ms": 41000, "error": "No apareció «Historia aprobada».",
-         "pasos": ["Ingresa", "Aprueba"]},
+         "pasos": ["Ingresa", "Aprueba"], "contexto_pagina": "- button Aprobar", "registro": [{"tipo": "api", "estado": 403}],
+         "diagnostico": {"estado": "listo", "que_fallo": "No se aprobó la historia.", "causa_probable": "La API respondió 403.",
+                         "tipo": "error_aplicacion", "confianza": "media", "evidencia": ["POST /resume → 403"],
+                         "sugerencia": "Revisar las acciones del rol.",
+                         "exploracion": {"rondas": 2, "acciones": ["browser_navigate (ok)"], "limitaciones": []}}},
         {"id": "c2", "titulo": "Registra el requerimiento", "modulo": "historias", "dispositivo": "web",
-         "estado": "aprobado", "duracion_ms": 12000},
+         "estado": "aprobado", "duracion_ms": 12000, "diagnostico": {"estado": "otro"}},
         {"id": "c3", "titulo": "El analista no ve Aprobar", "modulo": "historias", "dispositivo": "web",
          "estado": "aprobado", "duracion_ms": 9000},
     ],
@@ -68,6 +72,8 @@ class GitHubFalso:
                  "conclusion": "success" if terminado or self.estado_run == "in_progress" else None},
                 {"name": "Ejecutar las pruebas", "status": "completed" if terminado else "in_progress",
                  "conclusion": "failure" if terminado else None},
+                {"name": "Diagnosticar los fallos con el Agente de Pruebas", "status": "completed" if terminado else "queued",
+                 "conclusion": "success" if terminado else None},
                 {"name": "Publicar los resultados para el tablero", "status": "completed" if terminado else "queued",
                  "conclusion": "success" if terminado else None},
             ]}]})
@@ -169,7 +175,7 @@ def test_sigue_el_avance_y_al_terminar_guarda_el_resumen(servicio, github):
     _forzar_sincronizacion(servicio, ejecucion_id)
     panel = cliente.get("/api/analista/pruebas/ejecuciones").json()
     assert panel["activa"]["estado"] == "en_ejecucion"
-    assert [p["estado"] for p in panel["activa"]["pasos"]] == ["completa", "completa", "en_curso", "pendiente"]
+    assert [p["estado"] for p in panel["activa"]["pasos"]] == ["completa", "completa", "en_curso", "pendiente", "pendiente"]
 
     github.estado_run, github.conclusion = "completed", "failure"
     _forzar_sincronizacion(servicio, ejecucion_id)
@@ -177,6 +183,12 @@ def test_sigue_el_avance_y_al_terminar_guarda_el_resumen(servicio, github):
     assert detalle["estado"] == "con_fallos"
     assert detalle["resumen"] == {k: v for k, v in RESUMEN.items() if k not in ("casos", "version")}
     assert [c["estado"] for c in detalle["casos"]] == ["fallido", "aprobado", "aprobado"]
+    # El diagnóstico del Agente de Pruebas se guarda; uno mal formado se descarta sin perder el caso.
+    assert detalle["casos"][0]["diagnostico"]["tipo"] == "error_aplicacion"
+    assert detalle["casos"][1]["diagnostico"] is None
+    # La evidencia cruda para el agente (página y registro) no se guarda en la base.
+    assert "contexto_pagina" not in detalle["casos"][0] and "registro" not in detalle["casos"][0]
+    assert [p["estado"] for p in detalle["pasos"]] == ["completa", "completa", "fallida", "completa", "completa"]
     assert detalle["run_url"].endswith("/runs/777")
 
     panel = cliente.get("/api/analista/pruebas/ejecuciones").json()
@@ -239,7 +251,7 @@ def test_un_resumen_invalido_no_se_guarda(servicio, github):
 def test_filtro_y_linea_de_tiempo():
     assert filtro_casos(["a.b", "a.b", "c (d)"]) == r"a\.b|c\ \(d\)"
     cancelada = linea_de_tiempo([], "cancelada")
-    assert [e["estado"] for e in cancelada] == ["completa", "cancelada", "cancelada", "cancelada"]
+    assert [e["estado"] for e in cancelada] == ["completa", "cancelada", "cancelada", "cancelada", "cancelada"]
 
 
 # --- Las tres listas de suites coinciden: catálogo, workflow y etiquetas de e2e/ ------------------------

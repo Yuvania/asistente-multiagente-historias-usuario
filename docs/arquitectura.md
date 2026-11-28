@@ -50,6 +50,8 @@ De la definición salen solos: el identificador `AgentId`, las herramientas MCP 
 
 La clase base `AgenteOpenCodeService` hace el ciclo común: abre OpenCode, verifica versión y agente, planifica y consulta por MCP, envía el mensaje final, interpreta la salida y pide una corrección si no cumple el contrato. Cada servicio solo aporta su tarea, su contexto, cómo armar el mensaje y cómo interpretar la salida.
 
+**Agente de Pruebas (`probador`).** No está en el flujo de HU: diagnostica las pruebas de Playwright que fallan, dentro de GitHub Actions (`agentes/pruebas/diagnosticar.py`). Hereda de la misma clase base, pero en vez de la base de conocimiento usa un navegador por Playwright MCP (`consulta_propia`): su servidor MCP propio no tiene herramientas y la lista de herramientas del navegador permitidas, con la dirección de la aplicación de prueba, la controla `agentes/pruebas/navegador_playwright_service.py`. Ver `docs/pruebas-automatizadas.md`.
+
 ## Orquestación: el flujo como tabla
 
 El grafo de LangGraph no se arma con llamadas sueltas: se declara como una lista de `Paso(nombre, nodo, siguiente, descripción)`, donde `siguiente` es un paso fijo, `FIN` o una `Ruta` que decide según el estado. `construir_flujo` (en `agentes/analista/core/flujo.py`) valida la tabla antes de compilar: pasos repetidos, destinos inexistentes o pasos a los que nunca se llega detienen el arranque con un mensaje claro.

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './soporte/prueba.js';
 import { MODO_REAL, ingresarComo } from './soporte/ambiente.js';
 
 // Básicas (smoke): se ingresa y cada pantalla principal abre. Solo leen, así que también corren contra la
