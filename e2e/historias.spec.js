@@ -1,5 +1,14 @@
 import { expect, test } from '@playwright/test';
 
+// Asistente de 5 pasos (pre-grooming) y Gestor de Cambios (post-grooming), con la API simulada.
+// La aplicación se abre sin seguridad, como en el desarrollo local, y sin el backend de historias: así
+// las historias que la prueba deja en el navegador no se reemplazan por las del ambiente.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/analista/sesion', (route) => route.fulfill({ status: 200, json: { seguridad: false, usuario: null } }));
+  await page.route('**/api/analista/historias', (route) => route.fulfill({ status: 503, json: { error: { code: 'DEPENDENCY_UNAVAILABLE' } } }));
+  await page.route('**/api/analista/pendientes', (route) => route.fulfill({ status: 200, json: { por_decidir: [], avisos: [], total: 0 } }));
+});
+
 const storyId = '00000000-0000-4000-8000-000000000003';
 const question = {
   question_id: 'question-synthetic-1',
@@ -82,7 +91,7 @@ async function fillRequirement(page) {
   await page.getByLabel('Descripción o información de negocio').fill('Consultar vigencia de póliza ficticia TEST-003.');
 }
 
-test('pre-grooming presenta análisis y HU, recoge respuestas y solicita aprobación explícita', async ({ page }) => {
+test('pre-grooming presenta análisis y HU, recoge respuestas y solicita aprobación explícita', { tag: '@historias' }, async ({ page }) => {
   let phase = 0;
   let persisted = false;
   const requestBodies = [];
@@ -146,7 +155,7 @@ test('pre-grooming presenta análisis y HU, recoge respuestas y solicita aprobac
   expect(phase).toBe(2);
 });
 
-test('post-grooming muestra al Gestor de Cambios y registra solo tras aceptar la recomendación', async ({ page }) => {
+test('post-grooming muestra al Gestor de Cambios y registra solo tras aceptar la recomendación', { tag: '@cambios' }, async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.evaluate(({ id }) => localStorage.setItem('historias_usuario_prototipo', JSON.stringify([
     { id, title: 'Poliza TEST-003', status: 'aprobada', approvedAt: '2030-01-01T00:00:00Z' },
@@ -189,7 +198,7 @@ test('post-grooming muestra al Gestor de Cambios y registra solo tras aceptar la
   expect(decisionRequest).toMatchObject({ kind: 'change_decision', interrupt_id: 'interrupt-change-1' });
 });
 
-test('el error 503 mantiene separado el modo manual', async ({ page }) => {
+test('el error 503 mantiene separado el modo manual', { tag: '@cambios' }, async ({ page }) => {
   const manualWrites = [];
   let workflowResumeRequests = 0;
   await page.route('**/api/analista/repositorio/historias', (route) => route.fulfill({ status: 200, json: [{ id: storyId, titulo: 'Póliza TEST-003', aprobada_en: '2030-01-01T00:00:00Z' }] }));
@@ -224,7 +233,7 @@ test('el error 503 mantiene separado el modo manual', async ({ page }) => {
 });
 
 
-test('la interfaz identifica un flujo que no se encontró (404)', async ({ page }) => {
+test('la interfaz identifica un flujo que no se encontró (404)', { tag: '@historias' }, async ({ page }) => {
   await page.route('**/api/workflows**', async (route) => {
     if (route.request().method() === 'GET') return route.fulfill({ status: 404, json: { error: { code: 'WORKFLOW_NOT_FOUND' } } });
     return route.fulfill({ status: 201, json: businessSnapshot() });

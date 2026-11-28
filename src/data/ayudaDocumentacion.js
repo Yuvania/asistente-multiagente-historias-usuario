@@ -145,8 +145,8 @@ export const TECNOLOGIAS = [
   { titulo: 'Repositorio de código', texto: 'Un repositorio de GitHub de solo lectura (de ejemplo, codigo-ejemplo-polizas) que el Asesor Técnico revisa. Se copia al arrancar el servicio.' },
   { titulo: 'Datos', texto: 'TiDB Cloud (compatible con MySQL) como base compartida: historias, Repositorio de HU, cambios, lecciones y los flujos en proceso. En local y en pruebas, SQLite.' },
   { titulo: 'Trazabilidad', texto: 'Langfuse para seguir cada paso de los agentes, y registros del servidor que indican la causa cuando un flujo se detiene.' },
-  { titulo: 'Pruebas', texto: 'Vitest y Testing Library en la interfaz; pytest y pytest-asyncio en el backend. GitHub Actions las ejecuta en cada cambio.' },
-  { titulo: 'Despliegue', texto: 'Docker en una sola imagen (interfaz compilada, backend y OpenCode), publicada en Render con despliegue automático desde la rama main.' },
+  { titulo: 'Pruebas', texto: 'Vitest y Testing Library en la interfaz; pytest y pytest-asyncio en el backend; Playwright de punta a punta en web, tablet y móvil. GitHub Actions las ejecuta en cada cambio y, a pedido, desde la pestaña Pruebas.' },
+  { titulo: 'Despliegue', texto: 'Docker en una sola imagen (interfaz compilada, backend y OpenCode), publicada en Render con despliegue automático desde la rama main. Con docker compose la misma imagen corre en cualquier computadora.' },
 ];
 
 export const PENDIENTES = [
@@ -195,7 +195,48 @@ export const STACK_ARQUITECTURA = [
   { titulo: 'Conocimiento: Pinecone', texto: 'Índice con las HU aprobadas, las lecciones aprendidas y el código del repositorio de pruebas. Se vuelve a cargar solo cuando algo cambia.' },
   { titulo: 'Datos: TiDB (MySQL) con SQLAlchemy', texto: 'Historias, Repositorio de HU, cambios, lecciones, flujos en proceso, usuarios, roles y avisos. En local y en pruebas se usa SQLite.' },
   { titulo: 'Trazabilidad: Langfuse', texto: 'Traza cada turno y cada etapa de los agentes. Los registros del servidor dicen la causa de un fallo sin guardar lo que generó el modelo.' },
-  { titulo: 'Despliegue: Docker en Render', texto: 'Una sola imagen con la interfaz compilada, el backend y OpenCode. Se despliega solo con cada cambio en la rama main.' },
+  { titulo: 'Despliegue: Docker en Render', texto: 'Una sola imagen con la interfaz compilada, el backend y OpenCode. Se despliega solo con cada cambio en la rama main. docker-compose.yml levanta la misma imagen en cualquier computadora.' },
+  { titulo: 'Pruebas: Playwright en GitHub Actions', texto: 'La pestaña Pruebas arranca el workflow pruebas-e2e.yml con un token de GitHub; ahí se levanta la aplicación en Docker y Playwright la recorre en web, tablet y móvil. El tablero sigue el avance y guarda el resumen; las evidencias quedan en GitHub.' },
+];
+
+// --- Pruebas automatizadas (pestaña Pruebas) ---------------------------------------------------
+export const PRUEBAS_AUTOMATIZADAS = [
+  {
+    titulo: 'Qué son',
+    texto: 'Pruebas de Playwright que abren la aplicación en un navegador real y la recorren como una persona: ingresar, crear una historia, decidir pendientes, administrar roles, exportar y el propio tablero. Cada caso corre en web, tablet y móvil.',
+  },
+  {
+    titulo: 'Dónde corren',
+    texto: 'En GitHub Actions, no en Render: así no le quitan memoria a la aplicación en vivo y las evidencias no se borran con cada despliegue. GitHub levanta la aplicación con Docker (la misma imagen de Render) y la API simulada: no gastan cuota del modelo ni crean datos.',
+  },
+  {
+    titulo: 'Cómo se ejecutan',
+    texto: 'Pruebas → Nueva ejecución: elija qué probar (un módulo, todos o solo las básicas), el ambiente y el navegador, y presione Ejecutar pruebas. Solo hay una ejecución a la vez; el tablero muestra el avance y, al terminar, los casos con su error.',
+    puntos: [
+      'Ambiente Pruebas: la aplicación en un contenedor de GitHub, con la API simulada.',
+      'Ambiente Producción (solo lectura): solo las básicas, contra la aplicación publicada con el usuario de QA. No crean ni cambian datos.',
+      '«Volver a ejecutar los fallidos» repite solo los casos que fallaron.',
+      'Evidencias en GitHub: reporte HTML, JUnit y, de cada fallo, captura, video y traza.',
+    ],
+  },
+  {
+    titulo: 'Configuración (una sola vez)',
+    texto: 'Lo hace quien administra el repositorio desde el que Render despliega.',
+    puntos: [
+      'GitHub → Settings → Developer settings → Fine-grained tokens: un token solo para ese repositorio, con permiso Actions: Read and write.',
+      'Render → Environment: GITHUB_PRUEBAS_TOKEN con ese token. El repositorio y la rama se toman solos de Render.',
+      'Para el ambiente Producción: en Mantenimiento, un usuario de QA con el rol Consulta; y en GitHub → Settings → Secrets → Actions, QA_USUARIO y QA_CLAVE.',
+      'Cambiar de repositorio (por ejemplo, del de un compañero al propio) = cambiar el token.',
+    ],
+  },
+  {
+    titulo: 'Sin GitHub: en cualquier computadora',
+    texto: 'Con Docker: docker compose up --build levanta la aplicación en http://localhost:10000 y docker compose --profile pruebas run --rm pruebas corre las pruebas (con --grep @basicas, solo una suite). Las evidencias quedan en la carpeta reportes-pruebas.',
+  },
+  {
+    titulo: 'Agregar una prueba',
+    texto: 'Un archivo e2e/<modulo>.spec.js con la etiqueta de su suite (tag: \'@historias\'). Una suite nueva se registra en agentes/pruebas/catalogo_pruebas.py y en las opciones del workflow; una prueba de estructura revisa que las tres listas coincidan.',
+  },
 ];
 
 export const REPOSITORIO_PRUEBAS = [

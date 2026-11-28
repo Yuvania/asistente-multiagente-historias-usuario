@@ -16,6 +16,7 @@ from agentes.analista.api.routes.historias import router as historias_router
 from agentes.analista.api.routes.repositorio import router as repositorio_router
 from agentes.analista.api.routes.seguridad import router as seguridad_router
 from agentes.analista.api.routes.pendientes import router as pendientes_router
+from agentes.analista.api.routes.pruebas import router as pruebas_router
 from agentes.notificaciones.teams_service import TeamsService
 from agentes.analista.api.routes.workflows import router as workflows_router
 from agentes.analista.core.conversation_store import ConversationStore
@@ -27,6 +28,8 @@ from agentes.analista.core.prompt_loader import PromptLoadError, load_prompt
 from agentes.analista.core.workflow_graph import WorkflowRuntime
 from agentes.analista.memory.repositorio import RepositorioHU
 from agentes.conocimiento.sincronizacion import SincronizadorConocimiento
+from agentes.pruebas.pruebas_service import PruebasService
+from agentes.pruebas.repositorio_pruebas import RepositorioPrueba
 from agentes.seguridad.clave import FirmaSesion
 from agentes.seguridad.repositorio_seguridad import RepositorioSeguridad
 
@@ -54,6 +57,8 @@ async def lifespan(app: FastAPI):
         app.state.seguridad = RepositorioSeguridad(app.state.repositorio.motor)
         app.state.seguridad.inicializar(*credenciales)
         app.state.firma_sesion = FirmaSesion(os.environ.get("SESION_SECRETO", "").strip() or credenciales[1])
+    # Pruebas automatizadas: corren en GitHub Actions; aquí solo se piden, se siguen y se guarda el resumen.
+    app.state.pruebas = PruebasService(RepositorioPrueba(app.state.repositorio.motor))
     # Repositorio del Asesor y carga del conocimiento en Pinecone, en segundo plano y sin pasos manuales.
     app.state.sincronizador = SincronizadorConocimiento(repositorio=app.state.repositorio)
     app.state.repositorio.al_cambiar_conocimiento = app.state.sincronizador.programar_repositorio
@@ -95,6 +100,7 @@ app.include_router(repositorio_router, prefix="/api/analista", tags=["repositori
 app.include_router(historias_router, prefix="/api/analista", tags=["historias"])
 app.include_router(seguridad_router, prefix="/api/analista", tags=["seguridad"])
 app.include_router(pendientes_router, prefix="/api/analista", tags=["pendientes"])
+app.include_router(pruebas_router, prefix="/api/analista", tags=["pruebas"])
 app.include_router(workflows_router, prefix="/api/workflows", tags=["workflows"])
 
 # Publicación en un hosting: la interfaz la sirve el mismo servicio. La API pide sesión por usuario

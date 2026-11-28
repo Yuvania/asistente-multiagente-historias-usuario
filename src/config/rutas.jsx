@@ -2,7 +2,7 @@
 // Agregar una pantalla = agregar una entrada. Si debe verse en el menú, se le pone «menu».
 // Si solo deben verla quienes tengan una acción, se le pone «accion» (src/config/acciones.js).
 // Ver docs/arquitectura.md y la skill «agregar-ruta».
-import { LayoutDashboard, FileText, PlusCircle, HelpCircle, ShieldCheck, Bell } from 'lucide-react';
+import { LayoutDashboard, FileText, PlusCircle, HelpCircle, ShieldCheck, Bell, FlaskConical } from 'lucide-react';
 import { ACCION } from './acciones';
 import { TableroComponent } from '../components/Dashboard/TableroComponent';
 import { ListaHistoriaUsuarioComponent } from '../components/HistoriaUsuario/ListaHistoriaUsuarioComponent';
@@ -15,6 +15,8 @@ import { AyudaComponent } from '../components/Ayuda/AyudaComponent';
 import { ListaLeccionComponent } from '../components/Leccion/ListaLeccionComponent';
 import { MantenimientoComponent } from '../components/Mantenimiento/MantenimientoComponent';
 import { PendientesComponent } from '../components/Pendientes/PendientesComponent';
+import { PruebasComponent } from '../components/Pruebas/PruebasComponent';
+import { ResultadoPruebaComponent } from '../components/Pruebas/ResultadoPruebaComponent';
 
 // ruta: relativa a la raíz ('' es el inicio). componente: lo que se muestra.
 // accion (opcional): acción (o lista; basta una) que hace falta para abrirla. menu.accion la reemplaza solo
@@ -51,6 +53,13 @@ export const listaRuta = Object.freeze([
   { ruta: 'historias/:id/solicitar-cambio', componente: SolicitarCambioHistoriaComponent, accion: ACCION.CAMBIO_SOLICITAR },
   { ruta: 'lecciones', componente: ListaLeccionComponent, accion: ACCION.LECCION_VER },
   { ruta: 'skills', componente: ListaHabilidadComponent },
+  {
+    ruta: 'pruebas',
+    componente: PruebasComponent,
+    accion: ACCION.PRUEBA_VER,
+    menu: { etiqueta: 'Pruebas', corta: 'Pruebas', titulo: 'Pruebas automatizadas: ejecutarlas y ver sus resultados', icono: FlaskConical, orden: 70 },
+  },
+  { ruta: 'pruebas/:id', componente: ResultadoPruebaComponent, accion: ACCION.PRUEBA_VER },
   {
     ruta: 'mantenimiento',
     componente: MantenimientoComponent,

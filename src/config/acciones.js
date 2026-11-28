@@ -18,4 +18,6 @@ export const ACCION = Object.freeze({
   MANTENIMIENTO_VER: 'mantenimiento.ver',
   USUARIO_ADMINISTRAR: 'usuario.administrar',
   ROL_ADMINISTRAR: 'rol.administrar',
+  PRUEBA_VER: 'prueba.ver',
+  PRUEBA_EJECUTAR: 'prueba.ejecutar',
 });

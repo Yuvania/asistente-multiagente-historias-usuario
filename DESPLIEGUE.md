@@ -26,6 +26,7 @@ El Blueprint mantiene un único Web Service Docker. La imagen incluye React comp
 | `APP_URL` (opcional) | Dirección pública de la aplicación para el enlace del aviso. En Render se usa `RENDER_EXTERNAL_URL` si falta. |
 | `SESION_SECRETO` (opcional) | Secreto para firmar las sesiones. Si falta se deriva de `ACCESO_CLAVE`; si se cambia, todos deben volver a ingresar. |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | Opcionales. Déjalas vacías si no usas Langfuse en el servidor. |
+| `GITHUB_PRUEBAS_TOKEN` (opcional) | Token *fine-grained* de GitHub con **Actions: Read and write** solo sobre el repositorio que despliega Render. Conecta la pestaña Pruebas con GitHub Actions. Para cambiar de repositorio se cambia solo este token. Ver [docs/pruebas-automatizadas.md](docs/pruebas-automatizadas.md). |
 
 3. Ya vienen definidas en `render.yaml`: `ANALISTA_PUBLICO=1` (obliga a tener usuario y clave; si faltan, el servicio no inicia), `OPENCODE_PROVIDER_ID`, `OPENCODE_MODEL_ID` y `OPENCODE_SERVER_PASSWORD` (la genera Render).
 4. Espera el primer despliegue (varios minutos) y abre el URL `https://<nombre>.onrender.com`. El navegador pedirá el usuario y la clave.
@@ -54,7 +55,17 @@ Se cambian en el panel de Render (**Environment**); al guardar, Render reinicia 
 | `ANALISTA_MCP_TRANSPORTE` | No | `memoria` (recomendado en Render: mismo protocolo MCP, mismo proceso, sin arrancar un proceso por consulta) o `stdio` (cada servidor MCP en su propio proceso; predeterminado en local). |
 | `ANALISTA_TURN_TIMEOUT_SECONDS` | No | Tiempo máximo por agente, en segundos (90 por defecto; 180 en `render.yaml`; máximo 300). |
 | `PINECONE_SINCRONIZACION_AUTOMATICA` | No | `1` (por defecto): carga automática del conocimiento en Pinecone. `0`: solo carga manual. |
+| `GITHUB_PRUEBAS_TOKEN` | No | Token de GitHub para la pestaña Pruebas (Actions: Read and write). Sin él, el tablero explica qué falta y no ejecuta. |
+| `GITHUB_PRUEBAS_REPOSITORIO`, `GITHUB_PRUEBAS_RAMA` | No | Solo fuera de Render (`dueño/repositorio` y rama). En Render salen solos de `RENDER_GIT_REPO_SLUG` y `RENDER_GIT_BRANCH`. |
 | `ANALISTA_UMBRAL_SIMILITUD_VACIO` | No | Similitud (0 a 1, `0.9` por defecto) a partir de la cual un vacío se considera el mismo tema que una pregunta ya respondida: no se le vuelve a preguntar a Negocio y pasa como supuesto a validar por el PO. |
+
+## Pruebas automatizadas (GitHub Actions)
+
+La pestaña **Pruebas** arranca el workflow `.github/workflows/pruebas-e2e.yml` del mismo repositorio que despliega Render. Las pruebas corren en GitHub (no le quitan memoria al servicio) y las evidencias quedan ahí. Solo hace falta `GITHUB_PRUEBAS_TOKEN`; para el ambiente Producción, además, los secrets `QA_USUARIO` y `QA_CLAVE` en GitHub y un usuario de QA con el rol Consulta. Paso a paso: [docs/pruebas-automatizadas.md](docs/pruebas-automatizadas.md).
+
+## Con Docker en cualquier computadora
+
+`docker-compose.yml` levanta la misma imagen de Render: `docker compose up --build` y se abre `http://localhost:10000`. Las variables van en `.env.docker` (plantilla: `.env.docker.example`; no se versiona). Ver el README, sección «Ejecución con Docker».
 
 ## Aviso por Teams al Product Owner
 

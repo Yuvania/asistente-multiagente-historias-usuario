@@ -1,0 +1,176 @@
+# Pruebas automatizadas de la aplicación (Playwright), en Docker.
+#
+# Se arranca desde el tablero «Pruebas automatizadas» de la aplicación (o a mano: Actions → Run workflow).
+# Usa las mismas imágenes de docker-compose.yml que cualquier computadora: la aplicación («app») y las
+# pruebas («pruebas»). El tablero sigue el avance por el nombre de los pasos («Preparar…», «Ejecutar…»,
+# «Publicar…»): si se cambian, se cambia también LISTA_ETAPA en agentes/pruebas/pruebas_service.py.
+# Las opciones de «alcance» son las del catálogo agentes/pruebas/catalogo_pruebas.py (lo revisa una prueba).
+name: Pruebas automatizadas
+
+run-name: >-
+  Pruebas ${{ inputs.numero || 'manual' }} · ${{ inputs.alcance }} · ${{ inputs.ambiente }} [${{ inputs.ejecucion }}]
+
+on:
+  workflow_dispatch:
+    inputs:
+      ejecucion:
+        description: Identificador de la ejecución (lo pone la aplicación)
+        required: false
+        default: manual
+      numero:
+        description: Número legible de la ejecución (lo pone la aplicación)
+        required: false
+        default: ''
+      alcance:
+        description: Qué probar
+        type: choice
+        default: regresion
+        options:
+          - regresion
+          - basicas
+          - inicio-sesion
+          - historias
+          - cambios
+          - pendientes
+          - mantenimiento
+          - exportar
+          - pruebas
+      navegador:
+        description: Navegador
+        type: choice
+        default: chromium
+        options:
+          - chromium
+          - firefox
+          - webkit
+      ambiente:
+        description: Ambiente (producción solo admite las básicas)
+        type: choice
+        default: pruebas
+        options:
+          - pruebas
+          - produccion
+      url:
+        description: URL de la aplicación publicada (solo ambiente produccion)
+        required: false
+        default: ''
+      casos:
+        description: Solo estos casos (expresión regular; la usa «Volver a ejecutar los fallidos»)
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Una ejecución a la vez: si se pide otra, espera en cola.
+concurrency:
+  group: pruebas-e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: Pruebas de la aplicación
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EJECUCION: ${{ inputs.ejecucion }}
+      ALCANCE: ${{ inputs.alcance }}
+      NAVEGADOR: ${{ inputs.navegador }}
+      AMBIENTE: ${{ inputs.ambiente }}
+      URL_OBJETIVO: ${{ inputs.url }}
+      CASOS: ${{ inputs.casos }}
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Validar la solicitud
+        id: solicitud
+        env:
+          HAY_QA: ${{ secrets.QA_USUARIO != '' && secrets.QA_CLAVE != '' }}
+        run: |
+          set -euo pipefail
+          [[ "$EJECUCION" =~ ^(manual|[0-9a-fA-F-]{36})$ ]] || { echo "::error::Identificador de ejecución no válido."; exit 1; }
+          [[ "$ALCANCE" =~ ^[a-z-]+$ ]] || { echo "::error::Alcance no válido."; exit 1; }
+          ETIQUETA=""
+          if [ "$ALCANCE" != "regresion" ]; then ETIQUETA="@$ALCANCE"; fi
+          if [ "$AMBIENTE" = "produccion" ]; then
+            [ "$ALCANCE" = "basicas" ] || { echo "::error::En producción solo se ejecutan las pruebas básicas."; exit 1; }
+            [[ "$URL_OBJETIVO" =~ ^https://[A-Za-z0-9.-]+/?$ ]] || { echo "::error::La URL de producción debe ser https."; exit 1; }
+            [ "$HAY_QA" = "true" ] || { echo "::error::Faltan los secrets QA_USUARIO y QA_CLAVE del repositorio."; exit 1; }
+          fi
+          echo "etiqueta=$ETIQUETA" >> "$GITHUB_OUTPUT"
+          mkdir -p reportes-pruebas
+
+      - name: Preparar el navegador y la aplicación
+        run: |
+          set -euo pipefail
+          if [ "$AMBIENTE" = "pruebas" ]; then
+            docker compose --profile pruebas build app pruebas
+            docker compose up --detach --wait app
+          else
+            docker compose --profile pruebas build pruebas
+          fi
+
+      - name: Ejecutar las pruebas
+        env:
+          ETIQUETA: ${{ steps.solicitud.outputs.etiqueta }}
+          # El usuario de QA solo viaja a producción; en «Pruebas» la API es simulada.
+          QA_USUARIO: ${{ inputs.ambiente == 'produccion' && secrets.QA_USUARIO || '' }}
+          QA_CLAVE: ${{ inputs.ambiente == 'produccion' && secrets.QA_CLAVE || '' }}
+        run: |
+          set -euo pipefail
+          ARGUMENTOS=()
+          if [ -n "$CASOS" ]; then ARGUMENTOS+=(--grep "$CASOS"); elif [ -n "$ETIQUETA" ]; then ARGUMENTOS+=(--grep "$ETIQUETA"); fi
+          if [ "$AMBIENTE" = "produccion" ]; then
+            BASE_URL="$URL_OBJETIVO" docker compose --profile pruebas run --rm --no-deps pruebas "${ARGUMENTOS[@]}"
+          else
+            docker compose --profile pruebas run --rm pruebas "${ARGUMENTOS[@]}"
+          fi
+
+      - name: Mostrar el registro de la aplicación
+        if: failure() && inputs.ambiente == 'pruebas'
+        run: docker compose logs app --tail 200
+
+      - name: Publicar los resultados para el tablero
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resumen-${{ inputs.ejecucion }}
+          path: reportes-pruebas/resumen.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publicar las evidencias
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencias-${{ inputs.ejecucion }}
+          path: reportes-pruebas/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publicar el resumen en GitHub
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          ruta = pathlib.Path("reportes-pruebas/resumen.json")
+          salida = open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8")
+          if not ruta.exists():
+              salida.write("### Pruebas automatizadas\n\nNo se generó el resumen: revise el paso «Ejecutar las pruebas».\n")
+              raise SystemExit(0)
+          datos = json.loads(ruta.read_text(encoding="utf-8"))
+          salida.write("### Pruebas automatizadas\n\n")
+          salida.write(f"**{datos['aprobados'] + datos['inestables']} de {datos['total']}** casos aprobados · "
+                       f"{datos['fallidos']} fallidos · {datos['omitidos']} omitidos · {round(datos['duracion_ms'] / 1000)} s\n\n")
+          fallidos = [c for c in datos["casos"] if c["estado"] == "fallido"]
+          if fallidos:
+              salida.write("| Caso | Dispositivo | Error |\n|---|---|---|\n")
+              for caso in fallidos:
+                  error = (caso.get("error") or "").splitlines()[0][:160].replace("|", "\\|") if caso.get("error") else ""
+                  salida.write(f"| {caso['titulo']} | {caso['dispositivo']} | {error} |\n")
+          PY
+
+      - name: Apagar la aplicación
+        if: always()
+        run: docker compose --profile pruebas down --volumes

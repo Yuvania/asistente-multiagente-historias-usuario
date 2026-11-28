@@ -12,6 +12,7 @@ Proyecto desarrollado para el curso de Inteligencia Artificial de Cenfotec. El d
 - [Diseño e identidad visual](#diseño-e-identidad-visual)
 - [Tecnologías](#tecnologías)
 - [Ejecución local](#ejecución-local)
+- [Ejecución con Docker](#ejecución-con-docker)
 - [Pruebas](#pruebas)
 - [Despliegue](#despliegue)
 - [Seguridad y datos](#seguridad-y-datos)
@@ -27,6 +28,7 @@ Proyecto desarrollado para el curso de Inteligencia Artificial de Cenfotec. El d
 - **Acciones sobre una HU:** consulta, edición, solicitud de cambio, descarga en Word o PDF con plantilla configurable y eliminación.
 - **Roles, acciones y Mantenimiento:** inicio de sesión por usuario; cada rol tiene sus acciones (por ejemplo, solo el Product Owner aprueba) y se administran en la pestaña Mantenimiento.
 - **Pendientes y avisos:** el Product Owner ve lo que espera su aprobación; quien creó la historia ve si fue aprobada, devuelta con su motivo o rechazada. El aviso por Teams está preparado pero apagado hasta configurarlo (ver DESPLIEGUE.md).
+- **Pruebas automatizadas:** pestaña *Pruebas* para ejecutar las pruebas de Playwright (web, tablet y móvil) en GitHub Actions y ver sus resultados, con evidencias en GitHub.
 - **Ayuda integrada** con el flujo, los agentes, las tecnologías y los temas pendientes de definición.
 
 ## Flujo de creación de una historia
@@ -164,16 +166,33 @@ Para herramientas de IA, la skill `marca-diseno` (en `.agents/skills` y `.claude
 
 Para trabajar solo con la interfaz, sin agentes (las historias se guardan en el navegador): `npm ci` y `npm run dev`.
 
+## Ejecución con Docker
+
+Para abrir la aplicación en cualquier computadora sin instalar Node, Python ni OpenCode. Requisito: Docker Desktop (Windows o Mac) o Docker con Compose (Linux).
+
+```powershell
+Copy-Item .env.docker.example .env.docker   # opcional: clave del modelo, base de datos, Pinecone...
+docker compose up --build                    # http://localhost:10000
+docker compose down                          # detener; los datos quedan en el volumen «datos»
+```
+
+- Es la **misma imagen** que se publica en Render.
+- Sin claves también abre: sin `ACCESO_USUARIO` no pide ingreso, sin `DATABASE_URL` guarda en SQLite dentro del volumen y sin `PINECONE_API_KEY` usa la copia local. Para que los agentes analicen hace falta `OPENCODE_API_KEY`.
+- `.env.docker` no se versiona. Otro puerto: `$env:PUERTO=8080; docker compose up`.
+
 ## Pruebas
 
 ```powershell
 npm test                 # pruebas de la interfaz (Vitest)
-npm run test:e2e         # pruebas de navegador (Playwright)
+npm run test:e2e         # pruebas de navegador (Playwright) en web, tablet y móvil
+docker compose --profile pruebas run --rm pruebas   # las mismas, en Docker
 npm run build            # compilación de producción
 .\agentes\analista\.venv\Scripts\python.exe -m pytest agentes\analista -q   # pruebas del backend
 ```
 
 GitHub Actions ejecuta todas las pruebas en cada cambio que llega a `main` y en cada pull request.
+
+**Pruebas automatizadas desde la aplicación:** la pestaña *Pruebas* arranca el workflow `pruebas-e2e.yml`, que levanta la aplicación en Docker dentro de GitHub y la recorre con Playwright (suites por módulo, en Chromium, Firefox o WebKit). El tablero muestra el avance, los casos con su error y permite repetir solo los fallidos; el reporte HTML, las capturas, los videos y las trazas quedan en GitHub. Se conecta con un solo token: [docs/pruebas-automatizadas.md](docs/pruebas-automatizadas.md).
 
 ## Despliegue
 
@@ -194,6 +213,7 @@ La aplicación completa (interfaz, backend y OpenCode) se publica como un único
 - [Arquitectura y cómo hacer cambios](docs/arquitectura.md)
 - [Marca e identidad visual](docs/marca.md)
 - [Guía de ejecución local](docs/GUIA-LOCAL.md)
+- [Pruebas automatizadas con Playwright](docs/pruebas-automatizadas.md)
 - [Guía de pruebas y arranque en PowerShell](docs/GUIA-PRUEBAS-ARRANQUE-POWERSHELL.md)
 - [Evaluación del Asesor Técnico](docs/evaluacion-asesor-tecnico.md)
 - [Base de conocimiento e ingesta en Pinecone](agentes/conocimiento/README.md)

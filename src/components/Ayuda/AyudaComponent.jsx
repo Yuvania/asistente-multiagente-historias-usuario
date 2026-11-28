@@ -7,7 +7,7 @@ import { EjemploHuAyudaComponent } from './EjemploHuAyudaComponent';
 import { EquipoAyudaComponent } from './EquipoAyudaComponent';
 import { ArquitecturaAyudaComponent } from './ArquitecturaAyudaComponent';
 import {
-  ACCIONES_HISTORIA, NAVEGACION_ASISTENTE, PASOS_ASISTENTE, PENDIENTES, TECNOLOGIAS,
+  ACCIONES_HISTORIA, NAVEGACION_ASISTENTE, PASOS_ASISTENTE, PENDIENTES, PRUEBAS_AUTOMATIZADAS, TECNOLOGIAS,
 } from '../../data/ayudaDocumentacion';
 
 const SECCIONES = [
@@ -46,6 +46,17 @@ const SECCIONES = [
     contenido: <TarjetaItemsAyudaComponent title="Con qué está hecha la aplicación" items={TECNOLOGIAS} />,
   },
   { id: 'arquitectura', titulo: 'Arquitectura', contenido: <ArquitecturaAyudaComponent /> },
+  {
+    id: 'pruebas',
+    titulo: 'Pruebas automatizadas',
+    contenido: (
+      <TarjetaItemsAyudaComponent
+        title="Pruebas automatizadas con Playwright"
+        subtitle="Qué prueban, dónde corren y cómo se configuran"
+        items={PRUEBAS_AUTOMATIZADAS}
+      />
+    ),
+  },
   {
     id: 'pendientes',
     titulo: 'Por definir',
