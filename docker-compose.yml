@@ -1,0 +1,58 @@
+# La aplicación completa en cualquier computadora con Docker (Windows, Mac o Linux).
+#
+#   1. Copie .env.docker.example como .env.docker y ponga sus claves (opcional: sin claves también abre).
+#   2. docker compose up --build              → http://localhost:10000
+#   3. docker compose --profile pruebas run --rm pruebas            → corre las pruebas de Playwright
+#      docker compose --profile pruebas run --rm pruebas --grep @basicas   → solo una suite
+#   4. docker compose down                    → la detiene (los datos quedan en el volumen «datos»)
+#
+# Es la misma imagen que se publica en Render y la misma que usa GitHub Actions para las pruebas.
+name: historias-de-usuario
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        VITE_ANIO: ${VITE_ANIO:-2026}
+        VITE_VERSION: ${VITE_VERSION:-1.0.0}
+    image: historias-de-usuario:local
+    ports:
+      - "${PUERTO:-10000}:10000"
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      # OpenCode solo escucha dentro del contenedor (127.0.0.1); esta clave no sale de él.
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-solo-dentro-del-contenedor}
+    volumes:
+      - datos:/var/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:10000/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # Pruebas de punta a punta (Playwright). Solo corre cuando se pide: --profile pruebas.
+  pruebas:
+    profiles: ["pruebas"]
+    build:
+      context: .
+      dockerfile: e2e/Dockerfile
+    image: historias-de-usuario-pruebas:local
+    depends_on:
+      app:
+        condition: service_healthy
+    ipc: host
+    environment:
+      BASE_URL: ${BASE_URL:-http://app:10000}
+      NAVEGADOR: ${NAVEGADOR:-chromium}
+      QA_USUARIO: ${QA_USUARIO:-}
+      QA_CLAVE: ${QA_CLAVE:-}
+    volumes:
+      # Evidencias: reporte HTML, JUnit, resumen, capturas, videos y trazas.
+      - ./reportes-pruebas:/pruebas/reportes
+
+volumes:
+  datos:

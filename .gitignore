@@ -14,6 +14,7 @@ build/
 .env
 .env.*
 !.env.example
+!.env.docker.example
 
 # Logs
 *.log
@@ -47,6 +48,7 @@ __pycache__/
 # Playwright
 test-results/
 playwright-report/
+reportes-pruebas/
 
 # Repositorio de HU (memoria de largo plazo, datos locales)
 agentes/analista/data/*.db

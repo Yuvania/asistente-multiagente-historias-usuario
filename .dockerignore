@@ -10,3 +10,8 @@ agentes/analista/data
 specs
 .specify
 *.zip
+.env.*
+reportes-pruebas
+test-results
+playwright-report
+reports

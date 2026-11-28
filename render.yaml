@@ -5,11 +5,11 @@ services:
     name: historias-de-usuario
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free               # prueba sin costo: sin disco persistente y el servicio se duerme sin uso
+    plan: standard           # 1 CPU y 2 GB (plan de $25; desde agosto de 2026 Render lo llama 1c-2g)
     branch: main
     autoDeploy: true
     healthCheckPath: /healthz
-    # Para datos permanentes: cambie a `plan: starter` y descomente el disco.
+    # Los datos viven en TiDB (DATABASE_URL). Para conservar además archivos locales, descomente el disco.
     # disk:
     #   name: datos
     #   mountPath: /var/data
@@ -71,6 +71,10 @@ services:
         value: https://github.com/Yuvania/codigo-ejemplo-polizas.git
       - key: ASESOR_REPOSITORIO_RAMA
         value: main
+      # Pestaña Pruebas: token fine-grained de GitHub con «Actions: Read and write» solo sobre este repositorio.
+      # El repositorio y la rama salen de Render; para cambiar de repositorio se cambia solo el token.
+      - key: GITHUB_PRUEBAS_TOKEN
+        sync: false
       # Transporte MCP entre cada agente y su servidor: memoria (mismo proceso, mismo protocolo MCP; evita
       # arrancar un proceso por consulta en el plan gratuito) o stdio (proceso aparte).
       - key: ANALISTA_MCP_TRANSPORTE
