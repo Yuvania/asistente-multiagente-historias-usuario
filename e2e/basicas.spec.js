@@ -8,7 +8,7 @@ const LISTA_PANTALLA = [
   { ruta: '/', titulo: 'Panel de Historias de Usuario' },
   { ruta: '/historias', titulo: 'Historias de Usuario' },
   { ruta: '/pendientes', titulo: 'Pendientes' },
-  { ruta: '/ayuda', titulo: 'Centro de Ayuda y Documentación' },
+  { ruta: '/ayuda', titulo: 'Ayuda y documentación' },
 ];
 
 test.describe('Básicas', { tag: '@basicas' }, () => {
